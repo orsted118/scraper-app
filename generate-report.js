@@ -130,8 +130,25 @@ function buildDiffMap(diffOutput) {
   return diffMap;
 }
 
+function buildSummary(files) {
+  if (files.length === 0) {
+    return 'No se detectaron cambios pendientes en el working tree para esta tarea.';
+  }
+
+  return `Se registraron ${files.length} archivo(s) modificados en esta tarea. El diff completo se incluye abajo.`;
+}
+
+function buildPendingSection(pendingItems = []) {
+  if (pendingItems.length === 0) {
+    return '- Sin pendientes registrados en esta tarea.';
+  }
+
+  return pendingItems.map((item) => `- ${item}`).join('\n');
+}
+
 function buildReportContent(reportNumber, files, diffOutput) {
   const diffMap = buildDiffMap(diffOutput);
+  const pendingItems = [];
   const modifiedFilesSection = files.length
     ? files
         .map(({ status, filePath }) => `- \`${filePath}\` — ${describeChange(status)}`)
@@ -156,14 +173,13 @@ function buildReportContent(reportNumber, files, diffOutput) {
 ${modifiedFilesSection}
 
 ## Resumen
-Se genero la estructura base de ScraperApp con el shell de Electron, la interfaz inicial en React, los placeholders de handlers y la configuracion minima para continuar el desarrollo del proyecto.
+${buildSummary(files)}
 
 ## Cambios de codigo
 ${codeChangesSection}
 
 ## Pendiente para Claude
-- Validar la direccion visual de la UI base antes de profundizar en componentes interactivos.
-- Confirmar el flujo preferido para desarrollo local Electron + Vite y el contrato de IPC definitivo.
+${buildPendingSection(pendingItems)}
 `;
 }
 

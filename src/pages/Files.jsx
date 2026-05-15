@@ -1,7 +1,11 @@
-import { Download, FileText } from 'lucide-react';
+import { AlertCircle, Download, FileText, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 import ResultsTable from '../components/ResultsTable';
 
 function Files({ activities = [], loading }) {
+  const [downloadingKey, setDownloadingKey] = useState('');
+  const [downloadError, setDownloadError] = useState('');
+
   const attachments = activities.flatMap((activity) =>
     (activity.archivos || []).map((file) => ({
       source: activity.materia,
@@ -10,6 +14,23 @@ function Files({ activities = [], loading }) {
       file,
     })),
   );
+
+  const handleDownload = async (file) => {
+    setDownloadingKey(file.url);
+    setDownloadError('');
+
+    try {
+      const result = await window.scraperApp.downloadFile(file.url, file.name);
+
+      if (!result?.success) {
+        setDownloadError(result?.error || 'No fue posible descargar el archivo.');
+      }
+    } catch (_error) {
+      setDownloadError('No fue posible descargar el archivo.');
+    } finally {
+      setDownloadingKey('');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -26,6 +47,13 @@ function Files({ activities = [], loading }) {
         </div>
       </section>
 
+      {downloadError ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+          <p>{downloadError}</p>
+        </div>
+      ) : null}
+
       {attachments.length > 0 ? (
         <div className="space-y-3">
           {attachments.map((entry) => (
@@ -40,15 +68,19 @@ function Files({ activities = [], loading }) {
                   {entry.source} · {entry.status}
                 </p>
               </div>
-              <a
-                href={entry.file.url}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => handleDownload(entry.file)}
+                disabled={downloadingKey === entry.file.url}
                 className="inline-flex w-fit items-center gap-2 rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
               >
-                <Download className="h-4 w-4" />
-                Descargar
-              </a>
+                {downloadingKey === entry.file.url ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {downloadingKey === entry.file.url ? 'Descargando...' : 'Descargar'}
+              </button>
             </div>
           ))}
         </div>

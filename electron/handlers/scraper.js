@@ -1,8 +1,24 @@
-const { ipcMain } = require('electron');
+const { ipcMain, session } = require('electron');
 const { chromium } = require('playwright');
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
+
+function mapSameSite(sameSite) {
+  if (sameSite === 'Strict') {
+    return 'strict';
+  }
+
+  if (sameSite === 'Lax') {
+    return 'lax';
+  }
+
+  if (sameSite === 'None') {
+    return 'no_restriction';
+  }
+
+  return 'unspecified';
+}
 
 function normalizeWhitespace(value) {
   return (value || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
@@ -148,7 +164,14 @@ async function collectAssignmentDetails(page, assignment) {
         name: (anchor.textContent || '').trim(),
         url: anchor.href,
       }))
-      .filter((file) => file.name && file.url && file.url.includes('/introattachment/'));
+      .filter(
+        (file) =>
+          file.name &&
+          file.url &&
+          file.url.includes('pluginfile.php') &&
+          !file.url.includes('/user/') &&
+          !file.url.includes('/theme/'),
+      );
 
     const uniqueAttachments = attachments.filter(
       (file, index, array) => index === array.findIndex((entry) => entry.url === file.url),
@@ -183,6 +206,33 @@ async function collectAssignmentDetails(page, assignment) {
   };
 }
 
+async function syncCookiesToElectronSession(playwrightContext) {
+  const cookies = await playwrightContext.cookies();
+
+  await Promise.all(
+    cookies.map((cookie) => {
+      const domain = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
+      const url = `${cookie.secure ? 'https' : 'http'}://${domain}${cookie.path || '/'}`;
+      const cookiePayload = {
+        domain: cookie.domain,
+        httpOnly: cookie.httpOnly,
+        name: cookie.name,
+        path: cookie.path,
+        sameSite: mapSameSite(cookie.sameSite),
+        secure: cookie.secure,
+        url,
+        value: cookie.value,
+      };
+
+      if (typeof cookie.expires === 'number' && cookie.expires > 0) {
+        cookiePayload.expirationDate = cookie.expires;
+      }
+
+      return session.defaultSession.cookies.set(cookiePayload);
+    }),
+  );
+}
+
 async function scrapeIVirtualActivities() {
   const username = process.env.IVIRTUAL_USER;
   const password = process.env.IVIRTUAL_PASS;
@@ -200,6 +250,7 @@ async function scrapeIVirtualActivities() {
     page.setDefaultTimeout(45000);
 
     await loginToIVirtual(page, username, password);
+    await syncCookiesToElectronSession(context);
 
     const courses = await collectCourses(page);
 

@@ -1,3 +1,5 @@
+require('dotenv').config({ quiet: true });
+
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { registerScraperHandlers } = require('./handlers/scraper');

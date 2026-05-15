@@ -5,7 +5,7 @@ function Ajustes({ lastSyncAt }) {
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
         <div className="flex items-start gap-3">
-          <FolderCog className="mt-1 h-5 w-5 text-cyan-400" />
+          <FolderCog className="mt-1 h-5 w-5 text-itson-blue" />
           <div>
             <h3 className="text-xl font-semibold text-white">Configuración local</h3>
             <p className="mt-2 text-sm leading-6 text-slate-400">
@@ -18,7 +18,7 @@ function Ajustes({ lastSyncAt }) {
 
       <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-1 h-5 w-5 text-cyan-400" />
+          <ShieldCheck className="mt-1 h-5 w-5 text-itson-blue" />
           <div>
             <h3 className="text-xl font-semibold text-white">Estado operativo</h3>
             <ul className="mt-3 space-y-2 text-sm text-slate-300">

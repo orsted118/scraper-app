@@ -1,30 +1,40 @@
-import { Download, FileText, FileType, Image, Presentation, Table } from 'lucide-react';
+import {
+  AlertCircle,
+  Download,
+  FileText,
+  FileType2,
+  ImageIcon,
+  Loader2,
+  Paperclip,
+  Presentation,
+  Table2,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 function getFileIcon(fileName = '') {
   const lowerName = fileName.toLowerCase();
 
   if (lowerName.endsWith('.pdf')) {
-    return FileText;
+    return { icon: FileText, color: 'text-red-400', type: 'PDF' };
   }
 
   if (/\.(doc|docx)$/.test(lowerName)) {
-    return FileType;
+    return { icon: FileType2, color: 'text-blue-400', type: 'Word' };
   }
 
   if (/\.(xls|xlsx|csv)$/.test(lowerName)) {
-    return Table;
+    return { icon: Table2, color: 'text-green-400', type: 'Excel' };
   }
 
   if (/\.(ppt|pptx)$/.test(lowerName)) {
-    return Presentation;
+    return { icon: Presentation, color: 'text-orange-400', type: 'PowerPoint' };
   }
 
   if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(lowerName)) {
-    return Image;
+    return { icon: ImageIcon, color: 'text-purple-400', type: 'Imagen' };
   }
 
-  return FileText;
+  return { icon: Paperclip, color: 'text-slate-400', type: 'Otro' };
 }
 
 function getBadgeClass(status) {
@@ -52,12 +62,33 @@ function ActivityCard({
     [archivos.length, instrucciones],
   );
   const [expanded, setExpanded] = useState(!startsCollapsed);
+  const [downloadingKey, setDownloadingKey] = useState('');
+  const [downloadError, setDownloadError] = useState('');
 
   const previewText = (instrucciones || '').trim();
   const shownInstructions =
     !previewText || expanded || previewText.length <= 200
       ? previewText
       : `${previewText.slice(0, 200).trim()}...`;
+
+  const visibleFiles = expanded ? archivos : archivos.slice(0, 3);
+
+  const handleDownload = async (archivo) => {
+    setDownloadingKey(archivo.url);
+    setDownloadError('');
+
+    try {
+      const result = await window.scraperApp.downloadFile(archivo.url, archivo.name);
+
+      if (!result?.success) {
+        setDownloadError(result?.error || 'No fue posible descargar el archivo.');
+      }
+    } catch (_error) {
+      setDownloadError('No fue posible descargar el archivo.');
+    } finally {
+      setDownloadingKey('');
+    }
+  };
 
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
@@ -80,12 +111,20 @@ function ActivityCard({
         </div>
       ) : null}
 
+      {downloadError ? (
+        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+          <p>{downloadError}</p>
+        </div>
+      ) : null}
+
       {archivos.length > 0 ? (
         <div className="mt-5 space-y-3">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Archivos adjuntos</p>
           <div className="space-y-2">
-            {(expanded ? archivos : archivos.slice(0, 3)).map((archivo) => {
-              const FileIcon = getFileIcon(archivo.name);
+            {visibleFiles.map((archivo) => {
+              const fileMeta = getFileIcon(archivo.name);
+              const FileIcon = fileMeta.icon;
 
               return (
                 <div
@@ -93,18 +132,27 @@ function ActivityCard({
                   className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3 md:flex-row md:items-center md:justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <FileIcon className="h-4 w-4 text-cyan-400" />
-                    <span className="text-sm text-slate-200">{archivo.name}</span>
+                    <FileIcon className={`h-4 w-4 ${fileMeta.color}`} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-slate-200">{archivo.name}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+                        {fileMeta.type}
+                      </p>
+                    </div>
                   </div>
-                  <a
-                    href={archivo.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500 hover:text-cyan-300"
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(archivo)}
+                    disabled={downloadingKey === archivo.url}
+                    className="inline-flex w-fit items-center gap-2 rounded-xl border border-itson-blue/50 px-3 py-1 text-xs text-itson-blue transition hover:bg-itson-blue/10 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    <Download className="h-4 w-4" />
-                    Descargar
-                  </a>
+                    {downloadingKey === archivo.url ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    {downloadingKey === archivo.url ? 'Descargando...' : 'Descargar'}
+                  </button>
                 </div>
               );
             })}
@@ -116,7 +164,7 @@ function ActivityCard({
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-5 text-sm font-medium text-cyan-400 transition hover:text-cyan-300"
+          className="mt-5 text-sm font-medium text-itson-blue transition hover:text-itson-blue-light"
         >
           {expanded ? 'Ver menos' : 'Ver más'}
         </button>

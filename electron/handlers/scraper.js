@@ -6,6 +6,7 @@ const { chromium } = require('playwright');
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
 const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+const PAGE_TIMEOUT_MS = 20_000;
 
 function mapSameSite(sameSite) {
   if (sameSite === 'Strict') {
@@ -25,6 +26,18 @@ function mapSameSite(sameSite) {
 
 function normalizeWhitespace(value) {
   return (value || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function processInChunks(items, chunkSize, asyncFn) {
+  const results = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    const chunk = items.slice(index, index + chunkSize);
+    const chunkResults = await Promise.all(chunk.map(asyncFn));
+    results.push(...chunkResults);
+  }
+
+  return results;
 }
 
 function getActivitiesCachePath() {
@@ -164,7 +177,7 @@ async function collectCourses(page) {
 
 async function collectAssignmentsFromCourse(page, course) {
   const indexUrl = `https://ivirtual.itson.edu.mx/mod/assign/index.php?id=${course.id}`;
-  await page.goto(indexUrl, { waitUntil: 'networkidle' });
+  await page.goto(indexUrl, { waitUntil: 'domcontentloaded' });
 
   return page.evaluate((courseName) => {
     const tableRows = Array.from(document.querySelectorAll('table.generaltable tbody tr'));
@@ -209,7 +222,7 @@ async function collectAssignmentsFromCourse(page, course) {
 }
 
 async function collectAssignmentDetails(page, assignment) {
-  await page.goto(assignment.url, { waitUntil: 'networkidle' });
+  await page.goto(assignment.url, { waitUntil: 'domcontentloaded' });
 
   const details = await page.evaluate((courseName) => {
     const main = document.querySelector('#region-main') || document.body;
@@ -289,7 +302,7 @@ async function syncCookiesToElectronSession(playwrightContext) {
   );
 }
 
-async function scrapeIVirtualActivities() {
+async function scrapeIVirtualActivities(event) {
   const username = process.env.IVIRTUAL_USER;
   const password = process.env.IVIRTUAL_PASS;
 
@@ -302,8 +315,9 @@ async function scrapeIVirtualActivities() {
   try {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
+    context.setDefaultTimeout(PAGE_TIMEOUT_MS);
     const page = await context.newPage();
-    page.setDefaultTimeout(45000);
+    page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
     await loginToIVirtual(page, username, password);
     await syncCookiesToElectronSession(context);
@@ -314,33 +328,59 @@ async function scrapeIVirtualActivities() {
       return { error: 'No se encontraron cursos visibles en el dashboard de iVirtual.' };
     }
 
-    const assignments = [];
+    const activities = [];
+    const detailPages = await Promise.all(
+      Array.from({ length: 3 }, async () => {
+        const detailPage = await context.newPage();
+        detailPage.setDefaultTimeout(PAGE_TIMEOUT_MS);
+        return detailPage;
+      }),
+    );
 
-    for (const course of courses) {
-      const courseAssignments = await collectAssignmentsFromCourse(page, course);
-      assignments.push(...courseAssignments);
+    if (event?.sender?.send) {
+      event.sender.send('scraper:progress', {
+        current: 0,
+        total: courses.length,
+        curso: courses[0]?.name || '',
+      });
     }
 
-    const detailPage = await context.newPage();
-    detailPage.setDefaultTimeout(45000);
-    const activities = [];
+    for (let courseIndex = 0; courseIndex < courses.length; courseIndex += 1) {
+      const course = courses[courseIndex];
+      const courseAssignments = await collectAssignmentsFromCourse(page, course);
+      const courseActivities = await processInChunks(
+        courseAssignments,
+        3,
+        async (assignment, indexInChunk) => {
+          const details = await collectAssignmentDetails(detailPages[indexInChunk], assignment);
+          return {
+            archivos: details.archivos,
+            estado: classifyAssignment(assignment),
+            fechaLimite: assignment.dueDate || 'Sin fecha visible',
+            instrucciones: details.instrucciones,
+            materia: details.materia,
+            nombre: assignment.title,
+            rawGrade: assignment.grade,
+            rawSubmission: assignment.submission,
+            url: assignment.url,
+          };
+        },
+      );
 
-    for (let index = 0; index < assignments.length; index += 1) {
-      const assignment = assignments[index];
-      const details = await collectAssignmentDetails(detailPage, assignment);
-
-      activities.push({
-        id: `${index + 1}-${assignment.url.split('id=').pop()}`,
-        archivos: details.archivos,
-        estado: classifyAssignment(assignment),
-        fechaLimite: assignment.dueDate || 'Sin fecha visible',
-        instrucciones: details.instrucciones,
-        materia: details.materia,
-        nombre: assignment.title,
-        rawGrade: assignment.grade,
-        rawSubmission: assignment.submission,
-        url: assignment.url,
+      courseActivities.forEach((activity, indexWithinCourse) => {
+        activities.push({
+          id: `${activities.length + 1}-${course.id}-${indexWithinCourse + 1}`,
+          ...activity,
+        });
       });
+
+      if (event?.sender?.send) {
+        event.sender.send('scraper:progress', {
+          current: courseIndex + 1,
+          total: courses.length,
+          curso: course.name,
+        });
+      }
     }
 
     const cachePayload = writeActivitiesCache(activities);
@@ -363,7 +403,7 @@ async function scrapeIVirtualActivities() {
   }
 }
 
-async function getActivitiesWithCache() {
+async function getActivitiesWithCache(event) {
   const cached = readActivitiesCache();
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
@@ -374,11 +414,11 @@ async function getActivitiesWithCache() {
     };
   }
 
-  return scrapeIVirtualActivities();
+  return scrapeIVirtualActivities(event);
 }
 
 function registerScraperHandlers() {
-  ipcMain.handle('scraper:run', async () => getActivitiesWithCache());
+  ipcMain.handle('scraper:run', async (event) => getActivitiesWithCache(event));
   ipcMain.handle('scraper:clear-cache', async () => clearActivitiesCache());
 }
 

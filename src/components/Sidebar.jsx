@@ -1,3 +1,4 @@
+import logoItson from '../assets/logo-itson.png';
 import { Download, FolderCog, ListChecks } from 'lucide-react';
 
 const navigationItems = [
@@ -10,9 +11,9 @@ function Sidebar({ activePage, onNavigate }) {
   return (
     <aside className="w-64 rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
       <div className="mb-8">
-        <p className="text-xs uppercase tracking-[0.35em] text-cyan-400">ScraperApp</p>
-        <h1 className="mt-3 text-2xl font-semibold text-white">iVirtual ITSON</h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <img src={logoItson} alt="ITSON" className="h-10 w-auto object-contain" />
+        <p className="mt-3 text-xs text-itson-gray">iVirtual Academic Tracker</p>
+        <p className="mt-3 text-sm text-slate-400">
           Consola enfocada en extraer actividades, fechas límite y adjuntos del portal académico.
         </p>
       </div>
@@ -29,7 +30,7 @@ function Sidebar({ activePage, onNavigate }) {
               onClick={() => onNavigate(item.id)}
               className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm transition ${
                 isActive
-                  ? 'bg-cyan-500 text-slate-950'
+                  ? 'bg-itson-blue text-slate-50'
                   : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
             >

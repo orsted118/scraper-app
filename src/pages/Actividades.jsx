@@ -47,7 +47,7 @@ function StatCard({ icon: Icon, label, value }) {
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
       <div className="flex items-center gap-3">
-        <span className="rounded-2xl bg-cyan-500/10 p-3 text-cyan-400">
+        <span className="rounded-2xl bg-itson-blue/10 p-3 text-itson-blue">
           <Icon className="h-5 w-5" />
         </span>
         <div>
@@ -59,7 +59,7 @@ function StatCard({ icon: Icon, label, value }) {
   );
 }
 
-function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
+function Actividades({ activities = [], error, lastSyncAt, loading, onSync, progress }) {
   const [activeTab, setActiveTab] = useState('pendiente');
   const counts = {
     pendiente: activities.filter((item) => item.estado === 'pendiente').length,
@@ -74,7 +74,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
         <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-cyan-300">
+              <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
                 <Globe className="h-3.5 w-3.5" />
                 Portal iVirtual ITSON
               </div>
@@ -92,7 +92,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
                 type="button"
                 onClick={onSync}
                 disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-500/50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-itson-blue px-5 py-3 text-sm font-semibold text-slate-50 transition hover:bg-itson-blue-light disabled:cursor-not-allowed disabled:bg-itson-blue/50"
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 {loading ? 'Sincronizando...' : 'Sincronizar'}
@@ -131,7 +131,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
                 onClick={() => setActiveTab(tab.id)}
                 className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
                   isActive
-                    ? 'bg-cyan-500 text-slate-950'
+                    ? 'bg-itson-blue text-slate-50'
                     : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
               >
@@ -143,7 +143,25 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
       </section>
 
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="text-slate-200">
+                Escaneando curso {progress?.current || 0} de {progress?.total || 0}: {progress?.curso || 'iniciando...'}
+              </span>
+              <span className="text-slate-400">
+                {progress?.total ? Math.round(((progress.current || 0) / progress.total) * 100) : 0}%
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-itson-blue transition-all"
+                style={{
+                  width: `${progress?.total ? ((progress.current || 0) / progress.total) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </section>
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}

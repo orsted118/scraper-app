@@ -29,6 +29,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
+  const [progress, setProgress] = useState({ current: 0, total: 0, curso: '' });
 
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
@@ -36,6 +37,7 @@ function App() {
   const loadActivities = async ({ clearCacheFirst = false } = {}) => {
     setLoading(true);
     setError('');
+    setProgress({ current: 0, total: 0, curso: '' });
 
     try {
       if (clearCacheFirst) {
@@ -58,6 +60,7 @@ function App() {
 
       setActivities(Array.isArray(response?.activities) ? response.activities : []);
       setLastSyncAt(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+      setProgress({ current: 0, total: 0, curso: '' });
     } catch (_error) {
       setError('No fue posible consultar iVirtual. Verifica la conexión y las credenciales locales.');
       setActivities([]);
@@ -68,6 +71,20 @@ function App() {
 
   useEffect(() => {
     loadActivities();
+  }, []);
+
+  useEffect(() => {
+    window.scraperApp.onProgress((data) => {
+      setProgress({
+        current: data?.current || 0,
+        total: data?.total || 0,
+        curso: data?.curso || '',
+      });
+    });
+
+    return () => {
+      window.scraperApp.removeProgress();
+    };
   }, []);
 
   const handleSyncActivities = () => loadActivities({ clearCacheFirst: true });
@@ -83,6 +100,7 @@ function App() {
             lastSyncAt={lastSyncAt}
             loading={loading}
             onSync={handleSyncActivities}
+            progress={progress}
           />
         </TaskPanel>
       </div>

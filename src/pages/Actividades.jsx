@@ -1,8 +1,7 @@
 import {
   AlertCircle,
   Globe,
-  Loader2,
-  Play,
+  RefreshCw,
   Search,
   Zap,
 } from 'lucide-react';
@@ -17,13 +16,31 @@ const tabs = [
 
 function formatLastSync(lastSyncAt) {
   if (!lastSyncAt) {
-    return 'Aún no se ha realizado una consulta.';
+    return 'Última sync: aún no disponible.';
   }
 
-  return new Intl.DateTimeFormat('es-MX', {
+  const syncDate = new Date(lastSyncAt);
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - syncDate.getTime());
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 60) {
+    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
+  }
+
+  const isToday = syncDate.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(syncDate)}`;
+  }
+
+  return `Última sync: ${new Intl.DateTimeFormat('es-MX', {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(new Date(lastSyncAt));
+  }).format(syncDate)}`;
 }
 
 function StatCard({ icon: Icon, label, value }) {
@@ -42,7 +59,7 @@ function StatCard({ icon: Icon, label, value }) {
   );
 }
 
-function Actividades({ activities = [], error, lastSyncAt, loading, onRefresh }) {
+function Actividades({ activities = [], error, lastSyncAt, loading, onSync }) {
   const [activeTab, setActiveTab] = useState('pendiente');
   const counts = {
     pendiente: activities.filter((item) => item.estado === 'pendiente').length,
@@ -70,20 +87,22 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onRefresh })
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-500/50"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {loading ? 'Consultando iVirtual...' : 'Actualizar actividades'}
-            </button>
-          </div>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={onSync}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-500/50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                {loading ? 'Sincronizando...' : 'Sincronizar'}
+              </button>
 
-          <p className="mt-5 text-xs uppercase tracking-[0.25em] text-slate-500">
-            Última sincronización: {formatLastSync(lastSyncAt)}
-          </p>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                {formatLastSync(lastSyncAt)}
+              </p>
+            </div>
+          </div>
         </article>
 
         <div className="grid gap-4">
@@ -125,7 +144,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onRefresh })
 
       {loading ? (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, index) => (
+          {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
               className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-6"

@@ -33,11 +33,21 @@ function App() {
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
 
-  const handleRefreshActivities = async () => {
+  const loadActivities = async ({ clearCacheFirst = false } = {}) => {
     setLoading(true);
     setError('');
 
     try {
+      if (clearCacheFirst) {
+        const cacheResult = await window.scraperApp.clearCache();
+
+        if (cacheResult?.success === false) {
+          setError(cacheResult.error || 'No fue posible limpiar el caché local.');
+          setActivities([]);
+          return;
+        }
+      }
+
       const response = await window.scraperApp.runScraper();
 
       if (response?.error) {
@@ -47,7 +57,7 @@ function App() {
       }
 
       setActivities(Array.isArray(response?.activities) ? response.activities : []);
-      setLastSyncAt(new Date().toISOString());
+      setLastSyncAt(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
     } catch (_error) {
       setError('No fue posible consultar iVirtual. Verifica la conexión y las credenciales locales.');
       setActivities([]);
@@ -57,8 +67,10 @@ function App() {
   };
 
   useEffect(() => {
-    handleRefreshActivities();
+    loadActivities();
   }, []);
+
+  const handleSyncActivities = () => loadActivities({ clearCacheFirst: true });
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -70,7 +82,7 @@ function App() {
             error={error}
             lastSyncAt={lastSyncAt}
             loading={loading}
-            onRefresh={handleRefreshActivities}
+            onSync={handleSyncActivities}
           />
         </TaskPanel>
       </div>

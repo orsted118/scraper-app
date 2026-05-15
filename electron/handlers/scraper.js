@@ -1,8 +1,11 @@
-const { ipcMain, session } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const { app, ipcMain, session } = require('electron');
 const { chromium } = require('playwright');
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
+const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 
 function mapSameSite(sameSite) {
   if (sameSite === 'Strict') {
@@ -22,6 +25,59 @@ function mapSameSite(sameSite) {
 
 function normalizeWhitespace(value) {
   return (value || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function getActivitiesCachePath() {
+  return path.join(app.getPath('userData'), 'actividades-cache.json');
+}
+
+function readActivitiesCache() {
+  const cachePath = getActivitiesCachePath();
+
+  if (!fs.existsSync(cachePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+
+    if (
+      !parsed ||
+      typeof parsed.timestamp !== 'number' ||
+      !Array.isArray(parsed.actividades)
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeActivitiesCache(activities) {
+  const cachePayload = {
+    timestamp: Date.now(),
+    actividades: activities,
+  };
+
+  fs.writeFileSync(
+    getActivitiesCachePath(),
+    JSON.stringify(cachePayload, null, 2),
+    'utf8',
+  );
+
+  return cachePayload;
+}
+
+function clearActivitiesCache() {
+  const cachePath = getActivitiesCachePath();
+
+  if (fs.existsSync(cachePath)) {
+    fs.unlinkSync(cachePath);
+  }
+
+  return { success: true };
 }
 
 function parseDueDate(value) {
@@ -202,7 +258,7 @@ async function collectAssignmentDetails(page, assignment) {
   return {
     archivos: details.archivos,
     instrucciones: instructions,
-      materia: details.materia,
+    materia: details.materia,
   };
 }
 
@@ -287,7 +343,12 @@ async function scrapeIVirtualActivities() {
       });
     }
 
-    return { activities };
+    const cachePayload = writeActivitiesCache(activities);
+    return {
+      activities,
+      timestamp: cachePayload.timestamp,
+      fromCache: false,
+    };
   } catch (error) {
     return {
       error:
@@ -302,11 +363,31 @@ async function scrapeIVirtualActivities() {
   }
 }
 
+async function getActivitiesWithCache() {
+  const cached = readActivitiesCache();
+
+  if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+    return {
+      activities: cached.actividades,
+      timestamp: cached.timestamp,
+      fromCache: true,
+    };
+  }
+
+  return scrapeIVirtualActivities();
+}
+
 function registerScraperHandlers() {
-  ipcMain.handle('scraper:run', async () => scrapeIVirtualActivities());
+  ipcMain.handle('scraper:run', async () => getActivitiesWithCache());
+  ipcMain.handle('scraper:clear-cache', async () => clearActivitiesCache());
 }
 
 module.exports = {
+  clearActivitiesCache,
+  getActivitiesCachePath,
+  getActivitiesWithCache,
   registerScraperHandlers,
+  readActivitiesCache,
   scrapeIVirtualActivities,
+  writeActivitiesCache,
 };

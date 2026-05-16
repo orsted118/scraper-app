@@ -5,6 +5,7 @@ const path = require('path');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerFileHandlers } = require('./handlers/files');
 const { registerSettingsHandlers } = require('./handlers/settings');
+const { registerNotificationHandlers } = require('./handlers/notifications');
 
 function createMainWindow() {
   const mainWindow = new BrowserWindow({
@@ -34,6 +35,7 @@ app.whenReady().then(() => {
   registerScraperHandlers();
   registerFileHandlers();
   registerSettingsHandlers();
+  registerNotificationHandlers();
   createMainWindow();
 
   app.on('activate', () => {

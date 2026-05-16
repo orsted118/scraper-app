@@ -34,14 +34,22 @@ function App() {
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
 
+  const api = typeof window !== 'undefined' ? window.scraperApp : null;
+
   const loadActivities = async ({ clearCacheFirst = false } = {}) => {
     setLoading(true);
     setError('');
     setProgress({ current: 0, total: 0, curso: '' });
 
     try {
+      if (!api) {
+        setError('ScraperApp debe ejecutarse dentro de Electron.');
+        setActivities([]);
+        return;
+      }
+
       if (clearCacheFirst) {
-        const cacheResult = await window.scraperApp.clearCache();
+        const cacheResult = await api.clearCache();
 
         if (cacheResult?.success === false) {
           setError(cacheResult.error || 'No fue posible limpiar el caché local.');
@@ -50,7 +58,7 @@ function App() {
         }
       }
 
-      const response = await window.scraperApp.runScraper();
+      const response = await api.runScraper();
 
       if (response?.error) {
         setError(response.error);
@@ -58,8 +66,12 @@ function App() {
         return;
       }
 
-      setActivities(Array.isArray(response?.activities) ? response.activities : []);
+      const activitiesList = Array.isArray(response?.activities) ? response.activities : [];
+      setActivities(activitiesList);
       setLastSyncAt(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+      if (activitiesList.length > 0 && typeof api.checkNotifications === 'function') {
+        await api.checkNotifications(activitiesList);
+      }
       setProgress({ current: 0, total: 0, curso: '' });
     } catch (_error) {
       setError('No fue posible consultar iVirtual. Verifica la conexión y las credenciales locales.');
@@ -74,7 +86,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.scraperApp.onProgress((data) => {
+    if (!api) return;
+
+    api.onProgress((data) => {
       setProgress({
         current: data?.current || 0,
         total: data?.total || 0,
@@ -83,7 +97,7 @@ function App() {
     });
 
     return () => {
-      window.scraperApp.removeProgress();
+      api.removeProgress();
     };
   }, []);
 

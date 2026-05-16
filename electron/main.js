@@ -4,6 +4,7 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerFileHandlers } = require('./handlers/files');
+const { registerSettingsHandlers } = require('./handlers/settings');
 
 function createMainWindow() {
   const mainWindow = new BrowserWindow({
@@ -32,6 +33,7 @@ function createMainWindow() {
 app.whenReady().then(() => {
   registerScraperHandlers();
   registerFileHandlers();
+  registerSettingsHandlers();
   createMainWindow();
 
   app.on('activate', () => {

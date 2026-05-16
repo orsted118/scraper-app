@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(0, 109, 182, 0.10), transparent 32%),
+    radial-gradient(circle at top right, rgba(0, 90, 148, 0.10), transparent 24%),
+    #020617;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+a {
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}

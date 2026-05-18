@@ -29,3 +29,10 @@ a {
     color 0.2s ease,
     opacity 0.2s ease;
 }
+
+.line-clamp-3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}

@@ -244,9 +244,12 @@ async function collectAssignmentDetails(page, assignment) {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
+    const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     const main = document.querySelector('#region-main') || document.body;
     const intro = document.querySelector('#intro');
-    const introText = (intro?.textContent || '').replace(/\r/g, '');
+    const introText = normalize(intro?.textContent || '');
+    const bodyText = normalize(document.body?.textContent || '');
     const attachments = Array.from(main.querySelectorAll('a[href*="pluginfile.php"]'))
       .map((anchor) => ({
         name: (anchor.textContent || '').trim(),
@@ -265,7 +268,6 @@ async function collectAssignmentDetails(page, assignment) {
       (file, index, array) => index === array.findIndex((entry) => entry.url === file.url),
     );
 
-    const bodyText = normalize(document.body?.textContent || '');
     const statusTableText = normalize(document.querySelector('.submissionstatustable')?.textContent || '');
     const deliveredByClass = Boolean(document.querySelector('.submissionstatussubmitted'));
     const deliveredByText = /submitted for grading|assignment was submitted|submitted to grading/i.test(
@@ -311,6 +313,92 @@ async function collectAssignmentDetails(page, assignment) {
         /add submission|submit assignment|enviar tarea|entregar/i.test(action.label) &&
         action.disabled,
     );
+    const detailRows = Array.from(main.querySelectorAll('table tr'));
+    const detailLines = bodyText.split('\n').map((line) => normalize(line)).filter(Boolean);
+
+    const extractDetailValue = (labels) => {
+      for (const row of detailRows) {
+        const cells = Array.from(row.querySelectorAll('th, td')).map((cell) =>
+          normalize(cell.textContent || ''),
+        );
+
+        if (!cells.length) {
+          continue;
+        }
+
+        const rowText = cells.join(' ');
+
+        for (const label of labels) {
+          const labelLower = label.toLowerCase();
+          const labelIndex = cells.findIndex((cell) => cell.toLowerCase().includes(labelLower));
+
+          if (labelIndex !== -1) {
+            const sameCell = cells[labelIndex]
+              .replace(new RegExp(escapeRegExp(label), 'i'), '')
+              .replace(/^[:\-–—]\s*/, '')
+              .trim();
+
+            if (sameCell) {
+              return sameCell;
+            }
+
+            const nextCell = cells.slice(labelIndex + 1).find(Boolean);
+
+            if (nextCell) {
+              return nextCell;
+            }
+          }
+
+          const rowMatch = rowText.match(
+            new RegExp(`${escapeRegExp(label)}\\s*[:\\-–—]?\\s*(.+)$`, 'i'),
+          );
+
+          if (rowMatch) {
+            const value = normalize(rowMatch[1]);
+
+            if (value) {
+              return value;
+            }
+          }
+        }
+      }
+
+      for (let index = 0; index < detailLines.length; index += 1) {
+        const line = detailLines[index];
+
+        for (const label of labels) {
+          if (line.toLowerCase().includes(label.toLowerCase())) {
+            const inlineValue = line
+              .replace(new RegExp(`.*?${escapeRegExp(label)}\\s*[:\\-–—]?\\s*`, 'i'), '')
+              .trim();
+
+            if (inlineValue) {
+              return inlineValue;
+            }
+
+            const nextLine = detailLines[index + 1];
+
+            if (nextLine) {
+              return nextLine;
+            }
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const combinedModalidadText = normalize([bodyText, introText, statusTableText].join('\n')).toLowerCase();
+    const modalidad = /(entrega en grupo|group submission|es una tarea grupal|team submission|submission in groups|trabajo en equipo|tarea grupal)/i.test(
+      combinedModalidadText,
+    )
+      ? 'equipo'
+      : 'individual';
+    const fechaPublicacion = extractDetailValue([
+      'Disponible desde',
+      'Allow submissions from',
+      'Fecha de apertura',
+    ]);
 
     return {
       archivos: uniqueAttachments,
@@ -318,8 +406,10 @@ async function collectAssignmentDetails(page, assignment) {
       closedByText,
       deliveredByClass,
       deliveredByText,
+      fechaPublicacion,
       introText,
       materia: courseName,
+      modalidad,
       hasDisabledSubmitAction,
       hasSubmitAction,
       statusTableText,
@@ -343,6 +433,8 @@ async function collectAssignmentDetails(page, assignment) {
 
   return {
     archivos: details.archivos,
+    fechaPublicacion: details.fechaPublicacion || null,
+    modalidad: details.modalidad || 'individual',
     submissionState: {
       bodyText: details.bodyText,
       closedByText: details.closedByText,
@@ -449,8 +541,10 @@ async function scrapeIVirtualActivities(event) {
             archivos: details.archivos,
             estado,
             fechaLimite: assignment.dueDate || 'Sin fecha visible',
+            fechaPublicacion: details.fechaPublicacion || null,
             instrucciones: details.instrucciones,
             materia: details.materia,
+            modalidad: details.modalidad || 'individual',
             nombre: assignment.title,
             rawGrade: assignment.grade,
             rawSubmission: assignment.submission,

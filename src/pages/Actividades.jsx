@@ -7,7 +7,7 @@ import {
   Zap,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import ActivityCard from '../components/ActivityCard';
 
 const tabs = [
@@ -45,6 +45,25 @@ function formatLastSync(lastSyncAt) {
   }).format(syncDate)}`;
 }
 
+function parseActivityDate(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue || trimmedValue === 'Sin fecha visible') {
+    return null;
+  }
+
+  const parsed = Date.parse(trimmedValue.replace(/\s+/g, ' ').trim());
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function compareText(left = '', right = '') {
+  return left.localeCompare(right, 'es', { sensitivity: 'base', numeric: true });
+}
+
 function StatCard({ icon: Icon, label, value }) {
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
@@ -64,6 +83,7 @@ function StatCard({ icon: Icon, label, value }) {
 function Actividades({ activities = [], error, lastSyncAt, loading, onSync, progress }) {
   const [activeTab, setActiveTab] = useState('pendiente');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('deadline-asc');
   const counts = {
     pendiente: activities.filter((item) => item.estado === 'pendiente').length,
     retrasada: activities.filter((item) => item.estado === 'retrasada').length,
@@ -78,8 +98,48 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
 
     return [item.nombre, item.materia].some((field) =>
       (field || '').toLowerCase().includes(normalizedQuery),
-    );
+      );
   });
+  const sortedActivities = useMemo(() => {
+    const items = [...filteredActivities];
+
+    const sortByDeadline = (ascending) => (left, right) => {
+      const leftDate = parseActivityDate(left.fechaLimite);
+      const rightDate = parseActivityDate(right.fechaLimite);
+
+      if (leftDate === null && rightDate === null) {
+        return compareText(left.nombre || '', right.nombre || '');
+      }
+
+      if (leftDate === null) {
+        return 1;
+      }
+
+      if (rightDate === null) {
+        return -1;
+      }
+
+      return ascending ? leftDate - rightDate : rightDate - leftDate;
+    };
+
+    switch (sortBy) {
+      case 'deadline-desc':
+        return items.sort(sortByDeadline(false));
+      case 'name-asc':
+        return items.sort((left, right) =>
+          compareText(left.nombre || '', right.nombre || '') ||
+          compareText(left.materia || '', right.materia || ''),
+        );
+      case 'subject-asc':
+        return items.sort((left, right) =>
+          compareText(left.materia || '', right.materia || '') ||
+          compareText(left.nombre || '', right.nombre || ''),
+        );
+      case 'deadline-asc':
+      default:
+        return items.sort(sortByDeadline(true));
+    }
+  }, [filteredActivities, sortBy]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
@@ -137,25 +197,39 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
         </div>
       ) : null}
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Buscar por nombre o materia..."
-          className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 pl-10 pr-11 text-sm text-slate-100 outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
-        />
-        {searchQuery ? (
-          <button
-            type="button"
-            onClick={() => setSearchQuery('')}
-            aria-label="Limpiar búsqueda"
-            className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        ) : null}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Buscar por nombre o materia..."
+            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 pl-10 pr-11 text-sm text-slate-100 outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+
+        <select
+          value={sortBy}
+          onChange={(event) => setSortBy(event.target.value)}
+          className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+          aria-label="Ordenar actividades"
+        >
+          <option value="deadline-asc">Fecha límite (más próxima)</option>
+          <option value="deadline-desc">Fecha límite (más lejana)</option>
+          <option value="name-asc">Nombre A-Z</option>
+          <option value="subject-asc">Materia</option>
+        </select>
       </div>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
@@ -213,9 +287,9 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
             </div>
           ))}
         </div>
-      ) : filteredActivities.length > 0 ? (
+      ) : sortedActivities.length > 0 ? (
         <div className="space-y-4">
-          {filteredActivities.map((activity) => (
+          {sortedActivities.map((activity) => (
             <ActivityCard key={activity.id} {...activity} />
           ))}
         </div>

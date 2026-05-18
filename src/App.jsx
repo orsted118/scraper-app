@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import TaskPanel from './components/TaskPanel';
 import Actividades from './pages/Actividades';
+import Calificaciones from './pages/Calificaciones';
 import Files from './pages/Files';
 import Ajustes from './pages/Ajustes';
 
@@ -10,6 +11,11 @@ const pageRegistry = {
     title: 'Actividades',
     description: 'Consulta y clasifica las actividades de iVirtual ITSON por estado.',
     component: Actividades,
+  },
+  calificaciones: {
+    title: 'Calificaciones',
+    description: 'Revisa las calificaciones del CIA ITSON con credenciales separadas.',
+    component: Calificaciones,
   },
   files: {
     title: 'Archivos',
@@ -26,9 +32,13 @@ const pageRegistry = {
 function App() {
   const [activePage, setActivePage] = useState('activities');
   const [activities, setActivities] = useState([]);
+  const [calificaciones, setCalificaciones] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingCIA, setLoadingCIA] = useState(false);
   const [error, setError] = useState('');
+  const [errorCIA, setErrorCIA] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
+  const [lastSyncCIA, setLastSyncCIA] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0, curso: '' });
 
   const pageConfig = pageRegistry[activePage];
@@ -81,9 +91,55 @@ function App() {
     }
   };
 
+  const loadCalificaciones = async ({ clearCacheFirst = false } = {}) => {
+    setLoadingCIA(true);
+    setErrorCIA('');
+
+    try {
+      if (!api) {
+        setErrorCIA('ScraperApp debe ejecutarse dentro de Electron.');
+        setCalificaciones([]);
+        return;
+      }
+
+      if (clearCacheFirst) {
+        const cacheResult = await api.clearCIACache();
+
+        if (cacheResult?.success === false) {
+          setErrorCIA(cacheResult.error || 'No fue posible limpiar el caché local del CIA.');
+          setCalificaciones([]);
+          return;
+        }
+      }
+
+      const response = await api.runCIA();
+
+      if (response?.error) {
+        setErrorCIA(response.error);
+        setCalificaciones([]);
+        return;
+      }
+
+      const materiasList = Array.isArray(response?.materias) ? response.materias : [];
+      setCalificaciones(materiasList);
+      setLastSyncCIA(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+    } catch (_error) {
+      setErrorCIA('No fue posible consultar el CIA. Verifica la conexión y las credenciales locales.');
+      setCalificaciones([]);
+    } finally {
+      setLoadingCIA(false);
+    }
+  };
+
   useEffect(() => {
     loadActivities();
   }, []);
+
+  useEffect(() => {
+    if (activePage === 'calificaciones' && calificaciones.length === 0 && !loadingCIA && !lastSyncCIA) {
+      loadCalificaciones();
+    }
+  }, [activePage]);
 
   useEffect(() => {
     if (!api) return;
@@ -110,10 +166,16 @@ function App() {
         <TaskPanel title={pageConfig.title} description={pageConfig.description}>
           <ActivePage
             activities={activities}
+            calificaciones={calificaciones}
+            errorCIA={errorCIA}
             error={error}
+            lastSyncCIA={lastSyncCIA}
             lastSyncAt={lastSyncAt}
+            loadingCIA={loadingCIA}
             loading={loading}
             onSync={handleSyncActivities}
+            onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
+            onNavigate={setActivePage}
             progress={progress}
           />
         </TaskPanel>

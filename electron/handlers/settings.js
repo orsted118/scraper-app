@@ -20,6 +20,8 @@ function getSettings() {
   return {
     user: process.env.IVIRTUAL_USER || '',
     hasPassword: Boolean(process.env.IVIRTUAL_PASS),
+    ciaUser: process.env.CIA_USER || '',
+    hasCIAPassword: Boolean(process.env.CIA_PASS),
   };
 }
 
@@ -35,21 +37,33 @@ function upsertEnvValue(lines, key, value) {
   return [...lines, nextLine];
 }
 
-function saveSettings({ user, password }) {
+function saveSettings({ user, password, ciaUser, ciaPassword }) {
   try {
     const normalizedUser = typeof user === 'string' ? user.trim() : '';
     const normalizedPassword = typeof password === 'string' ? password : '';
+    const normalizedCIAUser = typeof ciaUser === 'string' ? ciaUser.trim() : '';
+    const normalizedCIAPassword = typeof ciaPassword === 'string' ? ciaPassword : '';
 
     if (!normalizedUser) {
       return { success: false, error: 'El ID de usuario es requerido.' };
     }
 
+    if (!normalizedCIAUser) {
+      return { success: false, error: 'El Usuario CIA es requerido.' };
+    }
+
     let envLines = readEnvLines().filter((line) => line.trim().length > 0);
     envLines = upsertEnvValue(envLines, 'IVIRTUAL_USER', normalizedUser);
+    envLines = upsertEnvValue(envLines, 'CIA_USER', normalizedCIAUser);
 
     if (normalizedPassword.trim()) {
       envLines = upsertEnvValue(envLines, 'IVIRTUAL_PASS', normalizedPassword);
       process.env.IVIRTUAL_PASS = normalizedPassword;
+    }
+
+    if (normalizedCIAPassword.trim()) {
+      envLines = upsertEnvValue(envLines, 'CIA_PASS', normalizedCIAPassword);
+      process.env.CIA_PASS = normalizedCIAPassword;
     }
 
     const envPath = getEnvFilePath();
@@ -57,6 +71,7 @@ function saveSettings({ user, password }) {
 
     fs.writeFileSync(envPath, envContents, 'utf8');
     process.env.IVIRTUAL_USER = normalizedUser;
+    process.env.CIA_USER = normalizedCIAUser;
 
     return { success: true };
   } catch (error) {

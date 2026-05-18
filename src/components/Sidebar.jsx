@@ -1,8 +1,9 @@
 import logoItson from '../assets/logo-itson.png';
-import { Download, FolderCog, ListChecks } from 'lucide-react';
+import { Download, FolderCog, GraduationCap, ListChecks } from 'lucide-react';
 
 const navigationItems = [
   { id: 'activities', label: 'Actividades', icon: ListChecks },
+  { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
   { id: 'files', label: 'Archivos', icon: Download },
   { id: 'settings', label: 'Ajustes', icon: FolderCog },
 ];

@@ -13,7 +13,7 @@ import ActivityCard from '../components/ActivityCard';
 const tabs = [
   { id: 'pendiente', label: 'Pendientes' },
   { id: 'retrasada', label: 'Retrasadas' },
-  { id: 'cerrada', label: 'Cerradas' },
+  { id: 'cerrada', label: 'Cerradas', title: 'Actividades que cerraron sin ser entregadas' },
 ];
 
 function formatLastSync(lastSyncAt) {
@@ -168,6 +168,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
+                title={tab.title || tab.label}
                 className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
                   isActive
                     ? 'bg-itson-blue text-slate-50'

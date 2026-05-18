@@ -3,6 +3,7 @@ require('dotenv').config({ quiet: true });
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { registerScraperHandlers } = require('./handlers/scraper');
+const { registerCIAHandlers } = require('./handlers/cia');
 const { registerFileHandlers } = require('./handlers/files');
 const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers } = require('./handlers/notifications');
@@ -33,6 +34,7 @@ function createMainWindow() {
 
 app.whenReady().then(() => {
   registerScraperHandlers();
+  registerCIAHandlers();
   registerFileHandlers();
   registerSettingsHandlers();
   registerNotificationHandlers();

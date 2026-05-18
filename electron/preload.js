@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('scraperApp', {
   clearCache: () => ipcRenderer.invoke('scraper:clear-cache'),
   runScraper: (payload) => ipcRenderer.invoke('scraper:run', payload),
+  runCIA: () => ipcRenderer.invoke('cia:run'),
+  clearCIACache: () => ipcRenderer.invoke('cia:clear-cache'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
   checkNotifications: (activities) => ipcRenderer.invoke('notifications:check', activities),

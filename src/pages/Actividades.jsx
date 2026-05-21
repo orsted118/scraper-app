@@ -64,6 +64,12 @@ function compareText(left = '', right = '') {
   return left.localeCompare(right, 'es', { sensitivity: 'base', numeric: true });
 }
 
+function getFriendlyErrorMessage(message = '') {
+  return message?.includes('Timeout')
+    ? 'iVirtual tardó demasiado en responder. Verifica tu conexión e intenta de nuevo.'
+    : message;
+}
+
 function StatCard({ icon: Icon, label, value }) {
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
@@ -84,6 +90,7 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
   const [activeTab, setActiveTab] = useState('pendiente');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('deadline-asc');
+  const friendlyError = getFriendlyErrorMessage(error);
   const counts = {
     pendiente: activities.filter((item) => item.estado === 'pendiente').length,
     retrasada: activities.filter((item) => item.estado === 'retrasada').length,
@@ -190,10 +197,10 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
         </div>
       </section>
 
-      {error ? (
+      {friendlyError ? (
         <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
-          <p>{error}</p>
+          <p>{friendlyError}</p>
         </div>
       ) : null}
 

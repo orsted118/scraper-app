@@ -22,6 +22,18 @@ const statusClasses = {
   sin_calificacion: 'border-slate-700 bg-slate-800/60 text-slate-300',
 };
 
+const ciaFriendlyErrors = {
+  CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
+  CIA_NO_USER: 'Falta tu usuario del CIA en la configuración. Ve a Ajustes.',
+  CIA_NO_PASSWORD: 'Falta tu contraseña del CIA en la configuración. Ve a Ajustes.',
+};
+
+const ciaSettingsErrorCodes = new Set([
+  'CIA_NO_CREDENTIALS',
+  'CIA_NO_USER',
+  'CIA_NO_PASSWORD',
+]);
+
 function formatGrade(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return '—';
@@ -58,6 +70,10 @@ function formatLastSync(lastSyncAt) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(syncDate)}`;
+}
+
+function getFriendlyCIAErrorMessage(errorCode, fallbackMessage = '') {
+  return ciaFriendlyErrors[errorCode] || fallbackMessage;
 }
 
 function StatCard({ icon: Icon, label, value, tone = 'default' }) {
@@ -165,6 +181,7 @@ function GradeCard({ materia }) {
 function Calificaciones({
   calificaciones = [],
   errorCIA,
+  errorCIACode,
   lastSyncCIA,
   loadingCIA,
   onNavigate,
@@ -180,16 +197,19 @@ function Calificaciones({
     numericAverages.length > 0
       ? numericAverages.reduce((sum, value) => sum + value, 0) / numericAverages.length
       : null;
-  const credentialError = /credenciales cia|cia inválidas|cia no configuradas/i.test(errorCIA || '');
+  const friendlyCIAError = getFriendlyCIAErrorMessage(errorCIACode, errorCIA);
+  const credentialError =
+    ciaSettingsErrorCodes.has(errorCIACode) ||
+    /credenciales cia|cia inválidas|cia no configuradas/i.test(errorCIA || '');
 
   return (
     <div className="space-y-6">
-      {errorCIA ? (
+      {friendlyCIAError ? (
         <div className="flex items-start justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
             <div className="space-y-1">
-              <p>{errorCIA}</p>
+              <p>{friendlyCIAError}</p>
               {credentialError ? (
                 <p className="text-xs text-red-200/80">
                   Revisa tus credenciales CIA desde Ajustes.
@@ -200,7 +220,7 @@ function Calificaciones({
           {credentialError && typeof onNavigate === 'function' ? (
             <button
               type="button"
-              onClick={() => onNavigate('settings')}
+              onClick={() => onNavigate('ajustes')}
               className="rounded-xl border border-red-300/30 px-4 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
             >
               Ir a Ajustes

@@ -55,6 +55,12 @@ function isTimeoutError(error) {
   );
 }
 
+function isNetworkError(error) {
+  return /net::|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_TIMED_OUT/i.test(
+    error?.message || '',
+  );
+}
+
 async function gotoWithRetry(page, url, options = {}, maxRetries = 2) {
   let lastError;
 
@@ -63,6 +69,12 @@ async function gotoWithRetry(page, url, options = {}, maxRetries = 2) {
       return await page.goto(url, options);
     } catch (error) {
       lastError = error;
+
+      if (isNetworkError(error)) {
+        const networkFailure = new Error('NO_INTERNET');
+        networkFailure.result = buildScrapeError('NO_INTERNET');
+        throw networkFailure;
+      }
 
       if (!isTimeoutError(error)) {
         throw error;
@@ -168,6 +180,12 @@ function getActivitiesCachePath() {
   return path.join(app.getPath('userData'), 'actividades-cache.json');
 }
 
+function discardActivitiesCache(cachePath) {
+  if (fs.existsSync(cachePath)) {
+    fs.unlinkSync(cachePath);
+  }
+}
+
 function readActivitiesCache() {
   const cachePath = getActivitiesCachePath();
 
@@ -183,11 +201,13 @@ function readActivitiesCache() {
       typeof parsed.timestamp !== 'number' ||
       !Array.isArray(parsed.actividades)
     ) {
+      discardActivitiesCache(cachePath);
       return null;
     }
 
     return parsed;
   } catch (_error) {
+    discardActivitiesCache(cachePath);
     return null;
   }
 }
@@ -281,10 +301,13 @@ async function loginToIVirtual(page, username, password) {
     page.getByRole('button', { name: /iniciar sesi[oó]n/i }).click(),
   ]);
 
-  if (page.url().includes('/login/index.php')) {
-    const errorText = await page.locator('#loginerrormessage').textContent().catch(() => '');
-    throw new Error(errorText?.trim() || 'No fue posible iniciar sesión en iVirtual.');
+  const currentUrl = page.url();
+
+  if (currentUrl.includes('/login/')) {
+    return buildScrapeError('SESSION_EXPIRED');
   }
+
+  return null;
 }
 
 async function collectCourses(page) {
@@ -623,11 +646,19 @@ async function syncCookiesToElectronSession(playwrightContext) {
 }
 
 async function scrapeIVirtualActivities(event) {
-  const username = process.env.IVIRTUAL_USER;
-  const password = process.env.IVIRTUAL_PASS;
+  const username = process.env.IVIRTUAL_USER?.trim();
+  const password = process.env.IVIRTUAL_PASS?.trim();
 
-  if (!username || !password) {
-    return buildScrapeError('Faltan IVIRTUAL_USER o IVIRTUAL_PASS en el archivo .env local.');
+  if (!username && !password) {
+    return buildScrapeError('NO_CREDENTIALS');
+  }
+
+  if (!username) {
+    return buildScrapeError('NO_USER');
+  }
+
+  if (!password) {
+    return buildScrapeError('NO_PASSWORD');
   }
 
   let browser;
@@ -639,7 +670,12 @@ async function scrapeIVirtualActivities(event) {
     const page = await context.newPage();
     page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
-    await loginToIVirtual(page, username, password);
+    const loginResult = await loginToIVirtual(page, username, password);
+
+    if (loginResult?.error) {
+      return loginResult;
+    }
+
     await applyResourceBlocking(page);
     await syncCookiesToElectronSession(context);
 
@@ -739,6 +775,10 @@ async function scrapeIVirtualActivities(event) {
       fromCache: false,
     };
   } catch (error) {
+    if (error?.result?.error) {
+      return error.result;
+    }
+
     return buildScrapeError(
       error && error.message
         ? `Falló la extracción de iVirtual: ${error.message}`

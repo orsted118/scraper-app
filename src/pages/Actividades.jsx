@@ -70,6 +70,13 @@ function getFriendlyErrorMessage(message = '') {
     : message;
 }
 
+const settingsErrorCodes = new Set([
+  'NO_CREDENTIALS',
+  'NO_USER',
+  'NO_PASSWORD',
+  'SESSION_EXPIRED',
+]);
+
 function StatCard({ icon: Icon, label, value }) {
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
@@ -86,7 +93,16 @@ function StatCard({ icon: Icon, label, value }) {
   );
 }
 
-function Actividades({ activities = [], error, lastSyncAt, loading, onSync, progress }) {
+function Actividades({
+  activities = [],
+  error,
+  errorCode,
+  lastSyncAt,
+  loading,
+  onNavigate,
+  onSync,
+  progress,
+}) {
   const [activeTab, setActiveTab] = useState('pendiente');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('deadline-asc');
@@ -198,9 +214,20 @@ function Actividades({ activities = [], error, lastSyncAt, loading, onSync, prog
       </section>
 
       {friendlyError ? (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
-          <p>{friendlyError}</p>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+            <p>{friendlyError}</p>
+          </div>
+          {settingsErrorCodes.has(errorCode) && typeof onNavigate === 'function' ? (
+            <button
+              type="button"
+              onClick={() => onNavigate('ajustes')}
+              className="mt-4 rounded-xl border border-red-300/30 px-4 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
+            >
+              Ir a Ajustes
+            </button>
+          ) : null}
         </div>
       ) : null}
 

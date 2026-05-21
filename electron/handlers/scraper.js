@@ -11,6 +11,7 @@ const DASHBOARD_NAVIGATION_TIMEOUT_MS = 45_000;
 const COURSE_NAVIGATION_TIMEOUT_MS = 30_000;
 const ACTIVITY_NAVIGATION_TIMEOUT_MS = 20_000;
 const CHUNK_TIMEOUT_MS = 25_000;
+const GLOBAL_SCRAPE_TIMEOUT_MS = 5 * 60 * 1000;
 const CHUNK_SIZE = 3;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
 
@@ -768,9 +769,17 @@ async function scrapeIVirtualActivities(event) {
       }
     }
 
-    const cachePayload = writeActivitiesCache(activities);
+    const validActivities = activities.filter(
+      (activity) =>
+        activity &&
+        typeof activity.nombre === 'string' &&
+        activity.nombre.trim().length > 0 &&
+        ['pendiente', 'retrasada', 'cerrada'].includes(activity.estado),
+    );
+
+    const cachePayload = writeActivitiesCache(validActivities);
     return {
-      activities,
+      activities: validActivities,
       timestamp: cachePayload.timestamp,
       fromCache: false,
     };
@@ -802,7 +811,24 @@ async function getActivitiesWithCache(event) {
     };
   }
 
-  return scrapeIVirtualActivities(event);
+  let timeoutId;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(
+      () =>
+        resolve(
+          buildScrapeError(
+            'El escaneo tardó demasiado. iVirtual puede estar lento. Intenta de nuevo.',
+          ),
+        ),
+      GLOBAL_SCRAPE_TIMEOUT_MS,
+    );
+  });
+
+  const scrapePromise = Promise.resolve(scrapeIVirtualActivities(event)).finally(() => {
+    clearTimeout(timeoutId);
+  });
+
+  return Promise.race([scrapePromise, timeoutPromise]);
 }
 
 function registerScraperHandlers() {

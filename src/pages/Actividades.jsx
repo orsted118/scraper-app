@@ -47,18 +47,12 @@ function formatLastSync(lastSyncAt) {
   }).format(syncDate)}`;
 }
 
-function parseActivityDate(value) {
-  if (!value || typeof value !== 'string') {
+function parseSort(fechaLimite) {
+  if (!fechaLimite || fechaLimite === 'Sin fecha visible') {
     return null;
   }
 
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue || trimmedValue === 'Sin fecha visible') {
-    return null;
-  }
-
-  const parsed = Date.parse(trimmedValue.replace(/\s+/g, ' ').trim());
+  const parsed = Date.parse(fechaLimite);
   return Number.isNaN(parsed) ? null : parsed;
 }
 
@@ -128,28 +122,28 @@ function Actividades({
   const sortedActivities = useMemo(() => {
     const items = [...filteredActivities];
 
-    const sortByDeadline = (ascending) => (left, right) => {
-      const leftDate = parseActivityDate(left.fechaLimite);
-      const rightDate = parseActivityDate(right.fechaLimite);
+    if (sortBy === 'deadline-asc' || sortBy === 'deadline-desc') {
+      return items.sort((left, right) => {
+        const leftDate = parseSort(left.fechaLimite);
+        const rightDate = parseSort(right.fechaLimite);
 
-      if (leftDate === null && rightDate === null) {
-        return compareText(left.nombre || '', right.nombre || '');
-      }
+        if (leftDate === null && rightDate === null) {
+          return 0;
+        }
 
-      if (leftDate === null) {
-        return 1;
-      }
+        if (leftDate === null) {
+          return 1;
+        }
 
-      if (rightDate === null) {
-        return -1;
-      }
+        if (rightDate === null) {
+          return -1;
+        }
 
-      return ascending ? leftDate - rightDate : rightDate - leftDate;
-    };
+        return sortBy === 'deadline-asc' ? leftDate - rightDate : rightDate - leftDate;
+      });
+    }
 
     switch (sortBy) {
-      case 'deadline-desc':
-        return items.sort(sortByDeadline(false));
       case 'name-asc':
         return items.sort((left, right) =>
           compareText(left.nombre || '', right.nombre || '') ||
@@ -160,9 +154,8 @@ function Actividades({
           compareText(left.materia || '', right.materia || '') ||
           compareText(left.nombre || '', right.nombre || ''),
         );
-      case 'deadline-asc':
       default:
-        return items.sort(sortByDeadline(true));
+        return items;
     }
   }, [filteredActivities, sortBy]);
 

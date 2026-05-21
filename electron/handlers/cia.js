@@ -17,6 +17,12 @@ function getCIACachePath() {
   return path.join(app.getPath('userData'), 'cia-cache.json');
 }
 
+function discardCIACache(cachePath) {
+  if (fs.existsSync(cachePath)) {
+    fs.unlinkSync(cachePath);
+  }
+}
+
 function readCIACache() {
   const cachePath = getCIACachePath();
 
@@ -28,11 +34,13 @@ function readCIACache() {
     const parsed = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
 
     if (!parsed || typeof parsed.timestamp !== 'number' || !Array.isArray(parsed.materias)) {
+      discardCIACache(cachePath);
       return null;
     }
 
     return parsed;
   } catch (_error) {
+    discardCIACache(cachePath);
     return null;
   }
 }
@@ -56,6 +64,16 @@ function clearCIACache() {
   }
 
   return { success: true };
+}
+
+function buildCIAError(message) {
+  try {
+    clearCIACache();
+  } catch (_error) {
+    // Ignore cache cleanup failures.
+  }
+
+  return { error: message };
 }
 
 async function waitForFrameText(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
@@ -99,14 +117,7 @@ async function waitForFrameUrl(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
   throw new Error(`No se encontró el frame esperado: ${matcher}`);
 }
 
-async function loginToCIA(page) {
-  const user = process.env.CIA_USER;
-  const password = process.env.CIA_PASS;
-
-  if (!user || !password) {
-    throw new Error('Credenciales CIA inválidas o no configuradas.');
-  }
-
+async function loginToCIA(page, user, password) {
   await page.goto(CIA_ENTRY_URL, { waitUntil: 'domcontentloaded' });
   await page.locator('#txtITSONET').fill(user);
   await page.locator('#btnConexionTrayectorias').click();
@@ -321,11 +332,26 @@ async function extractCalificacionesFromPdf(buffer) {
 }
 
 async function scrapeCIAWithPlaywright() {
+  const user = process.env.CIA_USER?.trim();
+  const password = process.env.CIA_PASS?.trim();
+
+  if (!user && !password) {
+    return buildCIAError('CIA_NO_CREDENTIALS');
+  }
+
+  if (!user) {
+    return buildCIAError('CIA_NO_USER');
+  }
+
+  if (!password) {
+    return buildCIAError('CIA_NO_PASSWORD');
+  }
+
   const browser = await chromium.launch({ headless: true });
 
   try {
     const page = await browser.newPage();
-    await loginToCIA(page);
+    await loginToCIA(page, user, password);
 
     const boletaFrame = await openBoletaPage(page);
     await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_INSTITUTION', 'ITSON');
@@ -397,6 +423,10 @@ async function getCalificacionesWithCache() {
 
   try {
     const response = await scrapeCIAWithPlaywright();
+
+    if (response?.error) {
+      return response;
+    }
 
     if (Array.isArray(response.materias)) {
       writeCIACache(response.materias);

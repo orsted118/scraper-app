@@ -250,7 +250,6 @@ function ActivityCard({
   const visibleFiles = showAllFiles ? archivos : archivos.slice(0, 3);
   const extraFilesCount = Math.max(0, archivos.length - 3);
   const topBadgeVisible = Boolean(theme.pillLabel);
-  const cardMeta = [materia, profesor].filter(Boolean).join(' | ') || 'Materia no disponible';
   const TimeBadgeIcon = getTimeContextIcon(timeContext.level);
 
   const resolvedDeadline = deadlineDate ? formatShortDate(deadlineDate) : fechaLimite || 'Sin fecha visible';
@@ -331,15 +330,34 @@ function ActivityCard({
                 ) : null}
               </div>
 
-              <h3 className="mt-2 text-base font-bold tracking-tight text-white sm:text-lg">
-                {nombre}
-              </h3>
+              <div className="mt-2 max-w-[55%] overflow-hidden">
+                <h3
+                  title={nombre}
+                  className="truncate text-base font-bold tracking-tight text-white sm:text-lg"
+                >
+                  {nombre}
+                </h3>
+              </div>
 
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span className="inline-flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  {cardMeta}
+              <p className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span
+                  title={materia || 'Materia no disponible'}
+                  className="min-w-0 max-w-full line-clamp-1 overflow-hidden"
+                >
+                  {materia || 'Materia no disponible'}
                 </span>
+
+                {profesor ? (
+                  <>
+                    <span className="text-slate-600">|</span>
+                    <span
+                      title={profesor}
+                      className="min-w-0 truncate text-slate-400"
+                    >
+                      {profesor}
+                    </span>
+                  </>
+                ) : null}
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -454,7 +472,12 @@ function ActivityCard({
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium text-slate-100">{archivo.name}</p>
+                            <p
+                              title={archivo.name}
+                              className="max-w-[60%] truncate text-xs font-medium text-slate-100 md:max-w-[120px]"
+                            >
+                              {archivo.name}
+                            </p>
                             <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
                               {fileMeta.label}
                             </p>

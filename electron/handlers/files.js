@@ -3,10 +3,30 @@ const path = require('path');
 const { app, ipcMain, session, shell } = require('electron');
 
 function sanitizeFileName(name) {
-  return (name || 'download')
+  const sanitized = (name || '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
     .replace(/\s+/g, ' ')
     .trim();
+
+  return sanitized || 'archivo-descargado';
+}
+
+function getFileNameFromUrl(url) {
+  try {
+    const parsedUrl = new URL(url);
+    const baseName = path.basename(parsedUrl.pathname || '');
+    if (!baseName || baseName === '/') {
+      return '';
+    }
+
+    try {
+      return decodeURIComponent(baseName);
+    } catch (_error) {
+      return baseName;
+    }
+  } catch (_error) {
+    return '';
+  }
 }
 
 function resolveDownloadPath(downloadsDir, fileName) {
@@ -30,7 +50,7 @@ function downloadFileWithSession(url, name) {
     }
 
     const downloadsDir = app.getPath('downloads');
-    const resolvedName = sanitizeFileName(name || path.basename(new URL(url).pathname));
+    const resolvedName = sanitizeFileName(name || getFileNameFromUrl(url) || 'archivo-descargado');
     const targetPath = resolveDownloadPath(downloadsDir, resolvedName);
     let settled = false;
 

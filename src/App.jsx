@@ -46,10 +46,16 @@ function App() {
 
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
 
+  const getFriendlyIVirtualError = (message = '') =>
+    message?.includes('Timeout')
+      ? 'iVirtual tardó demasiado en responder. Verifica tu conexión e intenta de nuevo.'
+      : message || 'Error desconocido.';
+
   const loadActivities = async ({ clearCacheFirst = false } = {}) => {
     setLoading(true);
     setError('');
     setProgress({ current: 0, total: 0, curso: '' });
+    let response;
 
     try {
       if (!api) {
@@ -68,10 +74,10 @@ function App() {
         }
       }
 
-      const response = await api.runScraper();
+      response = await api.runScraper();
 
       if (response?.error) {
-        setError(response.error);
+        setError(getFriendlyIVirtualError(response.error));
         setActivities([]);
         return;
       }
@@ -84,7 +90,7 @@ function App() {
       }
       setProgress({ current: 0, total: 0, curso: '' });
     } catch (_error) {
-      setError('No fue posible consultar iVirtual. Verifica la conexión y las credenciales locales.');
+      setError(getFriendlyIVirtualError(response?.error || _error?.message || 'Error desconocido.'));
       setActivities([]);
     } finally {
       setLoading(false);

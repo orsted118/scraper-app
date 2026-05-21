@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
+import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
 import Actividades from './pages/Actividades';
 import Calificaciones from './pages/Calificaciones';
-import Files from './pages/Files';
 import Ajustes from './pages/Ajustes';
 
 const pageRegistry = {
@@ -17,11 +17,6 @@ const pageRegistry = {
     description: 'Revisa las calificaciones del CIA ITSON con credenciales separadas.',
     component: Calificaciones,
   },
-  files: {
-    title: 'Archivos',
-    description: 'Centraliza los adjuntos encontrados en las actividades de iVirtual.',
-    component: Files,
-  },
   settings: {
     title: 'Ajustes',
     description: 'Revisa el estado de la integración y la configuración local requerida.',
@@ -31,6 +26,8 @@ const pageRegistry = {
 
 function App() {
   const [activePage, setActivePage] = useState('activities');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [activities, setActivities] = useState([]);
   const [calificaciones, setCalificaciones] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -42,6 +39,8 @@ function App() {
   const [lastSyncAt, setLastSyncAt] = useState('');
   const [lastSyncCIA, setLastSyncCIA] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0, curso: '' });
+  const [actividadesCargado, setActividadesCargado] = useState(false);
+  const [ciaCargado, setCiaCargado] = useState(false);
 
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
@@ -73,11 +72,31 @@ function App() {
     const pageAliases = {
       actividades: 'activities',
       calificaciones: 'calificaciones',
-      archivos: 'files',
       ajustes: 'settings',
     };
 
     setActivePage(pageAliases[pageId] || pageId);
+  };
+
+  const refreshSettings = async () => {
+    if (!api?.getSettings) {
+      setShowOnboarding(false);
+      setSettingsReady(true);
+      return;
+    }
+
+    try {
+      const settings = await api.getSettings();
+      const hasUser = Boolean(settings?.user?.trim());
+      const hasPassword = Boolean(settings?.hasPassword);
+      setShowOnboarding(!(hasUser || hasPassword));
+      setActividadesCargado(false);
+      setCiaCargado(false);
+    } catch (_error) {
+      setShowOnboarding(false);
+    } finally {
+      setSettingsReady(true);
+    }
   };
 
   const loadActivities = async ({ clearCacheFirst = false } = {}) => {
@@ -180,14 +199,28 @@ function App() {
   };
 
   useEffect(() => {
-    loadActivities();
-  }, []);
+    refreshSettings();
+  }, [api]);
 
   useEffect(() => {
-    if (activePage === 'calificaciones' && calificaciones.length === 0 && !loadingCIA && !lastSyncCIA) {
+    if (
+      settingsReady &&
+      !showOnboarding &&
+      activePage === 'activities' &&
+      !actividadesCargado &&
+      !loading
+    ) {
+      setActividadesCargado(true);
+      loadActivities();
+    }
+  }, [activePage, actividadesCargado, loading, settingsReady, showOnboarding]);
+
+  useEffect(() => {
+    if (activePage === 'calificaciones' && !ciaCargado && !loadingCIA) {
+      setCiaCargado(true);
       loadCalificaciones();
     }
-  }, [activePage]);
+  }, [activePage, ciaCargado, loadingCIA]);
 
   useEffect(() => {
     if (!api) return;
@@ -211,24 +244,43 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
         <Sidebar activePage={activePage} onNavigate={handleNavigate} />
-        <TaskPanel title={pageConfig.title} description={pageConfig.description}>
-          <ActivePage
-            activities={activities}
-            calificaciones={calificaciones}
-            errorCIA={errorCIA}
-            errorCIACode={errorCIACode}
-            errorCode={errorCode}
-            error={error}
-            lastSyncCIA={lastSyncCIA}
-            lastSyncAt={lastSyncAt}
-            loadingCIA={loadingCIA}
-            loading={loading}
-            onSync={handleSyncActivities}
-            onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
-            onNavigate={handleNavigate}
-            progress={progress}
-          />
-        </TaskPanel>
+        {!settingsReady ? (
+          <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
+            <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/70 px-8 py-10 text-center">
+                <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Workspace</p>
+                <p className="mt-3 text-lg font-semibold text-white">Cargando configuración inicial...</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  Verificando credenciales locales antes de mostrar el contenido.
+                </p>
+              </div>
+            </div>
+          </main>
+        ) : showOnboarding && activePage === 'activities' ? (
+          <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
+            <Onboarding onNavigate={handleNavigate} />
+          </main>
+        ) : (
+          <TaskPanel title={pageConfig.title} description={pageConfig.description}>
+            <ActivePage
+              activities={activities}
+              calificaciones={calificaciones}
+              errorCIA={errorCIA}
+              errorCIACode={errorCIACode}
+              errorCode={errorCode}
+              error={error}
+              lastSyncCIA={lastSyncCIA}
+              lastSyncAt={lastSyncAt}
+              loadingCIA={loadingCIA}
+              loading={loading}
+              onSettingsSaved={refreshSettings}
+              onSync={handleSyncActivities}
+              onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
+              onNavigate={handleNavigate}
+              progress={progress}
+            />
+          </TaskPanel>
+        )}
       </div>
     </div>
   );

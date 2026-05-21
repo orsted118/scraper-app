@@ -1,9 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-const { ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
 
 function getEnvFilePath() {
-  return path.resolve(__dirname, '..', '..', '.env');
+  const isDev = !app.isPackaged;
+  return isDev
+    ? path.resolve(__dirname, '..', '..', '.env')
+    : path.join(app.getPath('userData'), '.env');
 }
 
 function readEnvLines() {

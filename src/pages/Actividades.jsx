@@ -1,5 +1,7 @@
 import {
+  Archive,
   AlertCircle,
+  CheckCircle,
   Globe,
   RefreshCw,
   Search,
@@ -169,6 +171,27 @@ function Actividades({
     setSearchQuery('');
   };
 
+  const emptyStateConfig = {
+    pendiente: {
+      icon: CheckCircle,
+      iconClass: 'text-emerald-400',
+      title: 'Sin actividades pendientes',
+      subtitle: 'No tienes tareas por entregar. ¡Al día!',
+    },
+    retrasada: {
+      icon: CheckCircle,
+      iconClass: 'text-emerald-400',
+      title: 'Sin actividades retrasadas',
+      subtitle: 'No tienes tareas vencidas pendientes de entrega.',
+    },
+    cerrada: {
+      icon: Archive,
+      iconClass: 'text-slate-400',
+      title: 'Sin actividades cerradas',
+      subtitle: 'No hay actividades cerradas sin entregar en este semestre.',
+    },
+  };
+
   return (
     <div className="space-y-6">
       <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -336,12 +359,18 @@ function Actividades({
         </div>
       ) : (
         <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
-          <Search className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm text-slate-300">
-            {activities.length === 0
-              ? 'Aún no se ha ejecutado la extracción de actividades.'
-              : 'No hay actividades en esta categoría.'}
-          </p>
+          {(() => {
+            const emptyState = emptyStateConfig[activeTab] || emptyStateConfig.pendiente;
+            const EmptyIcon = emptyState.icon;
+
+            return (
+              <>
+                <EmptyIcon className={`h-8 w-8 ${emptyState.iconClass}`} />
+                <p className="mt-4 text-sm font-semibold text-slate-100">{emptyState.title}</p>
+                <p className="mt-2 max-w-md text-sm text-slate-400">{emptyState.subtitle}</p>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -235,6 +235,7 @@ function ActivityCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+  const [showAllFiles, setShowAllFiles] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState('');
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadError, setDownloadError] = useState('');
@@ -246,8 +247,8 @@ function ActivityCard({
   const instructionsText = (instrucciones || '').trim();
   const shouldClampInstructions = !instructionsExpanded && instructionsText.length > 140;
   const instructionsClampClass = shouldClampInstructions ? 'line-clamp-3' : '';
-  const visibleFiles = archivos.slice(0, 3);
-  const extraFilesCount = Math.max(0, archivos.length - visibleFiles.length);
+  const visibleFiles = showAllFiles ? archivos : archivos.slice(0, 3);
+  const extraFilesCount = Math.max(0, archivos.length - 3);
   const topBadgeVisible = Boolean(theme.pillLabel);
   const cardMeta = [materia, profesor].filter(Boolean).join(' | ') || 'Materia no disponible';
   const TimeBadgeIcon = getTimeContextIcon(timeContext.level);
@@ -476,17 +477,17 @@ function ActivityCard({
                       );
                     })}
 
-                    {extraFilesCount > 0 ? (
-                      <div className="flex items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/55 px-3 py-2 text-center text-slate-300">
-                        <div>
-                          <p className="text-sm font-semibold">+{extraFilesCount} más</p>
-                          <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                            Archivos ocultos
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
+
+                  {archivos.length > 3 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFiles((value) => !value)}
+                      className="mt-2 inline-flex text-xs text-itson-blue transition hover:text-itson-blue-light"
+                    >
+                      {showAllFiles ? 'Ver menos' : `+${extraFilesCount} más`}
+                    </button>
+                  ) : null}
 
                   {archivos.length > 1 ? (
                     <div className="mt-3 flex justify-end">

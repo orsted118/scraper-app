@@ -69,7 +69,7 @@ function CredentialSection({
   );
 }
 
-function Ajustes({ error, lastSyncAt, loading }) {
+function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
@@ -170,6 +170,10 @@ function Ajustes({ error, lastSyncAt, loading }) {
         type: 'success',
         message: 'Credenciales guardadas correctamente',
       });
+
+      if (typeof onSettingsSaved === 'function') {
+        await onSettingsSaved();
+      }
     } catch (_error) {
       setFeedback({
         type: 'error',

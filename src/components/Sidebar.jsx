@@ -1,8 +1,9 @@
 import logoItson from '../assets/logo-itson.png';
-import { FolderCog, GraduationCap, ListChecks } from 'lucide-react';
+import { Calendar, FolderCog, GraduationCap, ListChecks } from 'lucide-react';
 
 const navigationItems = [
   { id: 'activities', label: 'Actividades', icon: ListChecks },
+  { id: 'horario', label: 'Horario', icon: Calendar },
   { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
   { id: 'settings', label: 'Ajustes', icon: FolderCog },
 ];

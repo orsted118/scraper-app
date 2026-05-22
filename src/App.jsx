@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
 import Actividades from './pages/Actividades';
+import Horario from './pages/Horario';
 import Calificaciones from './pages/Calificaciones';
 import Ajustes from './pages/Ajustes';
 
@@ -11,6 +12,11 @@ const pageRegistry = {
     title: 'Actividades',
     description: 'Consulta y clasifica las actividades de iVirtual ITSON por estado.',
     component: Actividades,
+  },
+  horario: {
+    title: 'Horario',
+    description: 'Visualiza clases del semestre y enlaces de videollamada para materias en línea.',
+    component: Horario,
   },
   calificaciones: {
     title: 'Calificaciones',
@@ -29,17 +35,22 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const [activities, setActivities] = useState([]);
+  const [horario, setHorario] = useState({ materias: [], diasConClases: [] });
   const [calificaciones, setCalificaciones] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingHorario, setLoadingHorario] = useState(false);
   const [loadingCIA, setLoadingCIA] = useState(false);
   const [error, setError] = useState('');
+  const [errorHorario, setErrorHorario] = useState('');
   const [errorCIA, setErrorCIA] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [errorCIACode, setErrorCIACode] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
+  const [lastSyncHorario, setLastSyncHorario] = useState('');
   const [lastSyncCIA, setLastSyncCIA] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0, curso: '' });
   const [actividadesCargado, setActividadesCargado] = useState(false);
+  const [horarioCargado, setHorarioCargado] = useState(false);
   const [ciaCargado, setCiaCargado] = useState(false);
 
   const pageConfig = pageRegistry[activePage];
@@ -71,6 +82,7 @@ function App() {
   const handleNavigate = (pageId) => {
     const pageAliases = {
       actividades: 'activities',
+      horario: 'horario',
       calificaciones: 'calificaciones',
       ajustes: 'settings',
     };
@@ -91,6 +103,7 @@ function App() {
       const hasPassword = Boolean(settings?.hasPassword);
       setShowOnboarding(!(hasUser || hasPassword));
       setActividadesCargado(false);
+      setHorarioCargado(false);
       setCiaCargado(false);
     } catch (_error) {
       setShowOnboarding(false);
@@ -198,6 +211,50 @@ function App() {
     }
   };
 
+  const loadHorario = async ({ clearCacheFirst = false } = {}) => {
+    setLoadingHorario(true);
+    setErrorHorario('');
+    let response;
+
+    try {
+      if (!api) {
+        setErrorHorario('ScraperApp debe ejecutarse dentro de Electron.');
+        setHorario({ materias: [], diasConClases: [] });
+        return;
+      }
+
+      if (clearCacheFirst) {
+        const cacheResult = await api.clearHorarioCache();
+
+        if (cacheResult?.success === false) {
+          setErrorHorario(cacheResult.error || 'No fue posible limpiar el caché local del horario.');
+          setHorario({ materias: [], diasConClases: [] });
+          return;
+        }
+      }
+
+      response = await api.runHorario();
+
+      if (response?.error) {
+        setErrorHorario(getFriendlyIVirtualError(response.error));
+        setHorario({ materias: [], diasConClases: [] });
+        return;
+      }
+
+      setHorario({
+        materias: Array.isArray(response?.materias) ? response.materias : [],
+        diasConClases: Array.isArray(response?.diasConClases) ? response.diasConClases : [],
+      });
+      setLastSyncHorario(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+    } catch (_error) {
+      const rawError = response?.error || _error?.message || 'Error desconocido.';
+      setErrorHorario(getFriendlyIVirtualError(rawError));
+      setHorario({ materias: [], diasConClases: [] });
+    } finally {
+      setLoadingHorario(false);
+    }
+  };
+
   useEffect(() => {
     refreshSettings();
   }, [api]);
@@ -214,6 +271,13 @@ function App() {
       loadActivities();
     }
   }, [activePage, actividadesCargado, loading, settingsReady, showOnboarding]);
+
+  useEffect(() => {
+    if (activePage === 'horario' && !horarioCargado && !loadingHorario) {
+      setHorarioCargado(true);
+      loadHorario();
+    }
+  }, [activePage, horarioCargado, loadingHorario]);
 
   useEffect(() => {
     if (activePage === 'calificaciones' && !ciaCargado && !loadingCIA) {
@@ -265,16 +329,21 @@ function App() {
             <ActivePage
               activities={activities}
               calificaciones={calificaciones}
+              horario={horario}
               errorCIA={errorCIA}
               errorCIACode={errorCIACode}
               errorCode={errorCode}
               error={error}
+              errorHorario={errorHorario}
               lastSyncCIA={lastSyncCIA}
               lastSyncAt={lastSyncAt}
+              lastSyncHorario={lastSyncHorario}
               loadingCIA={loadingCIA}
+              loadingHorario={loadingHorario}
               loading={loading}
               onSettingsSaved={refreshSettings}
               onSync={handleSyncActivities}
+              onSyncHorario={({ clearCacheFirst = false } = {}) => loadHorario({ clearCacheFirst })}
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
               onNavigate={handleNavigate}
               progress={progress}

@@ -1,0 +1,422 @@
+import { useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  Calendar,
+  ExternalLink,
+  RefreshCw,
+  Video,
+} from 'lucide-react';
+
+function normalizeActivities(entries = []) {
+  return Array.isArray(entries) ? entries : [];
+}
+
+function toMinutes(time) {
+  if (!time || typeof time !== 'string') {
+    return null;
+  }
+
+  const [hours, minutes] = time.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function format12h(time24) {
+  if (!time24 || typeof time24 !== 'string') {
+    return '--:--';
+  }
+
+  const [hoursRaw, minutesRaw] = time24.split(':').map(Number);
+  if (!Number.isFinite(hoursRaw) || !Number.isFinite(minutesRaw)) {
+    return '--:--';
+  }
+
+  const period = hoursRaw >= 12 ? 'PM' : 'AM';
+  const hours = hoursRaw % 12 === 0 ? 12 : hoursRaw % 12;
+  return `${hours}:${String(minutesRaw).padStart(2, '0')} ${period}`;
+}
+
+function formatLastSync(lastSyncAt) {
+  if (!lastSyncAt) {
+    return 'Última sync: aún no disponible.';
+  }
+
+  const syncDate = new Date(lastSyncAt);
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - syncDate.getTime());
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 60) {
+    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
+  }
+
+  const isToday = syncDate.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(syncDate)}`;
+  }
+
+  return `Última sync: ${new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(syncDate)}`;
+}
+
+function buildTimeSlots(materias) {
+  const ranges = materias
+    .map((materia) => ({
+      start: toMinutes(materia.horaInicio),
+      end: toMinutes(materia.horaFin),
+    }))
+    .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start);
+
+  if (ranges.length === 0) {
+    return [];
+  }
+
+  const minStart = Math.floor(Math.min(...ranges.map((range) => range.start)) / 30) * 30;
+  const maxEnd = Math.ceil(Math.max(...ranges.map((range) => range.end)) / 30) * 30;
+  const slots = [];
+
+  for (let minutes = minStart; minutes < maxEnd; minutes += 30) {
+    const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
+    const mm = String(minutes % 60).padStart(2, '0');
+    slots.push(`${hh}:${mm}`);
+  }
+
+  return slots;
+}
+
+function buildGridMap(materias, days, slots) {
+  const slotIndex = new Map(slots.map((time, index) => [time, index]));
+  const dayMap = {};
+
+  days.forEach((day) => {
+    dayMap[day] = {};
+  });
+
+  materias.forEach((materia) => {
+    const startMinutes = toMinutes(materia.horaInicio);
+    const endMinutes = toMinutes(materia.horaFin);
+
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
+      return;
+    }
+
+    const startSlot = `${String(Math.floor(startMinutes / 60)).padStart(2, '0')}:${String(startMinutes % 60).padStart(2, '0')}`;
+    const startIndex = slotIndex.get(startSlot);
+
+    if (!Number.isFinite(startIndex)) {
+      return;
+    }
+
+    const span = Math.max(1, Math.round((endMinutes - startMinutes) / 30));
+
+    (materia.dias || []).forEach((day) => {
+      if (!dayMap[day]) {
+        return;
+      }
+
+      if (dayMap[day][startIndex]) {
+        return;
+      }
+
+      dayMap[day][startIndex] = { materia, span };
+
+      for (let offset = 1; offset < span; offset += 1) {
+        dayMap[day][startIndex + offset] = { skip: true };
+      }
+    });
+  });
+
+  return dayMap;
+}
+
+function compactName(name) {
+  return (name || '').length > 30 ? `${name.slice(0, 30)}…` : name || 'Materia';
+}
+
+function ScheduleSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+            <div className="h-4 w-52 rounded bg-slate-800" />
+            <div className="mt-3 h-3 w-72 rounded bg-slate-800" />
+          </div>
+        ))}
+      </div>
+      <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <div className="h-5 w-40 rounded bg-slate-800" />
+        <div className="mt-4 h-60 rounded bg-slate-900" />
+      </div>
+    </div>
+  );
+}
+
+function Horario({
+  horario = { materias: [], diasConClases: [] },
+  loadingHorario,
+  errorHorario,
+  lastSyncHorario,
+  onSyncHorario,
+}) {
+  const [pendingLinks, setPendingLinks] = useState({});
+  const [savingLinks, setSavingLinks] = useState({});
+
+  const materias = normalizeActivities(horario?.materias);
+  const onlineMaterias = materias.filter((materia) => materia.modalidad === 'en_linea');
+  const days = useMemo(() => {
+    const providedDays = Array.isArray(horario?.diasConClases) ? horario.diasConClases : [];
+    if (providedDays.length > 0) {
+      return providedDays;
+    }
+
+    const collected = new Set();
+    materias.forEach((materia) => (materia.dias || []).forEach((day) => collected.add(day)));
+    return [...collected];
+  }, [horario?.diasConClases, materias]);
+  const slots = useMemo(() => buildTimeSlots(materias), [materias]);
+  const gridMap = useMemo(() => buildGridMap(materias, days, slots), [materias, days, slots]);
+  const api = typeof window !== 'undefined' ? window.scraperApp : null;
+
+  const handleJoin = (url) => {
+    if (!url) return;
+    if (api?.openExternal) {
+      api.openExternal(url);
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSaveLink = async (numeroClase) => {
+    const link = (pendingLinks[numeroClase] || '').trim();
+    if (!link || !api?.saveHorarioLink) {
+      return;
+    }
+
+    setSavingLinks((previous) => ({ ...previous, [numeroClase]: true }));
+
+    try {
+      const result = await api.saveHorarioLink(numeroClase, link);
+
+      if (result?.success) {
+        setPendingLinks((previous) => ({ ...previous, [numeroClase]: '' }));
+        if (typeof onSyncHorario === 'function') {
+          await onSyncHorario();
+        }
+      }
+    } finally {
+      setSavingLinks((previous) => ({ ...previous, [numeroClase]: false }));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
+              <Calendar className="h-3.5 w-3.5" />
+              CIA + iVirtual ITSON
+            </div>
+            <div>
+              <h3 className="text-2xl font-semibold text-white">Horario</h3>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+                Consulta tu horario semanal del semestre y los enlaces de videollamada detectados para
+                materias en línea.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => onSyncHorario?.({ clearCacheFirst: true })}
+              disabled={loadingHorario}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-itson-blue px-5 py-3 text-sm font-semibold text-slate-50 transition hover:bg-itson-blue-light disabled:cursor-not-allowed disabled:bg-itson-blue/50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingHorario ? 'animate-spin' : ''}`} />
+              {loadingHorario ? 'Sincronizando...' : 'Sincronizar'}
+            </button>
+
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+              {formatLastSync(lastSyncHorario)}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {errorHorario ? (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+            <p>{errorHorario}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {loadingHorario ? (
+        <ScheduleSkeleton />
+      ) : materias.length === 0 ? (
+        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
+          <Calendar className="h-8 w-8 text-slate-600" />
+          <p className="mt-4 text-sm text-slate-300">
+            No se encontró horario para este semestre.
+          </p>
+        </div>
+      ) : (
+        <>
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+            <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Clases en Línea</h4>
+            <div className="mt-4 space-y-3">
+              {onlineMaterias.length === 0 ? (
+                <p className="text-sm text-slate-400">No hay materias en línea registradas.</p>
+              ) : (
+                onlineMaterias.map((materia) => {
+                  const canJoin = Boolean(materia.meetLink);
+                  const isSaving = Boolean(savingLinks[materia.numeroClase]);
+
+                  return (
+                    <article
+                      key={materia.numeroClase || `${materia.codigo}-${materia.horaInicio}`}
+                      className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                    >
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className="rounded-xl bg-emerald-500/20 p-2 text-emerald-300">
+                            <Video className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white">{materia.nombre}</p>
+                            <p className="text-xs text-slate-400">{materia.instructor || 'Instructor no disponible'}</p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {(materia.dias || []).join(', ') || 'Días no disponibles'} · {format12h(materia.horaInicio)} - {format12h(materia.horaFin)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="w-full space-y-2 xl:w-64">
+                          <button
+                            type="button"
+                            disabled={!canJoin}
+                            onClick={() => handleJoin(materia.meetLink)}
+                            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                              canJoin
+                                ? 'bg-itson-blue text-white hover:bg-itson-blue-light'
+                                : 'cursor-not-allowed bg-slate-700 text-slate-500'
+                            }`}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            {canJoin ? 'Unirse' : 'Sin enlace'}
+                          </button>
+
+                          {!canJoin ? (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={pendingLinks[materia.numeroClase] || ''}
+                                onChange={(event) =>
+                                  setPendingLinks((previous) => ({
+                                    ...previous,
+                                    [materia.numeroClase]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Pegar link de Meet/Zoom..."
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-itson-blue focus:ring-1 focus:ring-itson-blue/30"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveLink(materia.numeroClase)}
+                                disabled={isSaving || !(pendingLinks[materia.numeroClase] || '').trim()}
+                                className="rounded-xl border border-itson-blue/50 px-3 py-2 text-xs font-semibold text-itson-blue transition hover:bg-itson-blue/10 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isSaving ? '...' : 'Guardar'}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+            <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Horario semanal</h4>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-1 text-xs text-slate-200">
+                <thead>
+                  <tr>
+                    <th className="rounded-xl bg-slate-900 px-3 py-2 text-left text-slate-400">Hora</th>
+                    {days.map((day) => (
+                      <th key={day} className="rounded-xl bg-slate-900 px-3 py-2 text-left text-slate-300">
+                        {day}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {slots.map((slot, rowIndex) => (
+                    <tr key={slot}>
+                      <td className="w-24 rounded-xl bg-slate-900 px-3 py-2 align-top text-slate-400">
+                        {format12h(slot)}
+                      </td>
+                      {days.map((day) => {
+                        const dayCells = gridMap[day] || {};
+                        const cell = dayCells[rowIndex];
+
+                        if (cell?.skip) {
+                          return null;
+                        }
+
+                        if (!cell?.materia) {
+                          return (
+                            <td
+                              key={`${day}-${slot}`}
+                              className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2"
+                            />
+                          );
+                        }
+
+                        const materia = cell.materia;
+                        const isOnline = materia.modalidad === 'en_linea';
+                        const baseClass = isOnline
+                          ? 'border-emerald-500/40 bg-emerald-500/20'
+                          : 'border-itson-blue/40 bg-itson-blue/20';
+
+                        return (
+                          <td
+                            key={`${day}-${slot}-${materia.numeroClase || materia.codigo}`}
+                            rowSpan={cell.span}
+                            className={`rounded-xl border px-2 py-2 align-top ${baseClass}`}
+                          >
+                            <p className="font-semibold text-white">{compactName(materia.nombre)}</p>
+                            <p className="mt-1 text-[11px] text-slate-200">
+                              {materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
+                            </p>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default Horario;

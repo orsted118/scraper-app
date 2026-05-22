@@ -1,10 +1,11 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerCIAHandlers } = require('./handlers/cia');
 const { registerFileHandlers } = require('./handlers/files');
+const { registerHorarioHandlers } = require('./handlers/horario');
 const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers } = require('./handlers/notifications');
 
@@ -45,9 +46,16 @@ function createMainWindow() {
 app.whenReady().then(() => {
   registerScraperHandlers();
   registerCIAHandlers();
+  registerHorarioHandlers();
   registerFileHandlers();
   registerSettingsHandlers();
   registerNotificationHandlers();
+  ipcMain.removeHandler('shell:open-external');
+  ipcMain.handle('shell:open-external', async (_event, url) => {
+    if (url && typeof url === 'string' && url.startsWith('http')) {
+      await shell.openExternal(url);
+    }
+  });
   createMainWindow();
 
   app.on('activate', () => {

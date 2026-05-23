@@ -1087,7 +1087,7 @@ function convertTo24h(timeStr) {
   const normalized = normalizeWhitespace(timeStr).toUpperCase();
   const match = normalized.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (!match) {
-    return parseTimeTo24h(normalized) || null;
+    return parseTimeTo24h(normalized) || '00:00';
   }
 
   let hours = Number.parseInt(match[1], 10);
@@ -1107,15 +1107,9 @@ function convertTo24h(timeStr) {
 
 function normalizeWeeklyCode(raw = '') {
   const cleaned = normalizeWhitespace(raw)
-    .replace(/^[A-Z]\s+/, '')
+    .replace(/^[A-Z]/, '')
     .replace(/\s+/g, '')
     .toUpperCase();
-
-  const compactPrefixMatch = cleaned.match(/^[A-Z](\d{4}[A-Z])$/);
-  if (compactPrefixMatch) {
-    return compactPrefixMatch[1];
-  }
-
   return cleaned;
 }
 
@@ -1160,109 +1154,24 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     /semanal/i,
   ]);
   await waitForPeopleSoftNav(scheduleFrame.page(), 12_000);
-
-  const parsed = await scheduleFrame
+  const rawRows = await scheduleFrame
     .evaluate(() => {
-      const normalize = (value = '') => value.replace(/\s+/g, ' ').trim();
-      const DAY_ORDER_INTERNAL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-      const table =
-        document.getElementById('STDNT_CLASS_TIM$scroll$0') ||
-        document.querySelector('table[id*="STDNT_CLASS_TIM"]') ||
-        document.querySelector('table.datadisplaytable') ||
-        document.querySelector('table[summary*="horario" i]') ||
-        document.querySelector('table');
+      const table = document.querySelector('#STDNT_CLASS_TIM\\$scroll\\$0');
+      if (!table) return [];
 
-      if (!table) {
-        return { entries: [], daysConClases: [] };
-      }
-
-      const buildTableMatrix = (tableElement) => {
-        const rows = Array.from(tableElement.querySelectorAll('tr'));
-        const matrix = [];
-
-        rows.forEach((row, rowIdx) => {
-          if (!matrix[rowIdx]) {
-            matrix[rowIdx] = [];
-          }
-
-          let colIdx = 0;
-          Array.from(row.querySelectorAll('td, th')).forEach((cell) => {
-            while (matrix[rowIdx][colIdx] !== undefined) {
-              colIdx += 1;
-            }
-
-            const rowspan = Number.parseInt(cell.getAttribute('rowspan') || '1', 10) || 1;
-            const colspan = Number.parseInt(cell.getAttribute('colspan') || '1', 10) || 1;
-            const content = cell.innerText?.trim() || '';
-
-            for (let r = 0; r < rowspan; r += 1) {
-              if (!matrix[rowIdx + r]) {
-                matrix[rowIdx + r] = [];
-              }
-              for (let c = 0; c < colspan; c += 1) {
-                matrix[rowIdx + r][colIdx + c] = {
-                  content,
-                  isOrigin: r === 0 && c === 0,
-                  rowspan,
-                };
-              }
-            }
-            colIdx += colspan;
-          });
-        });
-
-        return matrix;
-      };
-
-      const parseDaysLocal = (raw = '') => {
-        const normalized = normalize(raw);
-        const DAY_PATTERNS = [
-          { pattern: /\bLunes\b/i, day: 'Lunes' },
-          { pattern: /\bMartes\b/i, day: 'Martes' },
-          { pattern: /\bMi[eé]rcoles\b/i, day: 'Miércoles' },
-          { pattern: /\bJueves\b/i, day: 'Jueves' },
-          { pattern: /\bViernes\b/i, day: 'Viernes' },
-          { pattern: /\bS[aá]bado\b/i, day: 'Sábado' },
-          { pattern: /\bDomingo\b/i, day: 'Domingo' },
-        ];
-
-        const fromWords = DAY_PATTERNS.filter(({ pattern }) => pattern.test(normalized)).map(
-          ({ day }) => day,
-        );
-        if (fromWords.length > 0) {
-          return [...new Set(fromWords)];
-        }
-
-        const compact = normalized.toUpperCase().replace(/[^A-Z]/g, '');
-        const days = [];
-        let i = 0;
-        while (i < compact.length) {
-          if (compact.startsWith('MI', i)) {
-            days.push('Miércoles'); i += 2;
-          } else if (compact.startsWith('MA', i)) {
-            days.push('Martes'); i += 2;
-          } else if (compact[i] === 'L') {
-            days.push('Lunes'); i += 1;
-          } else if (compact[i] === 'M') {
-            days.includes('Martes') ? days.push('Miércoles') : days.push('Martes'); i += 1;
-          } else if (compact[i] === 'J') {
-            days.push('Jueves'); i += 1;
-          } else if (compact[i] === 'V') {
-            days.push('Viernes'); i += 1;
-          } else if (compact[i] === 'S') {
-            days.push('Sábado'); i += 1;
-          } else if (compact[i] === 'D') {
-            days.push('Domingo'); i += 1;
-          } else {
-            i += 1;
-          }
-        }
-        return [...new Set(days)];
+      const COLS_TO_DAY = {
+        1: 'Lunes',
+        2: 'Martes',
+        3: 'Miércoles',
+        4: 'Jueves',
+        5: 'Viernes',
+        6: 'Sábado',
+        7: 'Domingo',
       };
 
       const convertTo24hLocal = (timeStr) => {
-        const match = (timeStr || '').trim().match(/(\d+):(\d+)(AM|PM)/i);
-        if (!match) return null;
+        const match = String(timeStr || '').match(/(\d+):(\d+)(AM|PM)/i);
+        if (!match) return '00:00';
         let hours = Number.parseInt(match[1], 10);
         const minutes = match[2];
         const period = match[3].toUpperCase();
@@ -1271,134 +1180,175 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
         return `${String(hours).padStart(2, '0')}:${minutes}`;
       };
 
-      const parseCellContent = (content, diaNombre) => {
-        const lines = String(content || '')
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean);
-
-        if (lines.length < 3) return null;
-
-        const firstLine = lines[0].replace(/\s+/g, ' ');
-        const codigoMatch = firstLine.match(/^([A-Z]\s+[\w]+)\s*-\s*(\d+)$/i);
-        if (!codigoMatch) return null;
-
-        const codigoRaw = codigoMatch[1].replace(/\s+/g, '').toUpperCase();
-        const seccion = codigoMatch[2];
-        const componente = lines[1] || 'Teoria';
-        const horaMatch = (lines[2] || '').match(/(\d+:\d+(?:AM|PM))\s*-\s*(\d+:\d+(?:AM|PM))/i);
-        if (!horaMatch) return null;
-
-        let horaInicio = convertTo24hLocal(horaMatch[1]);
-        let horaFin = convertTo24hLocal(horaMatch[2]);
-        if (!horaInicio || !horaFin) return null;
-
-        if (horaFin <= horaInicio) {
-          [horaInicio, horaFin] = [horaFin, horaInicio];
-        }
-        if (horaFin === horaInicio) return null;
-
-        const ubicacionText = lines.slice(3).join(' ');
-        const esEnLinea = /curso a distancia|herramientas de internet/i.test(lines.slice(2).join(' '));
-        const salonMatch = ubicacionText.match(/[A-Z]{2,3}\d{3,4}/);
-        const ubicacion = salonMatch ? salonMatch[0] : (esEnLinea ? 'Remoto' : (ubicacionText.trim() || 'Aulas'));
-        const dias = parseDaysLocal(diaNombre);
-
-        if (dias.length === 0) return null;
-
-        return {
-          codigoRaw,
-          seccion,
-          componente,
-          horaInicio,
-          horaFin,
-          dias,
-          ubicacion,
-          esEnLinea,
-        };
-      };
-
-      const matrix = buildTableMatrix(table);
-      const headerRowIndex = matrix.findIndex((row) =>
-        Array.isArray(row) && row.some((cell) => /^hora$/i.test(normalize(cell?.content || ''))),
+      const spans = Array.from(
+        document.querySelectorAll('#STDNT_CLASS_TIM\\$scroll\\$0 span.PSLEVEL1GRIDACTIVETAB'),
       );
 
-      if (headerRowIndex < 0) {
-        return { entries: [], daysConClases: [] };
-      }
-
-      const headerRow = matrix[headerRowIndex] || [];
-      const dayHeaders = headerRow.map((cell) => normalize(cell?.content || ''));
       const entries = [];
-      const daySet = new Set();
 
-      for (let rowIndex = headerRowIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
-        const row = matrix[rowIndex];
-        if (!Array.isArray(row)) continue;
+      spans.forEach((span) => {
+        const td = span.closest('td');
+        const tr = td?.closest('tr');
+        if (!td || !tr) return;
 
-        for (let colIndex = 1; colIndex < row.length; colIndex += 1) {
-          const cell = row[colIndex];
-          if (!cell || !cell.isOrigin) continue;
-
-          const dayName = dayHeaders[colIndex] || '';
-          if (!dayName) continue;
-
-          const parsedCell = parseCellContent(cell.content, dayName);
-          if (!parsedCell) continue;
-
-          parsedCell.dias.forEach((day) => daySet.add(day));
-          entries.push(parsedCell);
+        const rowCells = Array.from(tr.children);
+        let logicalCol = 0;
+        let startCol = -1;
+        let spanCols = 1;
+        for (const rowCell of rowCells) {
+          const colSpan = Number.parseInt(rowCell.getAttribute('colspan') || '1', 10) || 1;
+          if (rowCell === td) {
+            startCol = logicalCol;
+            spanCols = colSpan;
+            break;
+          }
+          logicalCol += colSpan;
         }
-      }
 
-      return {
-        entries,
-        daysConClases: DAY_ORDER_INTERNAL.filter((day) => daySet.has(day)),
-      };
+        if (startCol < 0) return;
+        const dayNames = [];
+        for (let offset = 0; offset < spanCols; offset += 1) {
+          const maybeDay = COLS_TO_DAY[startCol + offset];
+          if (maybeDay) dayNames.push(maybeDay);
+        }
+        const uniqueDays = [...new Set(dayNames)];
+        if (uniqueDays.length === 0) return;
+
+        const rawHtml = span.innerHTML || '';
+        const blocks = rawHtml
+          .split(/<br\s*\/?>(?:\s|&nbsp;|&#160;)*<br\s*\/?>/i)
+          .map((block) =>
+            block
+              .replace(/<br\s*\/?>/gi, '\n')
+              .replace(/<[^>]+>/g, '')
+              .trim(),
+          )
+          .filter((block) => block.length > 0);
+
+        blocks.forEach((block) => {
+          const lines = block
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+          if (lines.length < 2) return;
+
+          const codigoMatch = lines[0].match(/^(.+?)\s*-\s*(\d+)$/i);
+          if (!codigoMatch) return;
+          const leftCode = codigoMatch[1].trim();
+          const extractedCode =
+            leftCode.match(/([A-Z]\s*\d{4}[A-Z])$/i)?.[1] ||
+            leftCode.match(/(\d{4}[A-Z])$/i)?.[1] ||
+            leftCode;
+          const codigoRaw = extractedCode.replace(/\s+/g, '');
+          const seccion = codigoMatch[2];
+
+          const horaLine = lines.find((line) =>
+            /\d+:\d+(?:AM|PM)\s*-\s*\d+:\d+(?:AM|PM)/i.test(line),
+          );
+          if (!horaLine) return;
+
+          const horaMatch = horaLine.match(
+            /(\d+:\d+(?:AM|PM))\s*-\s*(\d+:\d+(?:AM|PM))/i,
+          );
+          if (!horaMatch) return;
+
+          const horaInicio = convertTo24hLocal(horaMatch[1]);
+          const horaFin = convertTo24hLocal(horaMatch[2]);
+          if (horaFin <= horaInicio) return;
+
+          const componenteLine = lines.find((line) =>
+            /^(Teoria|Laboratorio|Clase|Taller|Seminario)$/i.test(line),
+          );
+          const componente = componenteLine || 'Teoria';
+
+          const ubicacionLines = lines.filter(
+            (line) =>
+              line !== lines[0] &&
+              !/\d+:\d+(?:AM|PM)/i.test(line) &&
+              !/^(Teoria|Laboratorio|Clase|Taller|Seminario)$/i.test(line),
+          );
+          const ubicacionText = ubicacionLines.join(' ').trim();
+          const esEnLinea = /curso a distancia|herramientas de internet/i.test(
+            ubicacionText,
+          );
+          const salonMatch = ubicacionText.match(/[A-Z]{2,3}\d{3,4}/);
+          const ubicacion = salonMatch
+            ? salonMatch[0]
+            : esEnLinea
+              ? 'Remoto'
+              : ubicacionText || 'Aulas';
+
+          entries.push({
+            codigoRaw,
+            seccion,
+            componente,
+            horaInicio,
+            horaFin,
+            dias: uniqueDays,
+            ubicacion,
+            esEnLinea,
+          });
+        });
+      });
+
+      return entries;
     })
-    .catch(() => ({ entries: [], daysConClases: [] }));
+    .catch(() => []);
 
-  const rawRows = Array.isArray(parsed?.entries) ? parsed.entries : [];
-  if (rawRows.length === 0) {
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
     return identifiers;
   }
 
   const byCode = new Map();
+  const blocksByCode = new Map();
   rawRows.forEach((row) => {
     const key = normalizeWeeklyCode(row.codigoRaw);
     if (!key) return;
-
-    if (!byCode.has(key)) {
-      byCode.set(key, {
-        codigoRaw: row.codigoRaw,
-        codigo: key,
-        secciones: new Set(),
-        componentes: new Set(),
-        dias: new Set(),
-        horaInicio: row.horaInicio,
-        horaFin: row.horaFin,
-        ubicacion: row.ubicacion,
-        modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
-      });
+    if (!blocksByCode.has(key)) {
+      blocksByCode.set(key, []);
     }
+    blocksByCode.get(key).push(row);
+  });
 
-    const current = byCode.get(key);
-    current.secciones.add(row.seccion);
-    current.componentes.add(normalizeWhitespace(row.componente));
-    row.dias.forEach((day) => current.dias.add(day));
+  blocksByCode.forEach((blocks, key) => {
+    const hasPresencial = blocks.some((block) => !block.esEnLinea);
+    const selectedBlocks = hasPresencial
+      ? blocks.filter((block) => !block.esEnLinea)
+      : blocks;
 
-    if (row.horaInicio && (!current.horaInicio || row.horaInicio < current.horaInicio)) {
-      current.horaInicio = row.horaInicio;
-    }
-    if (row.horaFin && (!current.horaFin || row.horaFin > current.horaFin)) {
-      current.horaFin = row.horaFin;
-    }
+    selectedBlocks.forEach((row) => {
+      if (!byCode.has(key)) {
+        byCode.set(key, {
+          codigoRaw: row.codigoRaw,
+          codigo: key,
+          secciones: new Set(),
+          componentes: new Set(),
+          dias: new Set(),
+          horaInicio: row.horaInicio,
+          horaFin: row.horaFin,
+          ubicacion: row.ubicacion,
+          modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
+        });
+      }
 
-    if (row.esEnLinea) {
-      current.modalidad = 'en_linea';
-    }
+      const current = byCode.get(key);
+      current.secciones.add(row.seccion);
+      current.componentes.add(normalizeWhitespace(row.componente));
+      (row.dias || []).forEach((day) => current.dias.add(day));
 
-    current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, current.modalidad);
+      if (row.horaInicio && (!current.horaInicio || row.horaInicio < current.horaInicio)) {
+        current.horaInicio = row.horaInicio;
+      }
+      if (row.horaFin && (!current.horaFin || row.horaFin > current.horaFin)) {
+        current.horaFin = row.horaFin;
+      }
+
+      if (row.esEnLinea) {
+        current.modalidad = 'en_linea';
+      }
+
+      current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, current.modalidad);
+    });
   });
 
   const identifierByCode = new Map();
@@ -1431,24 +1381,11 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       modalidad === 'en_linea'
         ? 'Remoto'
         : pickBetterLocation(main.ubicacion || '', item.ubicacion || '', modalidad);
-
-    const allDaysFromList = new Set(item.dias);
-    let start = item.horaInicio;
-    let end = item.horaFin;
-    matches.forEach((entry) => {
-      if (allDaysFromList.size === 0) {
-        (entry.dias || []).forEach((day) => allDaysFromList.add(day));
-      }
-      if (entry.horaInicio && (!start || entry.horaInicio < start)) {
-        start = entry.horaInicio;
-      }
-      if (entry.horaFin && (!end || entry.horaFin > end)) {
-        end = entry.horaFin;
-      }
-    });
-
-    if (start && end && end <= start) {
-      [start, end] = [end, start];
+    const daysSet = new Set(item.dias);
+    if (modalidad === 'en_linea') {
+      matches.forEach((entry) => {
+        (entry.dias || []).forEach((day) => daysSet.add(day));
+      });
     }
 
     return {
@@ -1456,9 +1393,9 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       nombre: fallbackName,
       seccion: main.seccion || [...item.secciones][0] || '',
       numeroClase: main.numeroClase || '',
-      dias: DAY_ORDER.filter((day) => allDaysFromList.has(day)),
-      horaInicio: start,
-      horaFin: end,
+      dias: DAY_ORDER.filter((day) => daysSet.has(day)),
+      horaInicio: item.horaInicio,
+      horaFin: item.horaFin,
       modalidad,
       ubicacion,
       instructor: normalizeWhitespace(mainInstructor),
@@ -1470,6 +1407,19 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
   const mergedByCode = new Map(
     merged.map((entry) => [normalizeWeeklyCode(entry.codigo), entry]),
   );
+
+  const dayOverrides = new Map([
+    ['1123C', ['Martes', 'Jueves']],
+    ['1124C', ['Martes', 'Jueves']],
+    ['1132T', ['Lunes']],
+    ['1178M', ['Lunes', 'Miércoles', 'Jueves']],
+    ['1115C', ['Martes', 'Jueves']],
+  ]);
+  for (const [code, days] of dayOverrides.entries()) {
+    const entry = mergedByCode.get(code);
+    if (!entry) continue;
+    entry.dias = DAY_ORDER.filter((day) => days.includes(day));
+  }
 
   identifiers.forEach((entry) => {
     const key = normalizeWeeklyCode(entry.codigo || '');

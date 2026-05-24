@@ -93,49 +93,34 @@ function buildTimeSlots(materias) {
   return slots;
 }
 
-function buildGridMap(materias, days, slots) {
-  const slotIndex = new Map(slots.map((time, index) => [time, index]));
-  const dayMap = {};
+function findMateriaForSlot(materias, day, slotHora) {
+  const slotMinutes = toMinutes(slotHora);
+  if (!Number.isFinite(slotMinutes)) {
+    return null;
+  }
 
-  days.forEach((day) => {
-    dayMap[day] = {};
-  });
+  return (
+    materias.find((materia) => {
+      const start = toMinutes(materia.horaInicio);
+      const end = toMinutes(materia.horaFin);
 
-  materias.forEach((materia) => {
-    const startMinutes = toMinutes(materia.horaInicio);
-    const endMinutes = toMinutes(materia.horaFin);
-
-    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
-      return;
-    }
-
-    const startSlot = `${String(Math.floor(startMinutes / 60)).padStart(2, '0')}:${String(startMinutes % 60).padStart(2, '0')}`;
-    const startIndex = slotIndex.get(startSlot);
-
-    if (!Number.isFinite(startIndex)) {
-      return;
-    }
-
-    const span = Math.max(1, Math.round((endMinutes - startMinutes) / 30));
-
-    (materia.dias || []).forEach((day) => {
-      if (!dayMap[day]) {
-        return;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return false;
       }
 
-      if (dayMap[day][startIndex]) {
-        return;
-      }
+      return Array.isArray(materia.dias) && materia.dias.includes(day) && start <= slotMinutes && end > slotMinutes;
+    }) || null
+  );
+}
 
-      dayMap[day][startIndex] = { materia, span };
+function isFirstSlotForMateria(materia, slotHora) {
+  if (!materia) {
+    return false;
+  }
 
-      for (let offset = 1; offset < span; offset += 1) {
-        dayMap[day][startIndex + offset] = { skip: true };
-      }
-    });
-  });
-
-  return dayMap;
+  const slotMinutes = toMinutes(slotHora);
+  const start = toMinutes(materia.horaInicio);
+  return Number.isFinite(slotMinutes) && Number.isFinite(start) && slotMinutes === start;
 }
 
 function compactName(name) {
@@ -184,7 +169,6 @@ function Horario({
     return [...collected];
   }, [horario?.diasConClases, materias]);
   const slots = useMemo(() => buildTimeSlots(materias), [materias]);
-  const gridMap = useMemo(() => buildGridMap(materias, days, slots), [materias, days, slots]);
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
 
   const handleJoin = (url) => {
@@ -372,14 +356,8 @@ function Horario({
                         {format12h(slot)}
                       </td>
                       {days.map((day) => {
-                        const dayCells = gridMap[day] || {};
-                        const cell = dayCells[rowIndex];
-
-                        if (cell?.skip) {
-                          return null;
-                        }
-
-                        if (!cell?.materia) {
+                        const materia = findMateriaForSlot(materias, day, slot);
+                        if (!materia) {
                           return (
                             <td
                               key={`${day}-${slot}`}
@@ -388,8 +366,8 @@ function Horario({
                           );
                         }
 
-                        const materia = cell.materia;
                         const isOnline = materia.modalidad === 'en_linea';
+                        const isFirstSlot = isFirstSlotForMateria(materia, slot);
                         const baseClass = isOnline
                           ? 'border-emerald-500/40 bg-emerald-500/20'
                           : 'border-itson-blue/40 bg-itson-blue/20';
@@ -397,13 +375,16 @@ function Horario({
                         return (
                           <td
                             key={`${day}-${slot}-${materia.numeroClase || materia.codigo}`}
-                            rowSpan={cell.span}
-                            className={`rounded-xl border px-2 py-2 align-top ${baseClass}`}
+                            className={`rounded-xl border px-2 py-2 align-top ${baseClass} ${!isFirstSlot ? 'border-t-0' : ''}`}
                           >
-                            <p className="font-semibold text-white">{compactName(materia.nombre)}</p>
-                            <p className="mt-1 text-[11px] text-slate-200">
-                              {materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
-                            </p>
+                            {isFirstSlot ? (
+                              <>
+                                <p className="text-xs font-semibold text-white">{compactName(materia.nombre)}</p>
+                                <p className="mt-1 text-xs text-slate-400">
+                                  {materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
+                                </p>
+                              </>
+                            ) : null}
                           </td>
                         );
                       })}

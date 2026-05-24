@@ -1408,6 +1408,14 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     merged.map((entry) => [normalizeWeeklyCode(entry.codigo), entry]),
   );
 
+  const knownOnlineCodes = new Set(['1123C', '1178M', '1115C']);
+  for (const code of knownOnlineCodes) {
+    const entry = mergedByCode.get(code);
+    if (!entry) continue;
+    entry.modalidad = 'en_linea';
+    entry.ubicacion = 'Remoto';
+  }
+
   const dayOverrides = new Map([
     ['1123C', ['Martes', 'Jueves']],
     ['1124C', ['Martes', 'Jueves']],
@@ -2286,7 +2294,24 @@ async function scrapeHorario() {
     }
 
     await applyResourceBlocking(page);
-    const scheduleFrame = await openHorarioPage(page);
+    let scheduleFrame;
+    try {
+      scheduleFrame = await openHorarioPage(page);
+    } catch (error) {
+      if ((error?.message || '').includes('No se encontró el frame esperado')) {
+        await page.goto(CIA_ENTRY_URL, {
+          waitUntil: 'domcontentloaded',
+          timeout: CIA_LOGIN_TIMEOUT_MS,
+        });
+        const retryLogin = await loginToCIA(page, ciaUser, ciaPass);
+        if (retryLogin?.error) {
+          return retryLogin;
+        }
+        scheduleFrame = await openHorarioPage(page);
+      } else {
+        throw error;
+      }
+    }
     const identifiers = await collectIdentifiersFromListView(scheduleFrame);
     let materias = await collectWeeklySchedule(scheduleFrame, identifiers);
 

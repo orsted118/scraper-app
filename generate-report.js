@@ -20,13 +20,21 @@ const MAX_DIFF_BYTES = 150 * 1024;
 const VERIFICATION = {
   buildStatus: 'PASS',
   testsRun: 'ninguno',
-  verificationCmd:
-    'node -e "require(\'dotenv\').config(); const h=require(\'./electron/handlers/horario\'); h.clearHorarioCache(); h.getHorarioWithCache().then(r=>{const te=r.materias?.find(m=>m.nombre===\'Tecnologia y Empresa\'); const so=r.materias?.find(m=>m.nombre.includes(\'Sist Operativos\')); console.log(\'Tecnologia y Empresa dias:\', te?.dias?.join(\',\')); console.log(\'Tecnologia y Empresa sesiones:\', JSON.stringify(te?.sesiones||[])); console.log(\'Sist Operativos dias:\', so?.dias?.join(\',\')); console.log(\'Sist Operativos sesiones:\', JSON.stringify(so?.sesiones||[]));});"',
-  verificationOutput: `◇ injected env (5) from .env // tip: ⌁ auth for agents [www.vestauth.com]
-Tecnologia y Empresa dias: Martes,Jueves
-Tecnologia y Empresa sesiones: [{"dias":["Martes","Jueves"],"horaInicio":"16:00","horaFin":"18:00","modalidad":"en_linea","ubicacion":"Remoto"}]
-Sist Operativos dias: Martes,Miércoles,Jueves
-Sist Operativos sesiones: [{"dias":["Martes","Jueves"],"horaInicio":"09:00","horaFin":"11:00","modalidad":"presencial","ubicacion":"AM0512"},{"dias":["Miércoles"],"horaInicio":"13:00","horaFin":"14:00","modalidad":"en_linea","ubicacion":"Remoto"}]`,
+  verificationCmd: 'npm run build',
+  verificationOutput: `> scraper-app@0.1.0 build
+> vite build
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+vite v5.4.21 building for production...
+transforming...
+✓ 1762 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                        0.41 kB | gzip: 0.27 kB
+dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
+dist/assets/index-Bank_YiO.css        21.82 kB | gzip: 4.99 kB
+dist/assets/index-D_W2gtdS.js        213.21 kB | gzip: 62.56 kB
+✓ built in 5.89s`,
 };
 
 function ensureReportsDir() {

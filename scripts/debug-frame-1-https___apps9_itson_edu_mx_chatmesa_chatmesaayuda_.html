@@ -1,0 +1,225 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>
+	Ayuda Chat Popup
+</title><link href="css/bootstrap.min.css" rel="stylesheet">
+     <script src="js/bootstrap.bundle.min.js"></script>
+    <style>
+        #chatButton { z-index: 1055; }
+        #chatCard { z-index: 1060; width: 20rem;  }
+        textarea { resize: none; }
+   </style>
+</head>
+<body style="background:none">
+    <form method="post" action="./chatmesaayuda.aspx" id="form1">
+<div class="aspNetHidden">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="g4JRE3s9GsEu+daGHvPSlBuQWKj8Wus46A+Mm1OZvxVLChmXtYFzT8TYafGvZdwrcNQPbeXST5h/jr+f5tPfQuQq2argyxKdunC3H8GR9FI=">
+</div>
+
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="1B0F1C22">
+</div>
+        <!-- Botón flotante -->
+       
+
+        <!-- Tarjeta de ayuda -->
+        <div id="chatCard" class="card position-fixed bottom-0 end-0 m-4 shadow-lg" style="display:true;">
+            <div class="card">
+                <div class="card-header bg-primary text-white">Mesa de ayuda ITSON</div>
+            <div class="card-body">
+                
+                <div class="d-flex justify-content-between">
+                    <label class="card-title mb-0">Para registrar una solicitud a la mesa de ayuda, ingrese su ID ITSON ó un correo electrónico válido para su seguimiento.</label>
+                 </div>
+
+                <div id="mensaje" class="alert d-none mt-3" role="alert"></div>
+
+                <div class="mb-3 mt-3">
+                    <label for="medio" class="form-label">Registrar con</label>
+                    <select id="medio" class="form-select" onchange="toggleInput()">
+                        <option value="correo">Correo electrónico</option>
+                        <option value="id">ID</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="correoDiv">
+                    <input type="email" class="form-control" id="correoInput" placeholder="Correo electrónico">
+                </div>
+
+                <div class="mb-3 d-none" id="idDiv">
+                   <input type="text" class="form-control" id="idInput" placeholder="ID (11 dígitos)" maxlength="11" onblur="formatearID()">
+                </div>
+
+                <div class="mb-3">
+                    <textarea class="form-control" id="solicitud" rows="3" placeholder="Ingresa tu solicitud."></textarea>
+                </div>
+
+                <div id="confirmSection" class="mb-3 d-none">
+                    <div class="alert alert-warning p-2">¿Confirmar solicitud?</div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-success btn-sm" onclick="enviarSolicitud()">Sí</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="resetForm()">No</button>
+                    </div>
+                </div>
+                        <div id="respuesta" class="alert alert-info mt-3 d-none"></div>
+
+                <div class="d-grid">
+                    <button type="button" id="btnRegistrar" class="btn btn-primary" onclick="validarFormulario()">Registrar solicitud</button>
+                </div>
+            </div>
+        </div>
+            </div>
+    </form>
+
+    <script>
+        let ultimaSolicitud = "";
+
+        function toggleChat() {
+            const chatCard = document.getElementById("chatCard");
+            const visible = chatCard.style.display === "block";
+            chatCard.style.display = visible ? "none" : "block";
+            if (visible) limpiarFormulario();
+        }
+
+        function toggleInput() {
+            const medio = document.getElementById("medio").value;
+            document.getElementById("correoDiv").classList.toggle("d-none", medio !== "correo");
+            document.getElementById("idDiv").classList.toggle("d-none", medio !== "id");
+            limpiarMensaje();
+        }
+
+        function formatearID() {
+            let id = document.getElementById("idInput").value.replace(/\D/g, '');
+            if (id.length < 11) {
+                id = id.padStart(11, '0');
+                document.getElementById("idInput").value = id;
+            }
+        }
+
+
+        function mostrarMensaje(texto, tipo = "info") {
+            const msg = document.getElementById("mensaje");
+            msg.className = `alert alert-${tipo}`;
+            msg.innerText = texto;
+            msg.classList.remove("d-none");
+        }
+
+        function limpiarMensaje() {
+
+            const msg = document.getElementById("mensaje");
+            msg.classList.add("d-none");
+            msg.innerText = "";
+        }
+
+        function validarFormulario() {
+            limpiarMensaje();
+            const medio = document.getElementById("medio").value;
+            const correo = document.getElementById("correoInput").value.trim();
+            const id = document.getElementById("idInput").value.trim();
+            const solicitud = document.getElementById("solicitud").value.trim();
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            document.getElementById("respuesta").classList.add("d-none");
+
+            if (solicitud === "") {
+                mostrarMensaje("Por favor, escribe tu solicitud.", "danger");
+                return;
+            }
+
+            if (medio === "correo") {
+                if (!emailRegex.test(correo)) {
+                    mostrarMensaje("Correo electrónico inválido.", "danger");
+                    return;
+                }
+                mostrarConfirmacion();
+            } else {
+                if (id.length !== 11) {
+                    mostrarMensaje("El ID debe tener 11 dígitos.", "danger");
+                    return;
+                }
+                fetch("ChatMesaAyuda.aspx/VerificarID", {
+                    method: "POST",
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id })
+                })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (!res.d) {
+                            mostrarMensaje("ID no encontrado.", "danger");
+                            return;
+                        } else {
+                            mostrarConfirmacion();
+                        }
+                    });
+            }
+        }
+
+        function mostrarConfirmacion() {
+            document.getElementById("btnRegistrar").classList.add("d-none");
+            document.getElementById("confirmSection").classList.remove("d-none");
+            document.getElementById("medio").disabled = true;
+            document.getElementById("idInput").disabled = true;
+            document.getElementById("correoInput").disabled = true;
+            document.getElementById("solicitud").disabled = true;
+
+        }
+
+        function resetForm() {
+            document.getElementById("confirmSection").classList.add("d-none");
+            document.getElementById("btnRegistrar").classList.remove("d-none");
+            document.getElementById("medio").disabled = false;
+            document.getElementById("idInput").disabled = false;
+            document.getElementById("correoInput").disabled = false;
+            document.getElementById("solicitud").disabled = false;
+
+            limpiarMensaje();
+        }
+
+        function limpiarFormulario() {
+            document.getElementById("correoInput").value = "";
+            document.getElementById("idInput").value = "";
+            document.getElementById("solicitud").value = "";
+            document.getElementById("medio").value = "correo";
+            toggleInput();
+            resetForm();
+        }
+
+        function enviarSolicitud() {
+
+            const medio = document.getElementById("medio").value;
+            const correo = document.getElementById("correoInput").value.trim();
+            const id = document.getElementById("idInput").value.trim();
+            const solicitud = document.getElementById("solicitud").value.trim();
+
+            const hash = medio + correo + id + solicitud;
+            if (hash === ultimaSolicitud) return;
+            ultimaSolicitud = hash;
+
+            fetch("ChatMesaAyuda.aspx/RegistrarSolicitud", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    usuario: medio === "id" ? id : "",
+                    email: medio === "correo" ? correo : "",
+                    descripcion: solicitud
+                })
+            })
+                .then(res => res.json())
+                .then(res => {
+                    const respuesta = document.getElementById("respuesta");
+                    respuesta.textContent = "Folio generado: " + res.d;
+                    respuesta.className = "alert alert-success mt-3";  
+
+                    document.getElementById("confirmSection").classList.add("d-none");
+                    limpiarFormulario();
+                })
+                .catch(() => {
+                    const respuesta = document.getElementById("respuesta");
+                    respuesta.textContent = "Error al enviar la solicitud. Intenta más tarde.";
+                    respuesta.className = "alert alert-danger mt-3";
+
+                });
+        }
+
+    </script>
+   
+
+</body></html>

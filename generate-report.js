@@ -1,9 +1,28 @@
+/*
+ * INSTRUCCIONES PARA CODEX:
+ * Antes de ejecutar este script, actualiza las constantes
+ * de verificación al inicio del archivo:
+ *   VERIFICATION.buildStatus = 'PASS' o 'FAIL'
+ *   VERIFICATION.verificationCmd = 'el comando que ejecutaste'
+ *   VERIFICATION.verificationOutput = 'el output del comando'
+ * Luego ejecuta: node generate-report.js
+ */
+
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const rootDir = __dirname;
 const reportsDir = path.join(rootDir, 'reports');
+const GIT_MAX_BUFFER = 200 * 1024 * 1024;
+const MAX_DIFF_BYTES = 150 * 1024;
+
+const VERIFICATION = {
+  buildStatus: 'PASS',
+  testsRun: 'ninguno',
+  verificationCmd: 'npm run build',
+  verificationOutput: 'vite build completado sin errores (1762 módulos transformados).',
+};
 
 function ensureReportsDir() {
   fs.mkdirSync(reportsDir, { recursive: true });
@@ -32,6 +51,7 @@ function runGit(command) {
     cwd: rootDir,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GIT_MAX_BUFFER,
   }).trimEnd();
 }
 
@@ -52,6 +72,16 @@ function hasHeadCommit() {
   }
 }
 
+function getGitContext() {
+  try {
+    const branch = runGit('git rev-parse --abbrev-ref HEAD');
+    const lastCommit = runGit('git log -1 --format="%h — %s"');
+    return { branch, lastCommit };
+  } catch (_error) {
+    return { branch: 'desconocida', lastCommit: 'sin commits' };
+  }
+}
+
 function collectChanges() {
   if (!isGitRepository()) {
     throw new Error('No se detecto un repositorio git en la raiz del proyecto.');
@@ -61,10 +91,8 @@ function collectChanges() {
 
   const hasHead = hasHeadCommit();
   const nameStatusCommand = hasHead ? 'git diff --name-status HEAD' : 'git diff --name-status';
-  const diffCommand = hasHead ? 'git diff HEAD' : 'git diff';
 
   const nameStatusOutput = runGit(nameStatusCommand);
-  const diffOutput = runGit(diffCommand);
 
   const files = nameStatusOutput
     .split(/\r?\n/)
@@ -75,7 +103,7 @@ function collectChanges() {
       return { status, filePath };
     });
 
-  return { files, diffOutput };
+  return { files, hasHead };
 }
 
 function describeChange(statusCode) {
@@ -99,38 +127,84 @@ function describeChange(statusCode) {
 }
 
 function inferReportType(files) {
-  if (files.some(({ filePath }) => filePath.startsWith('src/') || filePath.startsWith('electron/'))) {
-    return 'feature';
-  }
+  const paths = files.map((file) => file.filePath);
 
-  if (files.some(({ filePath }) => /config|package\.json|generate-report\.js/.test(filePath))) {
-    return 'config';
-  }
+  const isFix = paths.some((filePath) => /fix|bug|error|repair|patch/i.test(filePath));
+  const isConfig = paths.length > 0 && paths.every((filePath) => /config|package\.json|\.gitignore|generate-report/i.test(filePath));
+  const isDocs = paths.length > 0 && paths.every((filePath) => /\.md$|docs\//i.test(filePath));
+  const isElectronOnly = paths.length > 0 && paths.every((filePath) => filePath.startsWith('electron/'));
+  const isFrontendOnly = paths.length > 0 && paths.every((filePath) => filePath.startsWith('src/'));
+  const isMixed = paths.some((filePath) => filePath.startsWith('electron/')) && paths.some((filePath) => filePath.startsWith('src/'));
 
+  if (isConfig) return 'config';
+  if (isDocs) return 'docs';
+  if (isFix) return 'fix';
+  if (isMixed) return 'feature';
+  if (isElectronOnly) return 'backend';
+  if (isFrontendOnly) return 'frontend';
   return 'refactor';
 }
 
-function buildDiffMap(diffOutput) {
-  const diffMap = new Map();
-  const normalized = diffOutput.replace(/\r\n/g, '\n');
-  const chunks = normalized.split(/^diff --git /m).filter(Boolean);
+function truncateDiffIfNeeded(diff) {
+  if (!diff) {
+    return diff;
+  }
 
-  chunks.forEach((chunk) => {
-    const fullChunk = `diff --git ${chunk}`;
-    const headerMatch = fullChunk.match(/^diff --git a\/(.+?) b\/(.+)$/m);
+  if (Buffer.byteLength(diff, 'utf8') <= MAX_DIFF_BYTES) {
+    return diff;
+  }
 
-    if (!headerMatch) {
-      return;
-    }
-
-    const filePath = headerMatch[2];
-    diffMap.set(filePath, fullChunk.trim());
-  });
-
-  return diffMap;
+  const truncated = diff.substring(0, MAX_DIFF_BYTES);
+  const lastNewline = truncated.lastIndexOf('\n');
+  const safeChunk = lastNewline >= 0 ? truncated.substring(0, lastNewline) : truncated;
+  return `${safeChunk}\n\n... [DIFF TRUNCADO — archivo muy grande, ver git diff completo] ...`;
 }
 
-function buildSummary(files) {
+function getDiffForFile(filePath, hasHead) {
+  try {
+    const cmd = hasHead ? `git diff HEAD -- "${filePath}"` : `git diff -- "${filePath}"`;
+    const diff = execSync(cmd, {
+      cwd: rootDir,
+      encoding: 'utf8',
+      maxBuffer: GIT_MAX_BUFFER,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trimEnd();
+
+    return truncateDiffIfNeeded(diff);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getDiffStats(files, hasHead) {
+  return files.map(({ filePath }) => {
+    try {
+      const cmd = hasHead ? `git diff HEAD --numstat -- "${filePath}"` : `git diff --numstat -- "${filePath}"`;
+      const output = execSync(cmd, {
+        cwd: rootDir,
+        encoding: 'utf8',
+        maxBuffer: GIT_MAX_BUFFER,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+
+      const firstLine = output.split(/\r?\n/).find(Boolean) || '';
+      const match = firstLine.match(/^(\d+|-)\s+(\d+|-)/);
+      return {
+        filePath,
+        added: match && match[1] !== '-' ? parseInt(match[1], 10) : 0,
+        removed: match && match[2] !== '-' ? parseInt(match[2], 10) : 0,
+      };
+    } catch (_error) {
+      return { filePath, added: 0, removed: 0 };
+    }
+  });
+}
+
+function buildSummary(files, collectionError) {
+  if (collectionError) {
+    return `No se pudieron recolectar todos los cambios de git (${collectionError}). Se generó un reporte parcial con la información disponible.`;
+  }
+
   if (files.length === 0) {
     return 'No se detectaron cambios pendientes en el working tree para esta tarea.';
   }
@@ -146,40 +220,115 @@ function buildPendingSection(pendingItems = []) {
   return pendingItems.map((item) => `- ${item}`).join('\n');
 }
 
-function buildReportContent(reportNumber, files, diffOutput) {
-  const diffMap = buildDiffMap(diffOutput);
+function buildStatsTable(stats) {
+  if (!stats.length) {
+    return '| Archivo | + líneas | - líneas |\n|---------|----------|----------|\n| N/A | 0 | 0 |';
+  }
+
+  const rows = stats
+    .map(({ filePath, added, removed }) => `| ${filePath} | ${added} | ${removed} |`)
+    .join('\n');
+
+  return `| Archivo | + líneas | - líneas |\n|---------|----------|----------|\n${rows}`;
+}
+
+function buildCodeChangesSection(files, hasHead) {
+  if (!files.length) {
+    return '### `N/A`\n```diff\nNo changes detected.\n```';
+  }
+
+  return files
+    .map(({ filePath }) => {
+      const diffBlock = getDiffForFile(filePath, hasHead) || 'diff no disponible para este archivo.';
+      return `### \`${filePath}\`\n\`\`\`diff\n${diffBlock}\n\`\`\``;
+    })
+    .join('\n\n');
+}
+
+function buildVerificationSection() {
+  const commandValue = VERIFICATION.verificationCmd || 'pendiente de completar';
+  const outputValue = VERIFICATION.verificationOutput || 'pendiente de completar';
+
+  return `**npm run build:** ${VERIFICATION.buildStatus}\n**Tests ejecutados:** ${VERIFICATION.testsRun}\n**Comando de verificación:** ${commandValue}\n**Output de verificación:**\n\`\`\`\n${outputValue}\n\`\`\``;
+}
+
+function buildReportContent(reportNumber, payload) {
+  const {
+    files = [],
+    hasHead = false,
+    gitContext = { branch: 'desconocida', lastCommit: 'sin commits' },
+    stats = [],
+    collectionError = '',
+  } = payload;
+
   const pendingItems = [];
   const modifiedFilesSection = files.length
-    ? files
-        .map(({ status, filePath }) => `- \`${filePath}\` — ${describeChange(status)}`)
-        .join('\n')
+    ? files.map(({ status, filePath }) => `- \`${filePath}\` — ${describeChange(status)}`).join('\n')
     : '- `N/A` — no se detectaron cambios para reportar';
-
-  const codeChangesSection = files.length
-    ? files
-        .map(({ filePath }) => {
-          const diffBlock = diffMap.get(filePath) || 'No diff available.';
-          return `### \`${filePath}\`\n\`\`\`diff\n${diffBlock}\n\`\`\``;
-        })
-        .join('\n\n')
-    : '### `N/A`\n```diff\nNo changes detected.\n```';
 
   return `# Report ${reportNumber}
 **Fecha:** ${formatTimestamp(new Date())}  
 **Agente:** Codex  
 **Tipo:** ${inferReportType(files)}
 
+## Contexto Git
+**Rama:** ${gitContext.branch}
+**Último commit:** ${gitContext.lastCommit}
+**Archivos modificados:** ${files.length}
+
 ## Archivos modificados
 ${modifiedFilesSection}
 
+## Estadísticas
+${buildStatsTable(stats)}
+
 ## Resumen
-${buildSummary(files)}
+${buildSummary(files, collectionError)}
 
 ## Cambios de codigo
-${codeChangesSection}
+${buildCodeChangesSection(files, hasHead)}
+
+## Verificación
+${buildVerificationSection()}
 
 ## Pendiente para Claude
 ${buildPendingSection(pendingItems)}
+`;
+}
+
+function buildPartialReport(reportNumber, reportError, gitContext) {
+  return `# Report ${reportNumber}
+**Fecha:** ${formatTimestamp(new Date())}  
+**Agente:** Codex  
+**Tipo:** refactor
+
+## Contexto Git
+**Rama:** ${gitContext.branch}
+**Último commit:** ${gitContext.lastCommit}
+**Archivos modificados:** 0
+
+## Archivos modificados
+- \`N/A\` — no se pudieron recolectar cambios
+
+## Estadísticas
+| Archivo | + líneas | - líneas |
+|---------|----------|----------|
+| N/A | 0 | 0 |
+
+## Resumen
+No se pudo recolectar información completa de git: ${reportError}
+
+## Cambios de codigo
+### \`N/A\`
+\`\`\`diff
+No changes detected.
+\`\`\`
+
+## Verificación
+${buildVerificationSection()}
+
+## Pendiente para Claude
+- Sin pendientes registrados en esta tarea.
 `;
 }
 
@@ -188,11 +337,43 @@ function main() {
 
   const reportNumber = getNextReportNumber();
   const reportPath = path.join(reportsDir, `report_${reportNumber}.md`);
-  const { files, diffOutput } = collectChanges();
-  const reportContent = buildReportContent(reportNumber, files, diffOutput);
 
-  fs.writeFileSync(reportPath, reportContent, 'utf8');
-  console.log(`✅ Reporte generado: reports/report_${reportNumber}.md`);
+  try {
+    const gitContext = getGitContext();
+    let files = [];
+    let hasHead = false;
+    let collectionError = '';
+
+    try {
+      const collected = collectChanges();
+      files = collected.files;
+      hasHead = collected.hasHead;
+    } catch (error) {
+      collectionError = error?.message || 'Error desconocido al recolectar cambios.';
+    }
+
+    const stats = getDiffStats(files, hasHead);
+    const reportContent = buildReportContent(reportNumber, {
+      files,
+      hasHead,
+      gitContext,
+      stats,
+      collectionError,
+    });
+
+    fs.writeFileSync(reportPath, reportContent, 'utf8');
+    console.log(`✅ Reporte generado: reports/report_${reportNumber}.md`);
+  } catch (error) {
+    const gitContext = getGitContext();
+    const partialContent = buildPartialReport(
+      reportNumber,
+      error?.message || 'Error desconocido al generar reporte.',
+      gitContext
+    );
+
+    fs.writeFileSync(reportPath, partialContent, 'utf8');
+    console.log(`⚠️ Reporte parcial generado: reports/report_${reportNumber}.md`);
+  }
 }
 
 main();

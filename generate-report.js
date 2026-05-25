@@ -21,15 +21,12 @@ const VERIFICATION = {
   buildStatus: 'PASS',
   testsRun: 'ninguno',
   verificationCmd:
-    'node -e "require(\'dotenv\').config(); const h=require(\'./electron/handlers/horario\'); h.clearHorarioCache(); h.getHorarioWithCache().then(r => { r.materias?.forEach(m => { const sesionDias = [...new Set(m.sesiones?.flatMap(s => s.dias) || [])].sort(); const diasSorted = [...m.dias].sort(); const match = JSON.stringify(sesionDias) === JSON.stringify(diasSorted); console.log(match ? \'✅\' : \'❌\', m.nombre.padEnd(32), \'|\', m.dias.join(\',\')); }); })"',
+    'node -e "require(\'dotenv\').config(); const h=require(\'./electron/handlers/horario\'); h.clearHorarioCache(); h.getHorarioWithCache().then(r=>{const te=r.materias?.find(m=>m.nombre===\'Tecnologia y Empresa\'); const so=r.materias?.find(m=>m.nombre.includes(\'Sist Operativos\')); console.log(\'Tecnologia y Empresa dias:\', te?.dias?.join(\',\')); console.log(\'Tecnologia y Empresa sesiones:\', JSON.stringify(te?.sesiones||[])); console.log(\'Sist Operativos dias:\', so?.dias?.join(\',\')); console.log(\'Sist Operativos sesiones:\', JSON.stringify(so?.sesiones||[]));});"',
   verificationOutput: `◇ injected env (5) from .env // tip: ⌁ auth for agents [www.vestauth.com]
-✅ Ingles Universitario A1          | Lunes,Martes,Miércoles,Jueves,Viernes
-✅ Precálculo                       | Lunes,Martes,Miércoles,Jueves,Viernes
-✅ Sist Operativos y Arq de Comp    | Martes,Miércoles,Jueves
-✅ Tutoria 2 (INSOF)                | Lunes
-✅ Programacion II c/Lab            | Martes,Jueves
-✅ Matematicas Discretas            | Lunes,Miércoles,Jueves
-✅ Tecnologia y Empresa             | Martes,Jueves`,
+Tecnologia y Empresa dias: Martes,Jueves
+Tecnologia y Empresa sesiones: [{"dias":["Martes","Jueves"],"horaInicio":"16:00","horaFin":"18:00","modalidad":"en_linea","ubicacion":"Remoto"}]
+Sist Operativos dias: Martes,Miércoles,Jueves
+Sist Operativos sesiones: [{"dias":["Martes","Jueves"],"horaInicio":"09:00","horaFin":"11:00","modalidad":"presencial","ubicacion":"AM0512"},{"dias":["Miércoles"],"horaInicio":"13:00","horaFin":"14:00","modalidad":"en_linea","ubicacion":"Remoto"}]`,
 };
 
 function ensureReportsDir() {

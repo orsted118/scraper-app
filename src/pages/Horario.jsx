@@ -113,14 +113,33 @@ function findMateriaForSlot(materias, day, slotHora) {
   );
 }
 
-function isFirstSlotForMateria(materia, slotHora) {
-  if (!materia) {
+function getMateriaKey(materia) {
+  return materia?.numeroClase || `${materia?.codigo || ''}-${materia?.seccion || ''}-${materia?.nombre || ''}`;
+}
+
+function isFirstSlotForMateria(materias, day, slotHora, materia) {
+  if (!materia || !day) {
     return false;
   }
 
   const slotMinutes = toMinutes(slotHora);
-  const start = toMinutes(materia.horaInicio);
-  return Number.isFinite(slotMinutes) && Number.isFinite(start) && slotMinutes === start;
+  if (!Number.isFinite(slotMinutes)) {
+    return false;
+  }
+
+  const previousSlotMinutes = slotMinutes - 30;
+  if (previousSlotMinutes < 0) {
+    return true;
+  }
+
+  const previousSlot = `${String(Math.floor(previousSlotMinutes / 60)).padStart(2, '0')}:${String(previousSlotMinutes % 60).padStart(2, '0')}`;
+  const previousMateria = findMateriaForSlot(materias, day, previousSlot);
+
+  if (!previousMateria) {
+    return true;
+  }
+
+  return getMateriaKey(previousMateria) !== getMateriaKey(materia);
 }
 
 function compactName(name) {
@@ -367,7 +386,7 @@ function Horario({
                         }
 
                         const isOnline = materia.modalidad === 'en_linea';
-                        const isFirstSlot = isFirstSlotForMateria(materia, slot);
+                        const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materia);
                         const baseClass = isOnline
                           ? 'border-emerald-500/40 bg-emerald-500/20'
                           : 'border-itson-blue/40 bg-itson-blue/20';

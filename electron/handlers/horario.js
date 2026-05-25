@@ -1166,6 +1166,19 @@ function pickBetterLocation(current, next, modal = 'presencial') {
   return 'Aulas';
 }
 
+function deriveDaysFromSessions(materia) {
+  const sessionDays = Array.isArray(materia?.sesiones)
+    ? materia.sesiones.flatMap((session) => (Array.isArray(session?.dias) ? session.dias : []))
+    : [];
+
+  if (!sessionDays.length) {
+    return getFriendlyDayOrder(Array.isArray(materia?.dias) ? materia.dias : []);
+  }
+
+  const uniqueDays = [...new Set(sessionDays.map((day) => normalizeWhitespace(day)).filter(Boolean))];
+  return uniqueDays.sort((left, right) => DAY_ORDER.indexOf(left) - DAY_ORDER.indexOf(right));
+}
+
 async function collectWeeklySchedule(scheduleFrame, identifiers) {
   if (!Array.isArray(identifiers) || identifiers.length === 0) {
     return [];
@@ -1568,7 +1581,12 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     });
   });
 
-  return [...mergedByCode.values()].filter(
+  return [...mergedByCode.values()]
+    .map((materia) => ({
+      ...materia,
+      dias: deriveDaysFromSessions(materia),
+    }))
+    .filter(
     (row) =>
       row.codigo &&
       row.horaInicio &&

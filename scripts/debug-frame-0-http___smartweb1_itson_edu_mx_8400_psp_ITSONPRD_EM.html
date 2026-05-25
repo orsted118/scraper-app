@@ -1,0 +1,218 @@
+<!DOCTYPE html><html dir="ltr"><head>
+<meta name="robots" content="noindex">
+<!--
+* ******************************************************************
+* ORACLE CONFIDENTIAL.  For authorized use only.  Except for as
+* expressly authorized by Oracle, do not disclose, copy, reproduce,
+* distribute, or modify.
+* ******************************************************************
+*
+-->
+<title>Sistema CIA - Instituto Tecnológico de Sonora</title>
+
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="UTF-8">
+    
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="/ITSONPRD/images/img/css/StyleSheet-precia.css">
+
+<style>
+        .open-button {
+            background-color: #006db6;
+            color: white;
+            padding: 10px 20px;
+            border: 1px solid white;
+            cursor: pointer;
+            opacity: 0.8;
+            position: fixed;
+            width: 280px;
+            border-radius: 50px;
+            font-size: 18px !important;
+        }
+
+            .form-container .btn:hover, .open-button:hover {
+                opacity: 1;
+            }
+
+        .form-container .btn {
+            color: white;
+            padding: 7px 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        #BotonAyuda {
+            position: fixed;
+            bottom: 30px;
+            right: 150px;
+            z-index: 9;
+            border-radius: 13px 13px 0 0;
+            margin-right: 15px;
+        }
+
+        #myIframe {
+            visibility: hidden;
+        }
+    </style><script language="JavaScript">
+    function signin(form) {
+        var now = new Date();
+        form.timezoneOffset.value = now.getTimezoneOffset();
+        return;
+    }
+    function setFocus() {
+        try
+         { document.login.userid.focus() }
+        catch (e)
+         { };
+        return;
+    }
+    function submitAction(form) {
+        form.Submit.disabled = true;
+        form.submit();
+    }
+</script><script>
+
+      function redirect() {
+ window.open("https://www.itson.mx/micrositios/transparencia/Paginas/avisos-de-privacidad.aspx");
+      }
+
+	function abrirIframe() {
+            if (document.getElementById("myIframe").style.visibility == "hidden" || document.getElementById("myIframe").style.visibility == "") {
+                document.getElementById("myIframe").style.visibility = "visible";
+                //document.getElementById("myIframe").style.zIndex = "0";
+            } else {
+                document.getElementById("myIframe").style.visibility = "hidden";
+                //document.getElementById("myIframe").style.zIndex = "10000";
+            }
+        }
+
+        function closeIframe() {
+            var iframe = document.getElementById('myIframe');
+            document.getElementById("myIframe").style.visibility = "hidden";
+        }
+
+        window.addEventListener('message', function (event) {
+            if (event.data === 'closeIframe') {
+                closeIframe();
+            }
+        });
+	
+</script></head>
+
+
+
+
+
+
+
+<body onload="setFocus(); if (top != self) top.location = location" style="background-color:#006db6">
+   
+    <div class="limiter">
+    
+		<div class="container-login">
+          
+        <div class="wrap-login" style="width:50%">
+            
+              <!-- Aquí se muestra el acceso -->
+
+			   <form class="login-form validate-form" style="width:100%" action="?cmd=login&amp;languageCd=ESP" method="post" id="login" name="login" autocomplete="off" onsubmit="signin(document.login)">
+                           <input type="hidden" name="timezoneOffset" value="0">    
+                <img src="/ITSONPRD/images/img/ITSON-MARCA.png" class="logoITSON" style="width:60%"> <br> <br><br>
+               
+<img src="/ITSONPRD/images/img/CIA.png" class="logoCIA" style="width:60%">
+
+
+                   	<div class="wrap-input validate-input">
+						<input class="input" id="userid" type="text" name="userid" placeholder="Ingresar ID ITSON de 11 dígitos" maxlength="11">
+					</div> <br>
+
+                    <div class="wrap-input validate-input">
+                        <input class="input" id="pwd" type="password" name="pwd" placeholder="Ingresar contraseña">
+                    </div>
+                    
+
+  
+
+					
+					<div class="container-login-form-btn">
+						<button class="login-form-btn">
+							Iniciar Sesión
+						</button>
+					</div>
+
+					<div class="text-password">
+						<span class="txt1">
+							¿Has olvidado tu
+						</span>
+						<a class="txt2" href="http://smartweb1.itson.edu.mx:8700/psp/ITSONPRD/EMPLOYEE/HRMS/c/MAINTAIN_SECURITY.EMAIL_PSWD.GBL?FolderPath=PORTAL_ROOT_OBJECT.PT_TOOLS_HIDDEN.PT_EMAIL_PSWD_GBL&amp;IsFolder=false&amp;IgnoreParamTempl=FolderPath%2cIsFolder" target="_blank">
+							Usuario / Contraseña?
+						</a>
+					</div>
+
+						
+					<div class="container-login-form-btn">
+						<a href="https://www.itson.mx/micrositios/transparencia/Paginas/avisos-de-privacidad.aspx">Aviso Privacidad</a>
+						<!--<button class="login-form-btn" onclick="redirect()">
+							Aviso Privacidad
+						</button> -->
+					</div>
+
+
+				</form>
+                
+                <!-- Aquí se muestra la imagen de la app -->
+                <!--	<div class="login-pic">
+					
+                       <img src="img/SCREENSHOTS-PPLAYSTORE-BACKBLUE2.png" alt="IMG"/>
+                    <div class="playstore">
+
+                    	<div id="googleplay">
+                        <p id="playstore-text" class="hvr-float-shadow"><br />
+						<a href="https://play.google.com/store/apps/details?id=mx.itson.potrosapp" target="_blank">
+                            <img src="img/googleplay.png"/>
+                        </a></p>
+                        </div>
+
+                        <div id="appstore">
+                        <p id="playstore-text" class="hvr-float-shadow"><br />
+                            <a href="https://itunes.apple.com/us/app/potros-app/id1339260457?l=es&ls" target="_blank">
+                            <img src="img/appstore.png" />
+                            </a>
+                        </p>
+                        </div>
+                    </div>
+				</div> -->
+
+<div class="col-lg-3">
+        <iframe id="myIframe" name="Contenido" src="https://apps9.itson.edu.mx/chatmesa/chatmesaayuda.aspx" style="height: 550px; width: 350px; position:fixed; bottom:3%; right: 1%; z-index:99;" frameborder="0"></iframe>
+        <div id="BotonAyuda" style="z-index:99;">
+            <button class="btn btn-info btn-circle btn-lg open-button" style="width:100px; height:40px; position:fixed; bottom:3%; right: 3%;" onclick="abrirIframe()">Ayuda</button>
+        </div>
+    </div>
+			</div>
+
+                    
+  
+        
+
+<footer>
+
+   
+   <!-- Start of admisionesitson Zendesk Widget script 
+<iframe src="javascript:false" title="" style="display: none;"></iframe><script>/*<![CDATA[*/window.zEmbed||function(e,t){var n,o,d,i,s,a=[],r=document.createElement("iframe");window.zEmbed=function(){a.push(arguments)},window.zE=window.zE||window.zEmbed,r.src="javascript:false",r.title="",r.role="presentation",(r.frameElement||r).style.cssText="display: none",d=document.getElementsByTagName("script"),d=d[d.length-1],d.parentNode.insertBefore(r,d),i=r.contentWindow,s=i.document;try{o=s}catch(e){n=document.domain,r.src='javascript:var d=document.open();d.domain="'+n+'";void(0);',o=s}o.open()._l=function(){var o=this.createElement("script");n&&(this.domain=n),o.id="js-iframe-async",o.src=e,this.t=+new Date,this.zendeskHost=t,this.zEQueue=a,this.body.appendChild(o)},o.write('<body onload="document._l();">'),o.close()}("https://assets.zendesk.com/embeddable_framework/main.js","admisionesitson.zendesk.com");
+/*]]>*/</script> -->
+<!-- End of admisionesitson Zendesk Widget script -->
+
+
+<!-- <div><iframe id="launcher" tabindex="0" class="zEWidget-launcher zEWidget-launcher--active" style="border: none; background: transparent; z-index: 999998; transform: translateZ(0px); position: fixed; opacity: 1; right: 0px; bottom: 0px; width: 125px; height: 47px; margin: 10px 20px;"></iframe></div><div><iframe id="webWidget" tabindex="-1" class="zEWidget-webWidget " style="border: none; background: transparent; z-index: 999999; transform: translateZ(0px); position: fixed; opacity: 0; right: 0px; bottom: 0px; width: 357px; margin-left: 15px; margin-right: 15px; height: 15px; transition-property: none; transition-timing-function: unset; top: -9999px;"></iframe></div> -->
+
+
+
+
+
+</footer>
+
+
+</div></div></body></html>

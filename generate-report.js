@@ -32,9 +32,9 @@ rendering chunks...
 computing gzip size...
 dist/index.html                        0.41 kB | gzip: 0.27 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-Bank_YiO.css        21.82 kB | gzip: 4.99 kB
-dist/assets/index-D_W2gtdS.js        213.21 kB | gzip: 62.56 kB
-✓ built in 5.89s`,
+dist/assets/index-naYlnb2n.css        22.09 kB | gzip: 5.06 kB
+dist/assets/index-CS8IlQya.js        213.62 kB | gzip: 62.65 kB
+✓ built in 8.91s`,
 };
 
 function ensureReportsDir() {

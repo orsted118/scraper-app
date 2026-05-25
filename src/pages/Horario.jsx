@@ -464,21 +464,32 @@ function Horario({
           <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
             <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Horario semanal</h4>
             <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-1 text-xs text-slate-200">
+              <table
+                className="min-w-max border-separate text-xs text-slate-200"
+                style={{ borderSpacing: '1px' }}
+              >
                 <thead>
                   <tr>
-                    <th className="rounded-xl bg-slate-900 px-3 py-2 text-left text-slate-400">Hora</th>
+                    <th className="w-16 rounded-lg bg-slate-900 px-2 py-1.5 text-left text-[10px] text-slate-500">
+                      Hora
+                    </th>
                     {days.map((day) => (
-                      <th key={day} className="rounded-xl bg-slate-900 px-3 py-2 text-left text-slate-300">
+                      <th
+                        key={day}
+                        className="min-w-[100px] rounded-lg bg-slate-900 px-2 py-1.5 text-left text-[11px] text-slate-300"
+                      >
                         {day}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {slots.map((slot, rowIndex) => (
-                    <tr key={slot}>
-                      <td className="w-24 rounded-xl bg-slate-900 px-3 py-2 align-top text-slate-400">
+                  {slots.map((slot) => (
+                    <tr key={slot} className="h-11">
+                      <td
+                        className="w-16 rounded-lg bg-slate-900 px-2 py-1 align-top text-[10px] text-slate-500 overflow-hidden"
+                        style={{ maxHeight: '44px' }}
+                      >
                         {format12h(slot)}
                       </td>
                       {days.map((day) => {
@@ -487,7 +498,8 @@ function Horario({
                           return (
                             <td
                               key={`${day}-${slot}`}
-                              className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2"
+                              className="h-11 min-w-[100px] rounded-lg border border-slate-800 bg-slate-900/40 align-top overflow-hidden"
+                              style={{ maxHeight: '44px' }}
                             />
                           );
                         }
@@ -495,9 +507,10 @@ function Horario({
                         return (
                           <td
                             key={`${day}-${slot}`}
-                            className="rounded-xl border border-slate-800 bg-slate-900/40 p-1.5 align-top"
+                            className="h-11 min-w-[100px] rounded-lg border border-slate-800 bg-slate-900/40 p-0.5 align-top overflow-hidden"
+                            style={{ maxHeight: '44px' }}
                           >
-                            <div className="space-y-1">
+                            <div className="flex h-full flex-col gap-px overflow-hidden">
                               {materiaSlots.map((materiaSlot) => {
                                 const { materia, session } = materiaSlot;
                                 const isOnline = (session?.modalidad || materia.modalidad) === 'en_linea';
@@ -509,19 +522,21 @@ function Horario({
                                 return (
                                   <div
                                     key={`${getMateriaKey(materia)}-${getSessionKey(session)}`}
-                                    className={`rounded-lg border px-2 py-1 ${baseClass} ${!isFirstSlot ? 'border-t-0' : ''}`}
+                                    className={`min-h-0 flex-1 overflow-hidden ${!isFirstSlot ? 'p-0' : ''}`}
                                   >
                                     {isFirstSlot ? (
-                                      <>
-                                        <p className="text-[11px] font-semibold text-white">
+                                      <div
+                                        className={`h-full overflow-hidden rounded-lg border px-1.5 py-0.5 ${baseClass}`}
+                                      >
+                                        <p className="truncate text-[10px] font-semibold leading-tight text-white">
                                           {compactName(materia.nombre)}
                                         </p>
-                                        <p className="mt-0.5 text-[10px] text-slate-300">
+                                        <p className="truncate text-[9px] leading-tight text-slate-400">
                                           {session?.ubicacion || materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
                                         </p>
-                                      </>
+                                      </div>
                                     ) : (
-                                      <div className="h-2" />
+                                      <div className={`h-full rounded-b-lg border border-t-0 ${baseClass}`} />
                                     )}
                                   </div>
                                 );

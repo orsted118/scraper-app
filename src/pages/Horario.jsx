@@ -145,6 +145,8 @@ function findMateriaForSlot(materias, day, slotHora) {
     return null;
   }
 
+  const matches = [];
+
   for (const materia of materias) {
     const sessions = getMateriaSessions(materia);
 
@@ -160,11 +162,37 @@ function findMateriaForSlot(materias, day, slotHora) {
     });
 
     if (matchedSession) {
-      return { materia, session: matchedSession };
+      matches.push({
+        materia,
+        session: matchedSession,
+        start: toMinutes(matchedSession.horaInicio),
+        end: toMinutes(matchedSession.horaFin),
+      });
     }
   }
 
-  return null;
+  if (matches.length === 0) {
+    return null;
+  }
+
+  matches.sort((left, right) => {
+    if (left.start !== right.start) {
+      return right.start - left.start;
+    }
+
+    const leftDuration = left.end - left.start;
+    const rightDuration = right.end - right.start;
+    if (leftDuration !== rightDuration) {
+      return leftDuration - rightDuration;
+    }
+
+    return getMateriaKey(left.materia).localeCompare(getMateriaKey(right.materia));
+  });
+
+  return {
+    materia: matches[0].materia,
+    session: matches[0].session,
+  };
 }
 
 function getMateriaKey(materia) {

@@ -139,10 +139,10 @@ function buildTimeSlots(materias) {
   return slots;
 }
 
-function findMateriaForSlot(materias, day, slotHora) {
+function findMateriasForSlot(materias, day, slotHora) {
   const slotMinutes = toMinutes(slotHora);
   if (!Number.isFinite(slotMinutes)) {
-    return null;
+    return [];
   }
 
   const matches = [];
@@ -172,7 +172,7 @@ function findMateriaForSlot(materias, day, slotHora) {
   }
 
   if (matches.length === 0) {
-    return null;
+    return [];
   }
 
   matches.sort((left, right) => {
@@ -189,10 +189,7 @@ function findMateriaForSlot(materias, day, slotHora) {
     return getMateriaKey(left.materia).localeCompare(getMateriaKey(right.materia));
   });
 
-  return {
-    materia: matches[0].materia,
-    session: matches[0].session,
-  };
+  return matches.map(({ materia, session }) => ({ materia, session }));
 }
 
 function getMateriaKey(materia) {
@@ -219,17 +216,23 @@ function isFirstSlotForMateria(materias, day, slotHora, materiaSlot) {
   }
 
   const previousSlot = `${String(Math.floor(previousSlotMinutes / 60)).padStart(2, '0')}:${String(previousSlotMinutes % 60).padStart(2, '0')}`;
-  const previousMateria = findMateriaForSlot(materias, day, previousSlot);
+  const previousMaterias = findMateriasForSlot(materias, day, previousSlot);
 
-  if (!previousMateria) {
+  if (!previousMaterias.length) {
     return true;
   }
 
-  const isSameMateria =
-    getMateriaKey(previousMateria.materia) === getMateriaKey(materiaSlot.materia);
-  const isSameSession = getSessionKey(previousMateria.session) === getSessionKey(materiaSlot.session);
+  const currentMateriaKey = getMateriaKey(materiaSlot.materia);
+  const currentSessionKey = getSessionKey(materiaSlot.session);
 
-  return !(isSameMateria && isSameSession);
+  const existsInPreviousSlot = previousMaterias.some((previousMateriaSlot) => {
+    const isSameMateria =
+      getMateriaKey(previousMateriaSlot.materia) === currentMateriaKey;
+    const isSameSession = getSessionKey(previousMateriaSlot.session) === currentSessionKey;
+    return isSameMateria && isSameSession;
+  });
+
+  return !existsInPreviousSlot;
 }
 
 function compactName(name) {
@@ -479,8 +482,8 @@ function Horario({
                         {format12h(slot)}
                       </td>
                       {days.map((day) => {
-                        const materiaSlot = findMateriaForSlot(materias, day, slot);
-                        if (!materiaSlot) {
+                        const materiaSlots = findMateriasForSlot(materias, day, slot);
+                        if (!materiaSlots.length) {
                           return (
                             <td
                               key={`${day}-${slot}`}
@@ -489,26 +492,41 @@ function Horario({
                           );
                         }
 
-                        const { materia, session } = materiaSlot;
-                        const isOnline = materia.modalidad === 'en_linea';
-                        const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materiaSlot);
-                        const baseClass = isOnline
-                          ? 'border-emerald-500/40 bg-emerald-500/20'
-                          : 'border-itson-blue/40 bg-itson-blue/20';
-
                         return (
                           <td
-                            key={`${day}-${slot}-${materia.numeroClase || materia.codigo}`}
-                            className={`rounded-xl border px-2 py-2 align-top ${baseClass} ${!isFirstSlot ? 'border-t-0' : ''}`}
+                            key={`${day}-${slot}`}
+                            className="rounded-xl border border-slate-800 bg-slate-900/40 p-1.5 align-top"
                           >
-                            {isFirstSlot ? (
-                              <>
-                                <p className="text-xs font-semibold text-white">{compactName(materia.nombre)}</p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {session?.ubicacion || materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
-                                </p>
-                              </>
-                            ) : null}
+                            <div className="space-y-1">
+                              {materiaSlots.map((materiaSlot) => {
+                                const { materia, session } = materiaSlot;
+                                const isOnline = (session?.modalidad || materia.modalidad) === 'en_linea';
+                                const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materiaSlot);
+                                const baseClass = isOnline
+                                  ? 'border-emerald-500/40 bg-emerald-500/20'
+                                  : 'border-itson-blue/40 bg-itson-blue/20';
+
+                                return (
+                                  <div
+                                    key={`${getMateriaKey(materia)}-${getSessionKey(session)}`}
+                                    className={`rounded-lg border px-2 py-1 ${baseClass} ${!isFirstSlot ? 'border-t-0' : ''}`}
+                                  >
+                                    {isFirstSlot ? (
+                                      <>
+                                        <p className="text-[11px] font-semibold text-white">
+                                          {compactName(materia.nombre)}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] text-slate-300">
+                                          {session?.ubicacion || materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <div className="h-2" />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </td>
                         );
                       })}

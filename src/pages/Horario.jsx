@@ -68,12 +68,58 @@ function formatLastSync(lastSyncAt) {
   }).format(syncDate)}`;
 }
 
+function normDay(dayValue) {
+  return String(dayValue || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function getMateriaSessions(materia) {
+  const sessions = Array.isArray(materia?.sesiones) ? materia.sesiones : [];
+  const validSessions = sessions.filter(
+    (session) =>
+      session &&
+      Array.isArray(session.dias) &&
+      session.dias.length > 0 &&
+      typeof session.horaInicio === 'string' &&
+      typeof session.horaFin === 'string',
+  );
+
+  if (validSessions.length > 0) {
+    return validSessions;
+  }
+
+  if (Array.isArray(materia?.dias) && materia.dias.length > 0 && materia?.horaInicio && materia?.horaFin) {
+    return [
+      {
+        dias: materia.dias,
+        horaInicio: materia.horaInicio,
+        horaFin: materia.horaFin,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function sessionHasDay(session, day) {
+  if (!session || !Array.isArray(session.dias)) {
+    return false;
+  }
+
+  return session.dias.some((sessionDay) => normDay(sessionDay) === normDay(day));
+}
+
 function buildTimeSlots(materias) {
   const ranges = materias
-    .map((materia) => ({
-      start: toMinutes(materia.horaInicio),
-      end: toMinutes(materia.horaFin),
-    }))
+    .flatMap((materia) =>
+      getMateriaSessions(materia).map((session) => ({
+        start: toMinutes(session.horaInicio),
+        end: toMinutes(session.horaFin),
+      })),
+    )
     .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start);
 
   if (ranges.length === 0) {
@@ -99,26 +145,38 @@ function findMateriaForSlot(materias, day, slotHora) {
     return null;
   }
 
-  return (
-    materias.find((materia) => {
-      const start = toMinutes(materia.horaInicio);
-      const end = toMinutes(materia.horaFin);
+  for (const materia of materias) {
+    const sessions = getMateriaSessions(materia);
+
+    const matchedSession = sessions.find((session) => {
+      const start = toMinutes(session.horaInicio);
+      const end = toMinutes(session.horaFin);
 
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         return false;
       }
 
-      return Array.isArray(materia.dias) && materia.dias.includes(day) && start <= slotMinutes && end > slotMinutes;
-    }) || null
-  );
+      return sessionHasDay(session, day) && start <= slotMinutes && end > slotMinutes;
+    });
+
+    if (matchedSession) {
+      return { materia, session: matchedSession };
+    }
+  }
+
+  return null;
 }
 
 function getMateriaKey(materia) {
   return materia?.numeroClase || `${materia?.codigo || ''}-${materia?.seccion || ''}-${materia?.nombre || ''}`;
 }
 
-function isFirstSlotForMateria(materias, day, slotHora, materia) {
-  if (!materia || !day) {
+function getSessionKey(session) {
+  return `${session?.horaInicio || ''}-${session?.horaFin || ''}-${(session?.dias || []).map(normDay).join(',')}`;
+}
+
+function isFirstSlotForMateria(materias, day, slotHora, materiaSlot) {
+  if (!materiaSlot?.materia || !materiaSlot?.session || !day) {
     return false;
   }
 
@@ -139,7 +197,11 @@ function isFirstSlotForMateria(materias, day, slotHora, materia) {
     return true;
   }
 
-  return getMateriaKey(previousMateria) !== getMateriaKey(materia);
+  const isSameMateria =
+    getMateriaKey(previousMateria.materia) === getMateriaKey(materiaSlot.materia);
+  const isSameSession = getSessionKey(previousMateria.session) === getSessionKey(materiaSlot.session);
+
+  return !(isSameMateria && isSameSession);
 }
 
 function compactName(name) {
@@ -180,12 +242,26 @@ function Horario({
   const days = useMemo(() => {
     const providedDays = Array.isArray(horario?.diasConClases) ? horario.diasConClases : [];
     if (providedDays.length > 0) {
-      return providedDays;
+      const map = new Map();
+      providedDays.forEach((day) => {
+        const key = normDay(day);
+        if (!map.has(key)) {
+          map.set(key, day?.trim?.() || day);
+        }
+      });
+      return [...map.values()];
     }
 
-    const collected = new Set();
-    materias.forEach((materia) => (materia.dias || []).forEach((day) => collected.add(day)));
-    return [...collected];
+    const collected = new Map();
+    materias.forEach((materia) =>
+      (materia.dias || []).forEach((day) => {
+        const key = normDay(day);
+        if (!collected.has(key)) {
+          collected.set(key, day?.trim?.() || day);
+        }
+      }),
+    );
+    return [...collected.values()];
   }, [horario?.diasConClases, materias]);
   const slots = useMemo(() => buildTimeSlots(materias), [materias]);
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
@@ -375,8 +451,8 @@ function Horario({
                         {format12h(slot)}
                       </td>
                       {days.map((day) => {
-                        const materia = findMateriaForSlot(materias, day, slot);
-                        if (!materia) {
+                        const materiaSlot = findMateriaForSlot(materias, day, slot);
+                        if (!materiaSlot) {
                           return (
                             <td
                               key={`${day}-${slot}`}
@@ -385,8 +461,9 @@ function Horario({
                           );
                         }
 
+                        const { materia, session } = materiaSlot;
                         const isOnline = materia.modalidad === 'en_linea';
-                        const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materia);
+                        const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materiaSlot);
                         const baseClass = isOnline
                           ? 'border-emerald-500/40 bg-emerald-500/20'
                           : 'border-itson-blue/40 bg-itson-blue/20';
@@ -400,7 +477,7 @@ function Horario({
                               <>
                                 <p className="text-xs font-semibold text-white">{compactName(materia.nombre)}</p>
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
+                                  {session?.ubicacion || materia.ubicacion || (isOnline ? 'Remoto' : 'Sin ubicación')}
                                 </p>
                               </>
                             ) : null}

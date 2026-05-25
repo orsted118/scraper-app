@@ -370,6 +370,30 @@ function parseTimeRange(value) {
   };
 }
 
+function toMinutes(timeValue) {
+  if (!timeValue || typeof timeValue !== 'string') {
+    return null;
+  }
+
+  const [hours, minutes] = timeValue.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function minutesDiff(timeA, timeB) {
+  const a = toMinutes(timeA);
+  const b = toMinutes(timeB);
+
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.abs(a - b);
+}
+
 function extractCode(value) {
   const text = normalizeWhitespace(value);
 
@@ -1311,43 +1335,88 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
   });
 
   blocksByCode.forEach((blocks, key) => {
-    const hasPresencial = blocks.some((block) => !block.esEnLinea);
-    const selectedBlocks = hasPresencial
-      ? blocks.filter((block) => !block.esEnLinea)
-      : blocks;
+    blocks.forEach((row) => {
+      const rowDays = getFriendlyDayOrder(Array.isArray(row.dias) ? row.dias : []);
 
-    selectedBlocks.forEach((row) => {
       if (!byCode.has(key)) {
         byCode.set(key, {
           codigoRaw: row.codigoRaw,
           codigo: key,
           secciones: new Set(),
           componentes: new Set(),
-          dias: new Set(),
+          dias: new Set(rowDays),
           horaInicio: row.horaInicio,
           horaFin: row.horaFin,
           ubicacion: row.ubicacion,
           modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
+          sesiones: [
+            {
+              dias: rowDays,
+              horaInicio: row.horaInicio,
+              horaFin: row.horaFin,
+              modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
+              ubicacion: row.esEnLinea ? 'Remoto' : row.ubicacion,
+            },
+          ],
         });
       }
 
       const current = byCode.get(key);
       current.secciones.add(row.seccion);
       current.componentes.add(normalizeWhitespace(row.componente));
-      (row.dias || []).forEach((day) => current.dias.add(day));
-
-      if (row.horaInicio && (!current.horaInicio || row.horaInicio < current.horaInicio)) {
-        current.horaInicio = row.horaInicio;
-      }
-      if (row.horaFin && (!current.horaFin || row.horaFin > current.horaFin)) {
-        current.horaFin = row.horaFin;
-      }
+      rowDays.forEach((day) => current.dias.add(day));
 
       if (row.esEnLinea) {
         current.modalidad = 'en_linea';
       }
 
-      current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, current.modalidad);
+      current.ubicacion = pickBetterLocation(
+        current.ubicacion,
+        row.esEnLinea ? 'Remoto' : row.ubicacion,
+        current.modalidad,
+      );
+
+      const existingSession = (current.sesiones || []).find((session) => {
+        const startGap = minutesDiff(row.horaInicio, session.horaInicio);
+        const endGap = minutesDiff(row.horaFin, session.horaFin);
+        return startGap <= 120 && endGap <= 120;
+      });
+
+      if (!existingSession) {
+        current.sesiones.push({
+          dias: rowDays,
+          horaInicio: row.horaInicio,
+          horaFin: row.horaFin,
+          modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
+          ubicacion: row.esEnLinea ? 'Remoto' : row.ubicacion,
+        });
+        return;
+      }
+
+      const mergedDays = new Set([...(existingSession.dias || []), ...rowDays]);
+      existingSession.dias = DAY_ORDER.filter((day) => mergedDays.has(day));
+
+      const hasDifferentSchedule = minutesDiff(row.horaInicio, existingSession.horaInicio) > 120;
+
+      if (!hasDifferentSchedule) {
+        if (row.horaInicio && (!existingSession.horaInicio || row.horaInicio < existingSession.horaInicio)) {
+          existingSession.horaInicio = row.horaInicio;
+        }
+        if (row.horaFin && (!existingSession.horaFin || row.horaFin > existingSession.horaFin)) {
+          existingSession.horaFin = row.horaFin;
+        }
+      }
+
+      if (row.esEnLinea) {
+        existingSession.modalidad = 'en_linea';
+        existingSession.ubicacion = 'Remoto';
+      } else {
+        existingSession.ubicacion = pickBetterLocation(
+          existingSession.ubicacion,
+          row.ubicacion,
+          existingSession.modalidad || 'presencial',
+        );
+      }
     });
   });
 
@@ -1376,17 +1445,70 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       matches.find((entry) => normalizeWhitespace(entry.instructor || ''))?.instructor ||
       main.instructor ||
       '';
-    const modalidad = item.modalidad === 'en_linea' ? 'en_linea' : inferModalidad(`${item.ubicacion} ${fallbackName}`);
+
+    const sessions = (Array.isArray(item.sesiones) ? item.sesiones : [])
+      .map((session) => {
+        const normalizedDays = DAY_ORDER.filter((day) =>
+          new Set(getFriendlyDayOrder(session.dias || [])).has(day),
+        );
+        if (!session.horaInicio || !session.horaFin || session.horaFin <= session.horaInicio) {
+          return null;
+        }
+        const sessionModalidad =
+          session.modalidad === 'en_linea'
+            ? 'en_linea'
+            : inferModalidad(`${session.ubicacion || ''} ${fallbackName}`);
+
+        return {
+          dias: normalizedDays,
+          horaInicio: session.horaInicio,
+          horaFin: session.horaFin,
+          modalidad: sessionModalidad,
+          ubicacion:
+            sessionModalidad === 'en_linea'
+              ? 'Remoto'
+              : pickBetterLocation('', session.ubicacion || '', sessionModalidad),
+        };
+      })
+      .filter((session) => session && session.dias.length > 0);
+
+    const firstSession =
+      sessions[0] ||
+      (item.horaInicio && item.horaFin
+        ? {
+            dias: getFriendlyDayOrder([...item.dias]),
+            horaInicio: item.horaInicio,
+            horaFin: item.horaFin,
+            modalidad: item.modalidad === 'en_linea' ? 'en_linea' : 'presencial',
+            ubicacion: item.modalidad === 'en_linea' ? 'Remoto' : item.ubicacion,
+          }
+        : null);
+
+    const modalidad =
+      sessions.some((session) => session.modalidad === 'en_linea') ||
+      item.modalidad === 'en_linea'
+        ? 'en_linea'
+        : inferModalidad(`${item.ubicacion} ${fallbackName}`);
     const ubicacion =
       modalidad === 'en_linea'
         ? 'Remoto'
         : pickBetterLocation(main.ubicacion || '', item.ubicacion || '', modalidad);
     const daysSet = new Set(item.dias);
-    if (modalidad === 'en_linea') {
-      matches.forEach((entry) => {
-        (entry.dias || []).forEach((day) => daysSet.add(day));
-      });
-    }
+    sessions.forEach((session) => (session.dias || []).forEach((day) => daysSet.add(day)));
+    matches.forEach((entry) => {
+      (entry.dias || []).forEach((day) => daysSet.add(day));
+    });
+
+    const normalizedSessions = (firstSession ? [firstSession, ...sessions.slice(1)] : sessions).map(
+      (session) => ({
+        ...session,
+        modalidad: session.modalidad || modalidad,
+        ubicacion:
+          (session.modalidad || modalidad) === 'en_linea'
+            ? 'Remoto'
+            : pickBetterLocation('', session.ubicacion || ubicacion, session.modalidad || modalidad),
+      }),
+    );
 
     return {
       codigo: item.codigo,
@@ -1394,11 +1516,12 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       seccion: main.seccion || [...item.secciones][0] || '',
       numeroClase: main.numeroClase || '',
       dias: DAY_ORDER.filter((day) => daysSet.has(day)),
-      horaInicio: item.horaInicio,
-      horaFin: item.horaFin,
+      horaInicio: firstSession?.horaInicio || item.horaInicio,
+      horaFin: firstSession?.horaFin || item.horaFin,
       modalidad,
       ubicacion,
       instructor: normalizeWhitespace(mainInstructor),
+      sesiones: normalizedSessions,
       meetLink: null,
       linkManual: false,
     };
@@ -1407,27 +1530,6 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
   const mergedByCode = new Map(
     merged.map((entry) => [normalizeWeeklyCode(entry.codigo), entry]),
   );
-
-  const knownOnlineCodes = new Set(['1123C', '1178M', '1115C']);
-  for (const code of knownOnlineCodes) {
-    const entry = mergedByCode.get(code);
-    if (!entry) continue;
-    entry.modalidad = 'en_linea';
-    entry.ubicacion = 'Remoto';
-  }
-
-  const dayOverrides = new Map([
-    ['1123C', ['Martes', 'Jueves']],
-    ['1124C', ['Martes', 'Jueves']],
-    ['1132T', ['Lunes']],
-    ['1178M', ['Lunes', 'Miércoles', 'Jueves']],
-    ['1115C', ['Martes', 'Jueves']],
-  ]);
-  for (const [code, days] of dayOverrides.entries()) {
-    const entry = mergedByCode.get(code);
-    if (!entry) continue;
-    entry.dias = DAY_ORDER.filter((day) => days.includes(day));
-  }
 
   identifiers.forEach((entry) => {
     const key = normalizeWeeklyCode(entry.codigo || '');
@@ -1452,6 +1554,15 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       modalidad,
       ubicacion,
       instructor: normalizeWhitespace(entry.instructor || ''),
+      sesiones: [
+        {
+          dias: DAY_ORDER.filter((day) => new Set(entry.dias || []).has(day)),
+          horaInicio: entry.horaInicio,
+          horaFin: entry.horaFin,
+          modalidad,
+          ubicacion,
+        },
+      ],
       meetLink: null,
       linkManual: false,
     });

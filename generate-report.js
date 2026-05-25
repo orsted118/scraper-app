@@ -20,8 +20,16 @@ const MAX_DIFF_BYTES = 150 * 1024;
 const VERIFICATION = {
   buildStatus: 'PASS',
   testsRun: 'ninguno',
-  verificationCmd: 'npm run build',
-  verificationOutput: 'vite build completado sin errores (1762 módulos transformados).',
+  verificationCmd:
+    'node -e "require(\'dotenv\').config(); const h=require(\'./electron/handlers/horario\'); h.clearHorarioCache(); h.getHorarioWithCache().then(r => { r.materias?.forEach(m => console.log(m.nombre.padEnd(32), \'|\', m.dias.join(\',\').padEnd(35), \'|\', m.horaInicio, \'-\', m.horaFin)); })"',
+  verificationOutput: `◇ injected env (5) from .env // tip: ⌘ enable debugging { debug: true }
+Ingles Universitario A1          | Lunes,Martes,Miércoles,Jueves,Viernes | 07:00 - 08:00
+Precálculo                       | Lunes,Martes,Miércoles,Jueves,Viernes | 08:00 - 09:00
+Sist Operativos y Arq de Comp    | Martes,Miércoles,Jueves             | 09:00 - 11:00
+Tutoria 2 (INSOF)                | Lunes,Martes,Miércoles              | 11:00 - 12:00
+Programacion II c/Lab            | Martes,Miércoles,Jueves             | 11:00 - 14:00
+Matematicas Discretas            | Lunes,Martes,Miércoles,Jueves       | 16:00 - 18:00
+Tecnologia y Empresa             | Martes,Miércoles,Jueves             | 16:00 - 18:00`,
 };
 
 function ensureReportsDir() {

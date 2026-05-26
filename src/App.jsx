@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
@@ -30,6 +30,9 @@ const pageRegistry = {
   },
 };
 
+const ACTIVITIES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 function App() {
   const [activePage, setActivePage] = useState('activities');
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -40,6 +43,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [loadingHorario, setLoadingHorario] = useState(false);
   const [loadingCIA, setLoadingCIA] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncingModules, setSyncingModules] = useState([]);
   const [error, setError] = useState('');
   const [errorHorario, setErrorHorario] = useState('');
   const [errorCIA, setErrorCIA] = useState('');
@@ -54,10 +59,26 @@ function App() {
   const [ciaCargado, setCiaCargado] = useState(false);
   const [studentName, setStudentName] = useState('');
 
+  const initializedRef = useRef(false);
+  const nearExpiryRefreshLaunchedRef = useRef(false);
+
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
 
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
+
+  const addSyncingModule = (moduleId) => {
+    setSyncingModules((previous) => {
+      if (previous.includes(moduleId)) {
+        return previous;
+      }
+      return [...previous, moduleId];
+    });
+  };
+
+  const removeSyncingModule = (moduleId) => {
+    setSyncingModules((previous) => previous.filter((item) => item !== moduleId));
+  };
 
   const formatStudentDisplayName = (value = '') => {
     const normalized = String(value || '').trim();
@@ -78,7 +99,8 @@ function App() {
       NO_CREDENTIALS: 'No has configurado tus credenciales de iVirtual. Ve a Ajustes para hacerlo.',
       NO_USER: 'Falta tu ID de usuario en la configuración. Ve a Ajustes.',
       NO_PASSWORD: 'Falta tu contraseña en la configuración. Ve a Ajustes.',
-      SESSION_EXPIRED: 'Tu sesión de iVirtual expiró o las credenciales son incorrectas. Ve a Ajustes y verifica tu contraseña.',
+      SESSION_EXPIRED:
+        'Tu sesión de iVirtual expiró o las credenciales son incorrectas. Ve a Ajustes y verifica tu contraseña.',
       NO_INTERNET: 'Sin conexión a internet. Verifica tu red e intenta de nuevo.',
       CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
       CIA_NO_USER: 'Falta tu usuario del CIA en la configuración. Ve a Ajustes.',
@@ -124,6 +146,8 @@ function App() {
       setActividadesCargado(false);
       setHorarioCargado(false);
       setCiaCargado(false);
+      initializedRef.current = false;
+      nearExpiryRefreshLaunchedRef.current = false;
     } catch (_error) {
       setStudentName('');
       setShowOnboarding(false);
@@ -132,18 +156,25 @@ function App() {
     }
   };
 
-  const loadActivities = async ({ clearCacheFirst = false } = {}) => {
-    setLoading(true);
-    setError('');
-    setErrorCode('');
-    setProgress({ current: 0, total: 0, curso: '' });
+  const loadActivities = async ({ clearCacheFirst = false, silent = false } = {}) => {
     let response;
+
+    if (silent) {
+      addSyncingModule('activities');
+    } else {
+      setLoading(true);
+      setError('');
+      setErrorCode('');
+      setProgress({ current: 0, total: 0, curso: '' });
+    }
 
     try {
       if (!api) {
-        setError('ScraperApp debe ejecutarse dentro de Electron.');
-        setErrorCode('');
-        setActivities([]);
+        if (!silent) {
+          setError('ScraperApp debe ejecutarse dentro de Electron.');
+          setErrorCode('');
+          setActivities([]);
+        }
         return;
       }
 
@@ -151,9 +182,11 @@ function App() {
         const cacheResult = await api.clearCache();
 
         if (cacheResult?.success === false) {
-          setError(cacheResult.error || 'No fue posible limpiar el caché local.');
-          setErrorCode(cacheResult.error || '');
-          setActivities([]);
+          if (!silent) {
+            setError(cacheResult.error || 'No fue posible limpiar el caché local.');
+            setErrorCode(cacheResult.error || '');
+            setActivities([]);
+          }
           return;
         }
       }
@@ -161,14 +194,21 @@ function App() {
       response = await api.runScraper();
 
       if (response?.error) {
-        setErrorCode(response.error);
-        setError(getFriendlyIVirtualError(response.error));
-        setActivities([]);
+        if (!silent) {
+          setErrorCode(response.error);
+          setError(getFriendlyIVirtualError(response.error));
+          if (!activities.length) {
+            setActivities([]);
+          }
+        }
         return;
       }
 
       const activitiesList = Array.isArray(response?.activities) ? response.activities : [];
       setActivities(activitiesList);
+      setError('');
+      setErrorCode('');
+
       if (!studentName) {
         const inferredName =
           activitiesList.find(
@@ -184,32 +224,69 @@ function App() {
           setStudentName(formatStudentDisplayName(candidate));
         }
       }
-      setLastSyncAt(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+
+      if (response?.timestamp) {
+        setLastSyncAt(new Date(response.timestamp).toISOString());
+      }
+
       if (activitiesList.length > 0 && typeof api.checkNotifications === 'function') {
         await api.checkNotifications(activitiesList);
       }
-      setProgress({ current: 0, total: 0, curso: '' });
+
+      if (
+        response?.fromCache &&
+        response?.timestamp &&
+        !clearCacheFirst &&
+        !nearExpiryRefreshLaunchedRef.current
+      ) {
+        const ageMs = Date.now() - response.timestamp;
+        const remainingMs = ACTIVITIES_CACHE_TTL_MS - ageMs;
+
+        if (remainingMs > 0 && remainingMs <= ONE_HOUR_MS) {
+          nearExpiryRefreshLaunchedRef.current = true;
+          loadActivities({ clearCacheFirst: true, silent: true });
+        }
+      }
+
+      if (!response?.fromCache) {
+        nearExpiryRefreshLaunchedRef.current = false;
+      }
     } catch (_error) {
       const rawError = response?.error || _error?.message || 'Error desconocido.';
-      setErrorCode(rawError);
-      setError(getFriendlyIVirtualError(rawError));
-      setActivities([]);
+      if (!silent) {
+        setErrorCode(rawError);
+        setError(getFriendlyIVirtualError(rawError));
+        if (!activities.length) {
+          setActivities([]);
+        }
+      }
     } finally {
-      setLoading(false);
+      if (silent) {
+        removeSyncingModule('activities');
+      } else {
+        setLoading(false);
+      }
     }
   };
 
-  const loadCalificaciones = async ({ clearCacheFirst = false } = {}) => {
-    setLoadingCIA(true);
-    setErrorCIA('');
-    setErrorCIACode('');
+  const loadCalificaciones = async ({ clearCacheFirst = false, silent = false } = {}) => {
     let response;
+
+    if (silent) {
+      addSyncingModule('calificaciones');
+    } else {
+      setLoadingCIA(true);
+      setErrorCIA('');
+      setErrorCIACode('');
+    }
 
     try {
       if (!api) {
-        setErrorCIA('ScraperApp debe ejecutarse dentro de Electron.');
-        setErrorCIACode('');
-        setCalificaciones([]);
+        if (!silent) {
+          setErrorCIA('ScraperApp debe ejecutarse dentro de Electron.');
+          setErrorCIACode('');
+          setCalificaciones([]);
+        }
         return;
       }
 
@@ -217,9 +294,11 @@ function App() {
         const cacheResult = await api.clearCIACache();
 
         if (cacheResult?.success === false) {
-          setErrorCIA(cacheResult.error || 'No fue posible limpiar el caché local del CIA.');
-          setErrorCIACode(cacheResult.error || '');
-          setCalificaciones([]);
+          if (!silent) {
+            setErrorCIA(cacheResult.error || 'No fue posible limpiar el caché local del CIA.');
+            setErrorCIACode(cacheResult.error || '');
+            setCalificaciones([]);
+          }
           return;
         }
       }
@@ -227,34 +306,57 @@ function App() {
       response = await api.runCIA();
 
       if (response?.error) {
-        setErrorCIACode(response.error);
-        setErrorCIA(getFriendlyIVirtualError(response.error));
-        setCalificaciones([]);
+        if (!silent) {
+          setErrorCIACode(response.error);
+          setErrorCIA(getFriendlyIVirtualError(response.error));
+          if (!calificaciones.length) {
+            setCalificaciones([]);
+          }
+        }
         return;
       }
 
       const materiasList = Array.isArray(response?.materias) ? response.materias : [];
       setCalificaciones(materiasList);
-      setLastSyncCIA(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+      setErrorCIA('');
+      setErrorCIACode('');
+      if (response?.timestamp) {
+        setLastSyncCIA(new Date(response.timestamp).toISOString());
+      }
     } catch (_error) {
       const rawError = response?.error || _error?.message || 'Error desconocido.';
-      setErrorCIACode(rawError);
-      setErrorCIA(getFriendlyIVirtualError(rawError));
-      setCalificaciones([]);
+      if (!silent) {
+        setErrorCIACode(rawError);
+        setErrorCIA(getFriendlyIVirtualError(rawError));
+        if (!calificaciones.length) {
+          setCalificaciones([]);
+        }
+      }
     } finally {
-      setLoadingCIA(false);
+      if (silent) {
+        removeSyncingModule('calificaciones');
+      } else {
+        setLoadingCIA(false);
+      }
     }
   };
 
-  const loadHorario = async ({ clearCacheFirst = false } = {}) => {
-    setLoadingHorario(true);
-    setErrorHorario('');
+  const loadHorario = async ({ clearCacheFirst = false, silent = false } = {}) => {
     let response;
+
+    if (silent) {
+      addSyncingModule('horario');
+    } else {
+      setLoadingHorario(true);
+      setErrorHorario('');
+    }
 
     try {
       if (!api) {
-        setErrorHorario('ScraperApp debe ejecutarse dentro de Electron.');
-        setHorario({ materias: [], diasConClases: [] });
+        if (!silent) {
+          setErrorHorario('ScraperApp debe ejecutarse dentro de Electron.');
+          setHorario({ materias: [], diasConClases: [] });
+        }
         return;
       }
 
@@ -262,8 +364,12 @@ function App() {
         const cacheResult = await api.clearHorarioCache();
 
         if (cacheResult?.success === false) {
-          setErrorHorario(cacheResult.error || 'No fue posible limpiar el caché local del horario.');
-          setHorario({ materias: [], diasConClases: [] });
+          if (!silent) {
+            setErrorHorario(
+              cacheResult.error || 'No fue posible limpiar el caché local del horario.',
+            );
+            setHorario({ materias: [], diasConClases: [] });
+          }
           return;
         }
       }
@@ -271,8 +377,12 @@ function App() {
       response = await api.runHorario();
 
       if (response?.error) {
-        setErrorHorario(getFriendlyIVirtualError(response.error));
-        setHorario({ materias: [], diasConClases: [] });
+        if (!silent) {
+          setErrorHorario(getFriendlyIVirtualError(response.error));
+          if (!horario?.materias?.length) {
+            setHorario({ materias: [], diasConClases: [] });
+          }
+        }
         return;
       }
 
@@ -280,13 +390,72 @@ function App() {
         materias: Array.isArray(response?.materias) ? response.materias : [],
         diasConClases: Array.isArray(response?.diasConClases) ? response.diasConClases : [],
       });
-      setLastSyncHorario(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
+      setErrorHorario('');
+      if (response?.timestamp) {
+        setLastSyncHorario(new Date(response.timestamp).toISOString());
+      }
     } catch (_error) {
       const rawError = response?.error || _error?.message || 'Error desconocido.';
-      setErrorHorario(getFriendlyIVirtualError(rawError));
-      setHorario({ materias: [], diasConClases: [] });
+      if (!silent) {
+        setErrorHorario(getFriendlyIVirtualError(rawError));
+        if (!horario?.materias?.length) {
+          setHorario({ materias: [], diasConClases: [] });
+        }
+      }
     } finally {
-      setLoadingHorario(false);
+      if (silent) {
+        removeSyncingModule('horario');
+      } else {
+        setLoadingHorario(false);
+      }
+    }
+  };
+
+  const handleSyncAll = async () => {
+    if (!api?.syncAll) {
+      return;
+    }
+
+    setSyncingAll(true);
+    addSyncingModule('activities');
+    addSyncingModule('horario');
+    addSyncingModule('calificaciones');
+
+    try {
+      const result = await api.syncAll();
+
+      if (result?.actividades?.activities) {
+        setActivities(result.actividades.activities);
+        if (result.actividades?.timestamp) {
+          setLastSyncAt(new Date(result.actividades.timestamp).toISOString());
+        }
+      }
+
+      if (result?.horario?.materias) {
+        setHorario({
+          materias: Array.isArray(result.horario.materias) ? result.horario.materias : [],
+          diasConClases: Array.isArray(result.horario.diasConClases)
+            ? result.horario.diasConClases
+            : [],
+        });
+        if (result.horario?.timestamp) {
+          setLastSyncHorario(new Date(result.horario.timestamp).toISOString());
+        }
+      }
+
+      if (result?.calificaciones?.materias) {
+        setCalificaciones(result.calificaciones.materias);
+        if (result.calificaciones?.timestamp) {
+          setLastSyncCIA(new Date(result.calificaciones.timestamp).toISOString());
+        }
+      }
+    } catch (_error) {
+      // Fallo silencioso: cada módulo maneja sus errores individualmente.
+    } finally {
+      removeSyncingModule('activities');
+      removeSyncingModule('horario');
+      removeSyncingModule('calificaciones');
+      setSyncingAll(false);
     }
   };
 
@@ -295,31 +464,50 @@ function App() {
   }, [api]);
 
   useEffect(() => {
-    if (
-      settingsReady &&
-      !showOnboarding &&
-      activePage === 'activities' &&
-      !actividadesCargado &&
-      !loading
-    ) {
+    if (!settingsReady || showOnboarding || !api || initializedRef.current) {
+      return undefined;
+    }
+
+    initializedRef.current = true;
+
+    if (!actividadesCargado) {
       setActividadesCargado(true);
-      loadActivities();
+      loadActivities({ silent: true });
     }
-  }, [activePage, actividadesCargado, loading, settingsReady, showOnboarding]);
+
+    const horarioTimeout = setTimeout(() => {
+      if (!horarioCargado) {
+        setHorarioCargado(true);
+        loadHorario({ silent: true });
+      }
+    }, 2000);
+
+    const ciaTimeout = setTimeout(() => {
+      if (!ciaCargado) {
+        setCiaCargado(true);
+        loadCalificaciones({ silent: true });
+      }
+    }, 4000);
+
+    return () => {
+      clearTimeout(horarioTimeout);
+      clearTimeout(ciaTimeout);
+    };
+  }, [settingsReady, showOnboarding, api, actividadesCargado, horarioCargado, ciaCargado]);
 
   useEffect(() => {
-    if (activePage === 'horario' && !horarioCargado && !loadingHorario) {
+    if (activePage === 'horario' && !horarioCargado) {
       setHorarioCargado(true);
-      loadHorario();
+      loadHorario({ silent: true });
     }
-  }, [activePage, horarioCargado, loadingHorario]);
+  }, [activePage, horarioCargado]);
 
   useEffect(() => {
-    if (activePage === 'calificaciones' && !ciaCargado && !loadingCIA) {
+    if (activePage === 'calificaciones' && !ciaCargado) {
       setCiaCargado(true);
-      loadCalificaciones();
+      loadCalificaciones({ silent: true });
     }
-  }, [activePage, ciaCargado, loadingCIA]);
+  }, [activePage, ciaCargado]);
 
   useEffect(() => {
     if (!api) return;
@@ -335,20 +523,29 @@ function App() {
     return () => {
       api.removeProgress();
     };
-  }, []);
+  }, [api]);
 
   const handleSyncActivities = () => loadActivities({ clearCacheFirst: true });
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
-        <Sidebar activePage={activePage} onNavigate={handleNavigate} userName={studentName} />
+        <Sidebar
+          activePage={activePage}
+          onNavigate={handleNavigate}
+          onSyncAll={handleSyncAll}
+          syncingAll={syncingAll}
+          syncingModules={syncingModules}
+          userName={studentName}
+        />
         {!settingsReady ? (
           <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
             <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
               <div className="rounded-3xl border border-slate-800 bg-slate-950/70 px-8 py-10 text-center">
                 <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Workspace</p>
-                <p className="mt-3 text-lg font-semibold text-white">Cargando configuración inicial...</p>
+                <p className="mt-3 text-lg font-semibold text-white">
+                  Cargando configuración inicial...
+                </p>
                 <p className="mt-2 text-sm text-slate-400">
                   Verificando credenciales locales antes de mostrar el contenido.
                 </p>
@@ -378,7 +575,9 @@ function App() {
               loading={loading}
               onSettingsSaved={refreshSettings}
               onSync={handleSyncActivities}
-              onSyncHorario={({ clearCacheFirst = false } = {}) => loadHorario({ clearCacheFirst })}
+              onSyncHorario={({ clearCacheFirst = false } = {}) =>
+                loadHorario({ clearCacheFirst })
+              }
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
               onNavigate={handleNavigate}
               progress={progress}

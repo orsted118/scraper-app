@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
-const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 const DASHBOARD_NAVIGATION_TIMEOUT_MS = 45_000;
 const COURSE_NAVIGATION_TIMEOUT_MS = 30_000;

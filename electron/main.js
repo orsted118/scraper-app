@@ -56,6 +56,35 @@ app.whenReady().then(() => {
       await shell.openExternal(url);
     }
   });
+  ipcMain.removeHandler('sync:all');
+  ipcMain.handle('sync:all', async () => {
+    const { getActivitiesWithCache, clearActivitiesCache } = require('./handlers/scraper');
+    const { getHorarioWithCache, clearHorarioCache } = require('./handlers/horario');
+    const { getCalificacionesWithCache, clearCIACache } = require('./handlers/cia');
+
+    clearActivitiesCache();
+    clearHorarioCache();
+    clearCIACache();
+
+    const [actividades, horario, calificaciones] = await Promise.allSettled([
+      getActivitiesWithCache(),
+      getHorarioWithCache(),
+      getCalificacionesWithCache(),
+    ]);
+
+    return {
+      actividades:
+        actividades.status === 'fulfilled'
+          ? actividades.value
+          : { error: actividades.reason?.message },
+      horario:
+        horario.status === 'fulfilled' ? horario.value : { error: horario.reason?.message },
+      calificaciones:
+        calificaciones.status === 'fulfilled'
+          ? calificaciones.value
+          : { error: calificaciones.reason?.message },
+    };
+  });
   createMainWindow();
 
   app.on('activate', () => {

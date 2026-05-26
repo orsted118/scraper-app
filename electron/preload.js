@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('scraperApp', {
   inspectFile: (payload) => ipcRenderer.invoke('files:inspect', payload),
   parseFile: (payload) => ipcRenderer.invoke('files:parse', payload),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  syncAll: () => ipcRenderer.invoke('sync:all'),
 });

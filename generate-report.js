@@ -33,7 +33,7 @@ dist/index.html                        0.41 kB | gzip: 0.28 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
 dist/assets/index-DT2ZME8U.css        22.80 kB | gzip: 5.18 kB
 dist/assets/index-D19o6-wJ.js        215.87 kB | gzip: 63.41 kB
-✓ built in 4.78s
+✓ built in 6.89s
 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
 };
 

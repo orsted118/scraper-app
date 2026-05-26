@@ -68,6 +68,8 @@ function App() {
       CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
       CIA_NO_USER: 'Falta tu usuario del CIA en la configuración. Ve a Ajustes.',
       CIA_NO_PASSWORD: 'Falta tu contraseña del CIA en la configuración. Ve a Ajustes.',
+      CIA_SCHEDULE_UNAVAILABLE:
+        'El CIA reporta que tu horario no está disponible en este momento. Intenta más tarde o valida acceso directamente en el portal.',
     };
 
     if (errorMap[message]) {

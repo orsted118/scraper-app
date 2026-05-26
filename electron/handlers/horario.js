@@ -707,6 +707,30 @@ async function frameHasAnyText(frame, patterns) {
   );
 }
 
+async function readFrameBodyText(frame) {
+  const text = await frame
+    .locator('body')
+    .textContent()
+    .catch(() => '');
+
+  return normalizeWhitespace(text);
+}
+
+function isScheduleAccessBlockedText(value = '') {
+  const normalized = normalizeForCompare(value);
+
+  return (
+    normalized.includes('no tiene acceso al horario de clases en este momento') ||
+    normalized.includes('no tiene acceso al horario de clases') ||
+    normalized.includes('no access to class schedule')
+  );
+}
+
+async function isScheduleAccessBlocked(frame) {
+  const bodyText = await readFrameBodyText(frame);
+  return isScheduleAccessBlockedText(bodyText);
+}
+
 async function clickFirstLinkInFrame(frame, patterns) {
   const links = await frame
     .locator('a')
@@ -1180,9 +1204,7 @@ function deriveDaysFromSessions(materia) {
 }
 
 async function collectWeeklySchedule(scheduleFrame, identifiers) {
-  if (!Array.isArray(identifiers) || identifiers.length === 0) {
-    return [];
-  }
+  const normalizedIdentifiers = Array.isArray(identifiers) ? identifiers : [];
 
   await switchScheduleView(scheduleFrame, [
     /vista horario semanal/i,
@@ -1333,7 +1355,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     .catch(() => []);
 
   if (!Array.isArray(rawRows) || rawRows.length === 0) {
-    return identifiers;
+    return normalizedIdentifiers;
   }
 
   const byCode = new Map();
@@ -1434,7 +1456,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
   });
 
   const identifierByCode = new Map();
-  identifiers.forEach((item) => {
+  normalizedIdentifiers.forEach((item) => {
     const key = normalizeWeeklyCode(item.codigo || '');
     if (!key) return;
     if (!identifierByCode.has(key)) {
@@ -1544,7 +1566,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     merged.map((entry) => [normalizeWeeklyCode(entry.codigo), entry]),
   );
 
-  identifiers.forEach((entry) => {
+  normalizedIdentifiers.forEach((entry) => {
     const key = normalizeWeeklyCode(entry.codigo || '');
     if (!key || mergedByCode.has(key)) {
       return;
@@ -2441,8 +2463,17 @@ async function scrapeHorario() {
         throw error;
       }
     }
+
+    if (await isScheduleAccessBlocked(scheduleFrame)) {
+      return buildHorarioError('CIA_SCHEDULE_UNAVAILABLE');
+    }
+
     const identifiers = await collectIdentifiersFromListView(scheduleFrame);
     let materias = await collectWeeklySchedule(scheduleFrame, identifiers);
+
+    if (materias.length === 0 && (await isScheduleAccessBlocked(scheduleFrame))) {
+      return buildHorarioError('CIA_SCHEDULE_UNAVAILABLE');
+    }
 
     materias = materias.map((materia) => ({
       ...materia,

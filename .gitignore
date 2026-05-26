@@ -3,3 +3,5 @@ dist/
 .env
 release/
 .local-data/
+
+src/design-backups/

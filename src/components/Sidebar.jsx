@@ -8,7 +8,26 @@ const navigationItems = [
   { id: 'settings', label: 'Ajustes', icon: FolderCog },
 ];
 
-function Sidebar({ activePage, onNavigate }) {
+function getCurrentSemesterLabel() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  if (month >= 1 && month <= 5) {
+    return `Enero - Mayo ${year}`;
+  }
+
+  if (month >= 8 && month <= 12) {
+    return `Agosto - Diciembre ${year}`;
+  }
+
+  return `Verano ${year}`;
+}
+
+function Sidebar({ activePage, onNavigate, userName }) {
+  const displayName = userName?.trim() || 'Estudiante ITSON';
+  const semesterLabel = getCurrentSemesterLabel();
+
   return (
     <aside className="w-64 rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
       <div className="mb-8">
@@ -19,10 +38,8 @@ function Sidebar({ activePage, onNavigate }) {
             className="h-8 w-auto object-contain mix-blend-screen opacity-90"
           />
         </div>
-        <p className="mt-3 text-xs text-itson-gray">iVirtual Academic Tracker</p>
-        <p className="mt-3 text-sm text-slate-400">
-          Consola enfocada en extraer actividades, fechas límite y adjuntos del portal académico.
-        </p>
+        <p className="mt-4 text-sm font-semibold text-white">{displayName}</p>
+        <p className="mt-1 text-xs text-slate-400">{semesterLabel}</p>
       </div>
 
       <nav className="space-y-2">
@@ -45,9 +62,11 @@ function Sidebar({ activePage, onNavigate }) {
                 <Icon className="h-4 w-4" />
                 {item.label}
               </span>
-              <span className="text-xs uppercase tracking-[0.25em]">
-                {isActive ? 'Live' : 'Idle'}
-              </span>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  isActive ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'
+                }`}
+              />
             </button>
           );
         })}

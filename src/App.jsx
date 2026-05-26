@@ -52,11 +52,26 @@ function App() {
   const [actividadesCargado, setActividadesCargado] = useState(false);
   const [horarioCargado, setHorarioCargado] = useState(false);
   const [ciaCargado, setCiaCargado] = useState(false);
+  const [studentName, setStudentName] = useState('');
 
   const pageConfig = pageRegistry[activePage];
   const ActivePage = pageConfig.component;
 
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
+
+  const formatStudentDisplayName = (value = '') => {
+    const normalized = String(value || '').trim();
+
+    if (!normalized) {
+      return '';
+    }
+
+    if (/^\d+$/.test(normalized)) {
+      return `ID ${normalized}`;
+    }
+
+    return normalized;
+  };
 
   const getFriendlyIVirtualError = (message = '') => {
     const errorMap = {
@@ -103,11 +118,14 @@ function App() {
       const settings = await api.getSettings();
       const hasUser = Boolean(settings?.user?.trim());
       const hasPassword = Boolean(settings?.hasPassword);
+      const preferredIdentity = settings?.ciaUser?.trim() || settings?.user?.trim() || '';
+      setStudentName(formatStudentDisplayName(preferredIdentity));
       setShowOnboarding(!(hasUser || hasPassword));
       setActividadesCargado(false);
       setHorarioCargado(false);
       setCiaCargado(false);
     } catch (_error) {
+      setStudentName('');
       setShowOnboarding(false);
     } finally {
       setSettingsReady(true);
@@ -151,6 +169,21 @@ function App() {
 
       const activitiesList = Array.isArray(response?.activities) ? response.activities : [];
       setActivities(activitiesList);
+      if (!studentName) {
+        const inferredName =
+          activitiesList.find(
+            (item) => item?.nombreAlumno || item?.alumno || item?.estudiante || item?.userName,
+          ) || {};
+        const candidate =
+          inferredName?.nombreAlumno ||
+          inferredName?.alumno ||
+          inferredName?.estudiante ||
+          inferredName?.userName ||
+          '';
+        if (candidate) {
+          setStudentName(formatStudentDisplayName(candidate));
+        }
+      }
       setLastSyncAt(response?.timestamp ? new Date(response.timestamp).toISOString() : '');
       if (activitiesList.length > 0 && typeof api.checkNotifications === 'function') {
         await api.checkNotifications(activitiesList);
@@ -309,7 +342,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
-        <Sidebar activePage={activePage} onNavigate={handleNavigate} />
+        <Sidebar activePage={activePage} onNavigate={handleNavigate} userName={studentName} />
         {!settingsReady ? (
           <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
             <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">

@@ -1,5 +1,5 @@
 import logoItson from '../assets/logo-itson.png';
-import { Calendar, FolderCog, GraduationCap, ListChecks } from 'lucide-react';
+import { Calendar, FolderCog, GraduationCap, ListChecks, RefreshCw } from 'lucide-react';
 
 const navigationItems = [
   { id: 'activities', label: 'Actividades', icon: ListChecks },
@@ -24,12 +24,32 @@ function getCurrentSemesterLabel() {
   return `Verano ${year}`;
 }
 
-function Sidebar({ activePage, onNavigate, userName }) {
+function Sidebar({
+  activePage,
+  onNavigate,
+  onSyncAll,
+  syncingAll = false,
+  syncingModules = [],
+  userName,
+}) {
   const displayName = userName?.trim() || 'Estudiante ITSON';
   const semesterLabel = getCurrentSemesterLabel();
+  const syncingSet = new Set(Array.isArray(syncingModules) ? syncingModules : []);
+
+  const getStatusDot = (moduleId) => {
+    if (syncingSet.has(moduleId)) {
+      return 'animate-pulse bg-itson-blue';
+    }
+
+    if (activePage === moduleId) {
+      return 'animate-pulse bg-emerald-400';
+    }
+
+    return 'bg-slate-600';
+  };
 
   return (
-    <aside className="w-64 rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
+    <aside className="flex w-64 flex-col rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <img
@@ -63,14 +83,22 @@ function Sidebar({ activePage, onNavigate, userName }) {
                 {item.label}
               </span>
               <span
-                className={`h-2 w-2 rounded-full ${
-                  isActive ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'
-                }`}
+                className={`h-2 w-2 rounded-full ${getStatusDot(item.id)}`}
               />
             </button>
           );
         })}
       </nav>
+
+      <button
+        type="button"
+        onClick={() => onSyncAll?.()}
+        disabled={syncingAll}
+        className="mt-auto flex w-full items-center gap-2 rounded-2xl border border-slate-700 px-3 py-2.5 text-xs text-slate-400 transition hover:border-itson-blue hover:text-itson-blue disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${syncingAll ? 'animate-spin' : ''}`} />
+        {syncingAll ? 'Sincronizando...' : 'Sincronizar todo'}
+      </button>
     </aside>
   );
 }

@@ -6,7 +6,7 @@ const pdfjsLib = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const REPORT_MANAGER_URL = 'http://smartweb3.itson.edu.mx:9500/psp/ITSONPRD_1/EMPLOYEE/PSFT_HR/c/REPORT_MANAGER.CONTENT_LIST.GBL?Page=CDM_CONTLIST&Action=U&';
-const CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 
 function normalizeWhitespace(value) {

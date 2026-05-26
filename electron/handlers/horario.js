@@ -9,7 +9,7 @@ const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const IVIRTUAL_LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const IVIRTUAL_DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
 
-const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const GLOBAL_TIMEOUT_MS = 4 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 const CIA_LOGIN_TIMEOUT_MS = 45_000;

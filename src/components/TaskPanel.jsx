@@ -2,13 +2,13 @@ function TaskPanel({ title, description, children }) {
   return (
     <main
       className="flex-1 rounded-3xl border p-8"
-      style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+      style={{ background: 'var(--bg)', borderColor: 'var(--border-subtle)' }}
     >
-      <header className="border-b pb-6" style={{ borderColor: 'var(--border)' }}>
+      <header className="border-b pb-6" style={{ borderColor: 'var(--border-subtle)' }}>
         <p className="text-xs uppercase tracking-[0.35em]" style={{ color: 'var(--text-muted)' }}>
           Workspace
         </p>
-        <h2 className="mt-3 text-3xl font-semibold" style={{ color: 'var(--text)' }}>
+        <h2 className="mt-3 text-3xl font-semibold" style={{ color: 'var(--text-strong)' }}>
           {title}
         </h2>
         <p className="mt-3 max-w-2xl text-sm" style={{ color: 'var(--text-muted)' }}>

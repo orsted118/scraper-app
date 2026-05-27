@@ -12,7 +12,7 @@ function Sidebar({ activePage, onNavigate }) {
   return (
     <aside
       className="w-64 rounded-3xl border p-6 shadow-2xl shadow-slate-950/40"
-      style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}
+      style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border-subtle)' }}
     >
       <div className="mb-8">
         <div className="flex items-center gap-3">
@@ -43,19 +43,37 @@ function Sidebar({ activePage, onNavigate }) {
               className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm transition ${
                 isActive
                   ? ''
-                  : 'bg-slate-900 hover:bg-slate-800 hover:text-white'
+                  : ''
               }`}
               style={
                 isActive
                   ? { background: 'var(--accent)', color: '#fff' }
-                  : { color: 'var(--text-muted)' }
+                  : {
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-muted)',
+                  }
               }
+              onMouseEnter={(event) => {
+                if (!isActive) {
+                  event.currentTarget.style.background = 'var(--bg-tertiary)';
+                  event.currentTarget.style.color = 'var(--text-strong)';
+                }
+              }}
+              onMouseLeave={(event) => {
+                if (!isActive) {
+                  event.currentTarget.style.background = 'var(--bg-secondary)';
+                  event.currentTarget.style.color = 'var(--text-muted)';
+                }
+              }}
             >
               <span className="flex items-center gap-3">
                 <Icon className="h-4 w-4" />
                 {item.label}
               </span>
-              <span className="text-xs uppercase tracking-[0.25em]">
+              <span
+                className="text-xs uppercase tracking-[0.25em]"
+                style={{ color: isActive ? '#fff' : 'var(--text-muted)' }}
+              >
                 {isActive ? 'Live' : 'Idle'}
               </span>
             </button>

@@ -30,11 +30,11 @@ transforming...
 ✓ 1765 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                        0.41 kB | gzip:  0.27 kB
+dist/index.html                        0.41 kB | gzip:  0.28 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-DeF-9x-6.css        28.81 kB | gzip:  6.16 kB
-dist/assets/index-DzhmUnI8.js        272.21 kB | gzip: 75.89 kB
-✓ built in 5.93s`,
+dist/assets/index-CwYUsmUR.css        28.03 kB | gzip:  6.09 kB
+dist/assets/index-Dpb30FCB.js        272.34 kB | gzip: 75.95 kB
+✓ built in 6.41s`,
 };
 
 function ensureReportsDir() {

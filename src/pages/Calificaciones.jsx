@@ -15,11 +15,27 @@ const statusLabels = {
   sin_calificacion: 'Sin calificación',
 };
 
-const statusClasses = {
-  aprobada: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100',
-  en_riesgo: 'border-orange-500/30 bg-orange-500/10 text-orange-100',
-  reprobada: 'border-red-500/30 bg-red-500/10 text-red-100',
-  sin_calificacion: 'border-slate-700 bg-slate-800/60 text-slate-300',
+const statusStyles = {
+  aprobada: {
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    background: 'rgba(16, 185, 129, 0.1)',
+    color: 'rgb(209, 250, 229)',
+  },
+  en_riesgo: {
+    borderColor: 'rgba(249, 115, 22, 0.3)',
+    background: 'rgba(249, 115, 22, 0.1)',
+    color: 'rgb(254, 215, 170)',
+  },
+  reprobada: {
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    background: 'rgba(239, 68, 68, 0.1)',
+    color: 'rgb(254, 202, 202)',
+  },
+  sin_calificacion: {
+    borderColor: 'var(--border-normal)',
+    background: 'var(--bg-tertiary)',
+    color: 'var(--text-normal)',
+  },
 };
 
 const ciaFriendlyErrors = {
@@ -108,9 +124,8 @@ function StatCard({ icon: Icon, label, value, tone = 'default' }) {
 function StatusBadge({ status }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
-        statusClasses[status] || statusClasses.sin_calificacion
-      }`}
+      className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
+      style={statusStyles[status] || statusStyles.sin_calificacion}
     >
       {statusLabels[status] || statusLabels.sin_calificacion}
     </span>
@@ -122,15 +137,25 @@ function PartialChip({ parcial, calificacion }) {
 
   const toneClasses =
     numericValue === null
-      ? 'border border-slate-700 bg-slate-700/50 text-slate-500'
+      ? ''
       : numericValue >= 70
         ? 'bg-emerald-500/20 text-emerald-300'
         : numericValue >= 60
           ? 'bg-orange-500/20 text-orange-300'
           : 'bg-red-500/20 text-red-300';
+  const toneStyle = numericValue === null
+    ? {
+      borderColor: 'var(--border-normal)',
+      background: 'var(--bg-tertiary)',
+      color: 'var(--text-muted)',
+    }
+    : undefined;
 
   return (
-    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${toneClasses}`}>
+    <span
+      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${toneClasses}`}
+      style={toneStyle}
+    >
       <span>{parcial}</span>
       <span>{formatGrade(calificacion)}</span>
     </span>
@@ -143,11 +168,16 @@ function GradeCard({ materia }) {
     : [{ parcial: 'Final', calificacion: null }];
 
   return (
-    <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 shadow-lg shadow-slate-950/20">
+    <article
+      className="rounded-2xl border p-6 shadow-lg shadow-slate-950/20"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div>
-            <h3 className="text-lg font-semibold text-white">{materia.nombre || 'Materia sin nombre'}</h3>
+            <h3 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
+              {materia.nombre || 'Materia sin nombre'}
+            </h3>
             <p className="text-sm text-slate-400">{materia.clave || 'Clave no disponible'}</p>
           </div>
           <p className="text-sm text-slate-400">
@@ -170,10 +200,13 @@ function GradeCard({ materia }) {
         ))}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+      <div
+        className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <p className="text-sm text-slate-400">
           Promedio:{' '}
-          <span className="text-slate-100">
+          <span style={{ color: 'var(--text-strong)' }}>
             {materia.promedio === null || materia.promedio === undefined ? '—' : formatGrade(materia.promedio)}
           </span>
         </p>
@@ -247,7 +280,9 @@ function Calificaciones({
               CIA ITSON
             </div>
             <div>
-              <h3 className="text-2xl font-semibold text-white">Calificaciones</h3>
+              <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+                Calificaciones
+              </h3>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
                 Consulta el registro académico del semestre actual desde el CIA con caché local,
                 sincronización manual y acceso directo a tu información institucional.
@@ -290,11 +325,12 @@ function Calificaciones({
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-6"
+              className="animate-pulse rounded-2xl border p-6"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
             >
-              <div className="h-5 w-64 rounded bg-slate-800" />
-              <div className="mt-4 h-4 w-40 rounded bg-slate-800" />
-              <div className="mt-6 h-20 rounded bg-slate-900" />
+              <div className="h-5 w-64 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="mt-4 h-4 w-40 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="mt-6 h-20 rounded" style={{ background: 'var(--bg-secondary)' }} />
             </div>
           ))}
         </div>
@@ -305,9 +341,12 @@ function Calificaciones({
           ))}
         </div>
       ) : (
-        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
+        <div
+          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+        >
           <BookOpen className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm text-slate-300">
+          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
             No hay materias disponibles para mostrar.
           </p>
         </div>

@@ -26,6 +26,12 @@ export function ThemeProvider({ children }) {
     root.style.setProperty('--accent-dark', theme.accentDark);
     root.style.setProperty('--text', theme.text);
     root.style.setProperty('--text-muted', theme.textMuted);
+    root.style.setProperty('--bg-secondary', theme.bgSecondary);
+    root.style.setProperty('--bg-tertiary', theme.bgTertiary);
+    root.style.setProperty('--border-subtle', theme.borderSubtle);
+    root.style.setProperty('--border-normal', theme.borderNormal);
+    root.style.setProperty('--text-strong', theme.textStrong);
+    root.style.setProperty('--text-normal', theme.textNormal);
     root.style.setProperty('--gradient-from', theme.gradientFrom);
     root.style.setProperty('--gradient-to', theme.gradientTo);
     root.style.setProperty('--pending-bg', theme.pendingBg);

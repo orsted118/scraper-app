@@ -28,34 +28,53 @@ function CredentialSection({
   userValueSetter,
 }) {
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+    <section
+      className="rounded-2xl border p-6"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+    >
       <div className="flex items-start gap-3">
         <Icon className="mt-1 h-5 w-5 text-itson-blue" />
         <div className="w-full">
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <h3 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+            {title}
+          </h3>
           {note ? <p className="mt-2 text-sm leading-6 text-slate-400">{note}</p> : null}
         </div>
       </div>
 
       <form className="mt-6 space-y-4" onSubmit={onSubmit}>
         <label className="block space-y-2">
-          <span className="text-sm font-medium text-slate-200">{userLabel}</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+            {userLabel}
+          </span>
           <input
             type="text"
             value={user}
             onChange={(event) => userValueSetter(event.target.value)}
-            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            className="w-full rounded-2xl border px-4 py-3 text-sm outline-none transition focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            style={{
+              borderColor: 'var(--border-normal)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-strong)',
+            }}
             placeholder="Ej. 00000000000"
           />
         </label>
 
         <label className="block space-y-2">
-          <span className="text-sm font-medium text-slate-200">{passwordLabel}</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+            {passwordLabel}
+          </span>
           <input
             type="password"
             value={password}
             onChange={(event) => passwordValueSetter(event.target.value)}
-            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            className="w-full rounded-2xl border px-4 py-3 text-sm outline-none transition focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            style={{
+              borderColor: 'var(--border-normal)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-strong)',
+            }}
             placeholder={passwordPlaceholder}
           />
           <p className="text-xs text-slate-500">
@@ -265,7 +284,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
 
       <section
         className="rounded-2xl border p-6"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
       >
         <div className="flex items-start gap-3">
           <Palette className="mt-1 h-5 w-5" style={{ color: 'var(--accent)' }} />
@@ -326,12 +345,17 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-1 h-5 w-5 text-itson-blue" />
           <div>
-            <h3 className="text-xl font-semibold text-white">Estado operativo</h3>
-            <ul className="mt-3 space-y-2 text-sm text-slate-300">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+              Estado operativo
+            </h3>
+            <ul className="mt-3 space-y-2 text-sm" style={{ color: 'var(--text-normal)' }}>
               <li>Login automatizado vía Playwright contra iVirtual ITSON.</li>
               <li>Extracción por curso usando el índice de tareas de Moodle.</li>
               <li>

@@ -254,15 +254,22 @@ function ScheduleSkeleton() {
     <div className="space-y-6">
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-            <div className="h-4 w-52 rounded bg-slate-800" />
-            <div className="mt-3 h-3 w-72 rounded bg-slate-800" />
+          <div
+            key={index}
+            className="animate-pulse rounded-2xl border p-4"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+          >
+            <div className="h-4 w-52 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+            <div className="mt-3 h-3 w-72 rounded" style={{ background: 'var(--bg-tertiary)' }} />
           </div>
         ))}
       </div>
-      <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-        <div className="h-5 w-40 rounded bg-slate-800" />
-        <div className="mt-4 h-60 rounded bg-slate-900" />
+      <div
+        className="animate-pulse rounded-2xl border p-4"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
+        <div className="h-5 w-40 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+        <div className="mt-4 h-60 rounded" style={{ background: 'var(--bg-secondary)' }} />
       </div>
     </div>
   );
@@ -351,7 +358,9 @@ function Horario({
               CIA + iVirtual ITSON
             </div>
             <div>
-              <h3 className="text-2xl font-semibold text-white">Horario</h3>
+              <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+                Horario
+              </h3>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
                 Consulta tu horario semanal del semestre y los enlaces de videollamada detectados para
                 materias en línea.
@@ -390,9 +399,12 @@ function Horario({
       {loadingHorario ? (
         <ScheduleSkeleton />
       ) : materias.length === 0 ? (
-        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
+        <div
+          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+        >
           <Calendar className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm text-slate-300">
+          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
             No se encontró horario para este semestre.
           </p>
         </div>
@@ -402,7 +414,12 @@ function Horario({
             className="rounded-2xl border p-5"
             style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
           >
-            <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Clases en Línea</h4>
+            <h4
+              className="text-sm font-semibold uppercase tracking-[0.2em]"
+              style={{ color: 'var(--text-normal)' }}
+            >
+              Clases en Línea
+            </h4>
             <div className="mt-4 space-y-3">
               {onlineMaterias.length === 0 ? (
                 <p className="text-sm text-slate-400">No hay materias en línea registradas.</p>
@@ -414,7 +431,8 @@ function Horario({
                   return (
                     <article
                       key={materia.numeroClase || `${materia.codigo}-${materia.horaInicio}`}
-                      className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                      className="rounded-2xl border p-4"
+                      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
                     >
                       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                         <div className="flex min-w-0 items-start gap-3">
@@ -422,7 +440,9 @@ function Horario({
                             <Video className="h-4 w-4" />
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-white">{materia.nombre}</p>
+                            <p className="truncate text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                              {materia.nombre}
+                            </p>
                             <p className="text-xs text-slate-400">{materia.instructor || 'Instructor no disponible'}</p>
                             <p className="mt-1 text-xs text-slate-400">
                               {(materia.dias || []).join(', ') || 'Días no disponibles'} · {format12h(materia.horaInicio)} - {format12h(materia.horaFin)}
@@ -438,8 +458,9 @@ function Horario({
                             className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                               canJoin
                                 ? 'bg-itson-blue text-white hover:bg-itson-blue-light'
-                                : 'cursor-not-allowed bg-slate-700 text-slate-500'
+                                : 'cursor-not-allowed text-slate-500'
                             }`}
+                            style={canJoin ? undefined : { background: 'var(--bg-tertiary)' }}
                           >
                             <ExternalLink className="h-4 w-4" />
                             {canJoin ? 'Unirse' : 'Sin enlace'}
@@ -457,7 +478,12 @@ function Horario({
                                   }))
                                 }
                                 placeholder="Pegar link de Meet/Zoom..."
-                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-itson-blue focus:ring-1 focus:ring-itson-blue/30"
+                                className="w-full rounded-xl border px-3 py-2 text-xs outline-none focus:border-itson-blue focus:ring-1 focus:ring-itson-blue/30"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  color: 'var(--text-strong)',
+                                }}
                               />
                               <button
                                 type="button"
@@ -482,21 +508,30 @@ function Horario({
             className="rounded-2xl border p-5"
             style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
           >
-            <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Horario semanal</h4>
+            <h4
+              className="text-sm font-semibold uppercase tracking-[0.2em]"
+              style={{ color: 'var(--text-normal)' }}
+            >
+              Horario semanal
+            </h4>
             <div className="mt-4 overflow-x-auto">
               <table
-                className="min-w-max border-separate text-xs text-slate-200"
-                style={{ borderSpacing: '1px' }}
+                className="min-w-max border-separate text-xs"
+                style={{ borderSpacing: '1px', color: 'var(--text-normal)' }}
               >
                 <thead>
                   <tr>
-                    <th className="w-16 rounded-lg bg-slate-900 px-2 py-1.5 text-left text-[10px] text-slate-500">
+                    <th
+                      className="w-16 rounded-lg px-2 py-1.5 text-left text-[10px] text-slate-500"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    >
                       Hora
                     </th>
                     {days.map((day) => (
                       <th
                         key={day}
-                        className="min-w-[100px] rounded-lg bg-slate-900 px-2 py-1.5 text-left text-[11px] text-slate-300"
+                        className="min-w-[100px] rounded-lg px-2 py-1.5 text-left text-[11px]"
+                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-normal)' }}
                       >
                         {day}
                       </th>
@@ -507,8 +542,8 @@ function Horario({
                   {slots.map((slot) => (
                     <tr key={slot} className="h-11">
                       <td
-                        className="w-16 rounded-lg bg-slate-900 px-2 py-1 align-top text-[10px] text-slate-500 overflow-hidden"
-                        style={{ maxHeight: '44px' }}
+                        className="w-16 rounded-lg px-2 py-1 align-top text-[10px] text-slate-500 overflow-hidden"
+                        style={{ maxHeight: '44px', background: 'var(--bg-secondary)' }}
                       >
                         {format12h(slot)}
                       </td>
@@ -518,8 +553,12 @@ function Horario({
                           return (
                             <td
                               key={`${day}-${slot}`}
-                              className="h-11 min-w-[100px] rounded-lg border border-slate-800 bg-slate-900/40 align-top overflow-hidden"
-                              style={{ maxHeight: '44px' }}
+                              className="h-11 min-w-[100px] rounded-lg border align-top overflow-hidden"
+                              style={{
+                                maxHeight: '44px',
+                                borderColor: 'var(--border-subtle)',
+                                background: 'var(--bg-card)',
+                              }}
                             />
                           );
                         }
@@ -527,8 +566,12 @@ function Horario({
                         return (
                           <td
                             key={`${day}-${slot}`}
-                            className="h-11 min-w-[100px] rounded-lg border border-slate-800 bg-slate-900/40 p-0.5 align-top overflow-hidden"
-                            style={{ maxHeight: '44px' }}
+                            className="h-11 min-w-[100px] rounded-lg border p-0.5 align-top overflow-hidden"
+                            style={{
+                              maxHeight: '44px',
+                              borderColor: 'var(--border-subtle)',
+                              background: 'var(--bg-card)',
+                            }}
                           >
                             <div className="flex h-full flex-col gap-px overflow-hidden">
                               {materiaSlots.map((materiaSlot) => {
@@ -547,7 +590,10 @@ function Horario({
                                         className="h-full overflow-hidden rounded-lg border px-1.5 py-0.5"
                                         style={slotToneStyle}
                                       >
-                                        <p className="truncate text-[10px] font-semibold leading-tight text-white">
+                                        <p
+                                          className="truncate text-[10px] font-semibold leading-tight"
+                                          style={{ color: 'var(--text-strong)' }}
+                                        >
                                           {compactName(materia.nombre)}
                                         </p>
                                         <p className="truncate text-[9px] leading-tight text-slate-400">

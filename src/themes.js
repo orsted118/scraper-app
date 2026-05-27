@@ -16,6 +16,15 @@ const darkStatePalette = {
   errorText: '#f87171',
 };
 
+const defaultDarkSurfaces = {
+  bgSecondary: 'rgb(15, 23, 42)',
+  bgTertiary: 'rgb(30, 41, 59)',
+  borderSubtle: 'rgb(30, 41, 59)',
+  borderNormal: 'rgb(51, 65, 85)',
+  textStrong: 'rgb(241, 245, 249)',
+  textNormal: 'rgb(203, 213, 225)',
+};
+
 export const THEMES = {
   'itson-dark': {
     id: 'itson-dark',
@@ -34,6 +43,7 @@ export const THEMES = {
     gradientFrom: 'rgba(0, 109, 182, 0.10)',
     gradientTo: 'rgba(0, 90, 148, 0.10)',
     ...darkStatePalette,
+    ...defaultDarkSurfaces,
   },
   'itson-classic': {
     id: 'itson-classic',
@@ -66,6 +76,12 @@ export const THEMES = {
     errorBg: 'rgba(239, 68, 68, 0.12)',
     errorBorder: 'rgba(185, 28, 28, 0.40)',
     errorText: '#7f1d1d',
+    bgSecondary: 'rgb(241, 245, 249)',
+    bgTertiary: 'rgb(226, 232, 240)',
+    borderSubtle: 'rgb(203, 213, 225)',
+    borderNormal: 'rgb(148, 163, 184)',
+    textStrong: 'rgb(15, 23, 42)',
+    textNormal: 'rgb(51, 65, 85)',
   },
   midnight: {
     id: 'midnight',
@@ -85,6 +101,12 @@ export const THEMES = {
     gradientTo: 'rgba(109, 40, 217, 0.08)',
     ...darkStatePalette,
     successText: '#a78bfa',
+    bgSecondary: 'rgb(18, 14, 28)',
+    bgTertiary: 'rgb(30, 24, 48)',
+    borderSubtle: 'rgb(39, 31, 58)',
+    borderNormal: 'rgb(55, 44, 80)',
+    textStrong: 'rgb(244, 244, 245)',
+    textNormal: 'rgb(212, 212, 216)',
   },
   'carbon-green': {
     id: 'carbon-green',
@@ -104,6 +126,12 @@ export const THEMES = {
     gradientTo: 'rgba(4, 120, 87, 0.08)',
     ...darkStatePalette,
     successText: '#34d399',
+    bgSecondary: 'rgb(12, 18, 12)',
+    bgTertiary: 'rgb(20, 30, 20)',
+    borderSubtle: 'rgb(26, 46, 26)',
+    borderNormal: 'rgb(37, 62, 37)',
+    textStrong: 'rgb(240, 253, 244)',
+    textNormal: 'rgb(187, 247, 208)',
   },
   sunset: {
     id: 'sunset',
@@ -123,6 +151,12 @@ export const THEMES = {
     gradientTo: 'rgba(180, 83, 9, 0.08)',
     ...darkStatePalette,
     successText: '#fbbf24',
+    bgSecondary: 'rgb(20, 13, 6)',
+    bgTertiary: 'rgb(32, 22, 10)',
+    borderSubtle: 'rgb(45, 31, 14)',
+    borderNormal: 'rgb(62, 43, 18)',
+    textStrong: 'rgb(255, 251, 235)',
+    textNormal: 'rgb(253, 230, 138)',
   },
 };
 

@@ -13,6 +13,12 @@
   --accent-dark: #005a94;
   --text: #f1f5f9;
   --text-muted: #94a3b8;
+  --bg-secondary: rgb(15, 23, 42);
+  --bg-tertiary: rgb(30, 41, 59);
+  --border-subtle: rgb(30, 41, 59);
+  --border-normal: rgb(51, 65, 85);
+  --text-strong: rgb(241, 245, 249);
+  --text-normal: rgb(203, 213, 225);
   --gradient-from: rgba(0, 109, 182, 0.10);
   --gradient-to: rgba(0, 90, 148, 0.10);
   --pending-bg: rgba(234, 179, 8, 0.15);

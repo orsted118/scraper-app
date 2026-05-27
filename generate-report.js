@@ -24,6 +24,7 @@ const VERIFICATION = {
   verificationOutput: `> scraper-app@0.1.0 build
 > vite build
 
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
 vite v5.4.21 building for production...
 transforming...
 ✓ 1764 modules transformed.
@@ -31,10 +32,9 @@ rendering chunks...
 computing gzip size...
 dist/index.html                        0.41 kB | gzip: 0.28 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-lYzT1SJ0.css        23.27 kB | gzip: 5.39 kB
-dist/assets/index-qOU34oel.js        223.79 kB | gzip: 65.47 kB
-✓ built in 3.50s
-The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
+dist/assets/index-D2z52HT7.css        23.47 kB | gzip: 5.47 kB
+dist/assets/index-mi80jdxw.js        228.82 kB | gzip: 66.13 kB
+✓ built in 4.44s`,
 };
 
 function ensureReportsDir() {

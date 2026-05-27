@@ -218,7 +218,9 @@ function Actividades({
                 Portal iVirtual ITSON
               </div>
               <div>
-                <h3 className="text-2xl font-semibold text-white">Extracción real de actividades</h3>
+                <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+                  Extracción real de actividades
+                </h3>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
                   Inicia una sesión contra iVirtual, recorre los cursos inscritos y clasifica actividades
                   en pendientes, retrasadas y cerradas con sus fechas límite, instrucciones y adjuntos.
@@ -278,14 +280,27 @@ function Actividades({
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Buscar por nombre o materia..."
-            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 pl-10 pr-11 text-sm text-slate-100 outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            className="w-full rounded-2xl border px-4 py-3 pl-10 pr-11 text-sm outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+            style={{
+              borderColor: 'var(--border-normal)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-strong)',
+            }}
           />
           {searchQuery ? (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               aria-label="Limpiar búsqueda"
-              className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+              className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition"
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = 'var(--bg-tertiary)';
+                event.currentTarget.style.color = 'var(--text-strong)';
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent';
+                event.currentTarget.style.color = '';
+              }}
             >
               <X className="h-4 w-4" />
             </button>
@@ -295,7 +310,12 @@ function Actividades({
         <select
           value={sortBy}
           onChange={(event) => setSortBy(event.target.value)}
-          className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+          className="w-full rounded-2xl border px-4 py-3 text-sm outline-none focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+          style={{
+            borderColor: 'var(--border-normal)',
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-strong)',
+          }}
           aria-label="Ordenar actividades"
         >
           <option value="deadline-asc">Fecha límite (más próxima)</option>
@@ -322,8 +342,28 @@ function Actividades({
                 className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
                   isActive
                     ? 'bg-itson-blue text-slate-50'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    : ''
                 }`}
+                style={
+                  isActive
+                    ? undefined
+                    : {
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-normal)',
+                    }
+                }
+                onMouseEnter={(event) => {
+                  if (!isActive) {
+                    event.currentTarget.style.background = 'var(--bg-tertiary)';
+                    event.currentTarget.style.color = 'var(--text-strong)';
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  if (!isActive) {
+                    event.currentTarget.style.background = 'var(--bg-secondary)';
+                    event.currentTarget.style.color = 'var(--text-normal)';
+                  }
+                }}
               >
                 {tab.label}
               </button>
@@ -334,16 +374,19 @@ function Actividades({
 
       {loading ? (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+          <section
+            className="rounded-2xl border p-5"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+          >
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-slate-200">
+              <span style={{ color: 'var(--text-strong)' }}>
                 Escaneando curso {progress?.current || 0} de {progress?.total || 0}: {progress?.curso || 'iniciando...'}
               </span>
               <span className="text-slate-400">
                 {progress?.total ? Math.round(((progress.current || 0) / progress.total) * 100) : 0}%
               </span>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+            <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
               <div
                 className="h-full rounded-full bg-itson-blue transition-all"
                 style={{
@@ -355,11 +398,12 @@ function Actividades({
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 p-6"
+              className="animate-pulse rounded-2xl border p-6"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
             >
-              <div className="h-5 w-64 rounded bg-slate-800" />
-              <div className="mt-4 h-4 w-40 rounded bg-slate-800" />
-              <div className="mt-6 h-20 rounded bg-slate-900" />
+              <div className="h-5 w-64 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="mt-4 h-4 w-40 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="mt-6 h-20 rounded" style={{ background: 'var(--bg-secondary)' }} />
             </div>
           ))}
         </div>
@@ -370,14 +414,20 @@ function Actividades({
           ))}
         </div>
       ) : normalizedQuery ? (
-        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
+        <div
+          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+        >
           <SearchX className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm text-slate-300">
+          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
             Sin actividades que coincidan con la búsqueda.
           </p>
         </div>
       ) : (
-        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/30 px-6 py-10 text-center">
+        <div
+          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+        >
           {(() => {
             const emptyState = emptyStateConfig[activeTab] || emptyStateConfig.pendiente;
             const EmptyIcon = emptyState.icon;
@@ -385,7 +435,9 @@ function Actividades({
             return (
               <>
                 <EmptyIcon className={`h-8 w-8 ${emptyState.iconClass}`} />
-                <p className="mt-4 text-sm font-semibold text-slate-100">{emptyState.title}</p>
+                <p className="mt-4 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                  {emptyState.title}
+                </p>
                 <p className="mt-2 max-w-md text-sm text-slate-400">{emptyState.subtitle}</p>
               </>
             );

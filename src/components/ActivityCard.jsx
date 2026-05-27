@@ -342,9 +342,9 @@ function ActivityCard({
     <article
       className="overflow-hidden rounded-[28px] border border-l-4 shadow-[0_0_0_1px_rgba(15,23,42,0.5)]"
       style={{
-        borderColor: 'var(--border)',
+        borderColor: 'var(--border-subtle)',
         borderLeftColor: theme.accentColor,
-        background: 'var(--bg-card)',
+        background: 'var(--bg-secondary)',
       }}
     >
       <div className="p-4">
@@ -372,7 +372,8 @@ function ActivityCard({
               <div className="mt-2 max-w-[55%] overflow-hidden">
                 <h3
                   title={nombre}
-                  className="truncate text-base font-bold tracking-tight text-white sm:text-lg"
+                  className="truncate text-base font-bold tracking-tight sm:text-lg"
+                  style={{ color: 'var(--text-strong)' }}
                 >
                   {nombre}
                 </h3>
@@ -400,13 +401,27 @@ function ActivityCard({
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                <span
+                  className="inline-flex items-center gap-2 rounded-lg border px-2 py-0.5 text-xs"
+                  style={{
+                    borderColor: 'var(--border-normal)',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-normal)',
+                  }}
+                >
                   <Users className="h-3 w-3 text-slate-400" />
                   {modalidad === 'equipo' ? 'En equipo' : 'Individual'}
                 </span>
 
                 {fechaPublicacion ? (
-                  <span className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                  <span
+                    className="inline-flex items-center gap-2 rounded-lg border px-2 py-0.5 text-xs"
+                    style={{
+                      borderColor: 'var(--border-normal)',
+                      background: 'var(--bg-tertiary)',
+                      color: 'var(--text-normal)',
+                    }}
+                  >
                     <Calendar className="h-3 w-3 text-slate-400" />
                     Publicado: {publicationDate ? formatShortDate(publicationDate) : fechaPublicacion}
                   </span>
@@ -415,7 +430,7 @@ function ActivityCard({
             </div>
           </div>
 
-          <div className="lg:border-l lg:border-slate-800 lg:pl-6">
+          <div className="lg:border-l lg:pl-6" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="flex items-start justify-between gap-3 lg:flex-col lg:items-end">
               <div className="min-w-0 text-right">
                 <p className="text-xs text-slate-400">Fecha límite</p>
@@ -434,9 +449,30 @@ function ActivityCard({
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
                 aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
-                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-800 bg-slate-900/80 text-slate-300 transition hover:border-slate-700 hover:text-white"
+                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition"
+                style={{
+                  borderColor: 'var(--border-subtle)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-normal)',
+                }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.borderColor = 'var(--border-normal)';
+                  event.currentTarget.style.color = 'var(--text-strong)';
+                }}
+                onFocus={(event) => {
+                  event.currentTarget.style.color = 'var(--text-strong)';
+                  event.currentTarget.style.borderColor = 'var(--border-normal)';
+                }}
+                onBlur={(event) => {
+                  event.currentTarget.style.color = 'var(--text-normal)';
+                  event.currentTarget.style.borderColor = 'var(--border-subtle)';
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.borderColor = 'var(--border-subtle)';
+                  event.currentTarget.style.color = 'var(--text-normal)';
+                }}
               >
-                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
             </div>
 
@@ -457,11 +493,14 @@ function ActivityCard({
         </div>
 
         {expanded ? (
-          <div className="mt-4 border-t border-slate-800 pt-3">
+          <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="space-y-3">
               {instructionsText ? (
-                <section className="rounded-2xl border border-slate-800 bg-slate-900/45 px-3 py-2">
-                  <div className="flex items-center gap-2 text-slate-300">
+                <section
+                  className="rounded-2xl border px-3 py-2"
+                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+                >
+                  <div className="flex items-center gap-2" style={{ color: 'var(--text-normal)' }}>
                     <AlignLeft className="h-4 w-4 text-slate-500" />
                     <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
                       Instrucciones
@@ -469,7 +508,8 @@ function ActivityCard({
                   </div>
 
                   <p
-                    className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-300 sm:text-sm ${instructionsClampClass}`}
+                    className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed sm:text-sm ${instructionsClampClass}`}
+                    style={{ color: 'var(--text-normal)' }}
                   >
                     {instructionsText}
                   </p>
@@ -508,16 +548,21 @@ function ActivityCard({
                       return (
                         <div
                           key={`${archivo.url}-${archivo.name}`}
-                          className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/55 px-3 py-2"
+                          className="flex items-center gap-3 rounded-2xl border px-3 py-2"
+                          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
                         >
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60">
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
+                            style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
+                          >
                             <FileIcon className={`h-4 w-4 ${fileMeta.color}`} />
                           </div>
 
                           <div className="min-w-0 flex-1">
                             <p
                               title={archivo.name}
-                              className="max-w-[60%] truncate text-xs font-medium text-slate-100 md:max-w-[120px]"
+                              className="max-w-[60%] truncate text-xs font-medium md:max-w-[120px]"
+                              style={{ color: 'var(--text-strong)' }}
                             >
                               {archivo.name}
                             </p>
@@ -530,8 +575,15 @@ function ActivityCard({
                             type="button"
                             onClick={() => handleDownload(archivo)}
                             disabled={isDownloading}
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/30 text-slate-200 transition hover:border-itson-blue/50 hover:bg-itson-blue/10 hover:text-itson-blue disabled:cursor-not-allowed disabled:opacity-70"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition hover:border-itson-blue/50 hover:bg-itson-blue/10 hover:text-itson-blue disabled:cursor-not-allowed disabled:opacity-70"
+                            style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
                             aria-label={`Descargar ${archivo.name}`}
+                            onMouseEnter={(event) => {
+                              event.currentTarget.style.color = 'var(--text-strong)';
+                            }}
+                            onMouseLeave={(event) => {
+                              event.currentTarget.style.color = 'var(--text-normal)';
+                            }}
                           >
                             {isDownloading ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -582,7 +634,10 @@ function ActivityCard({
                 </div>
               ) : null}
 
-              <footer className="flex flex-col gap-3 border-t border-slate-800 pt-3 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <footer
+                className="flex flex-col gap-3 border-t pt-3 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between"
+                style={{ borderColor: 'var(--border-subtle)' }}
+              >
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   {estado === 'cerrada' ? (

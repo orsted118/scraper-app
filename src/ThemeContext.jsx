@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { THEMES, DEFAULT_THEME } from './themes';
 
 const ThemeContext = createContext(null);
@@ -12,7 +12,26 @@ export function ThemeProvider({ children }) {
     }
   });
 
-  const theme = THEMES[themeId] || THEMES[DEFAULT_THEME];
+  const getCustomTheme = useCallback(() => {
+    try {
+      const saved = localStorage.getItem('scraperapp-custom-theme');
+      return saved ? { ...THEMES.custom, ...JSON.parse(saved) } : THEMES.custom;
+    } catch (_error) {
+      return THEMES.custom;
+    }
+  }, []);
+
+  const saveCustomTheme = useCallback((overrides) => {
+    try {
+      localStorage.setItem('scraperapp-custom-theme', JSON.stringify(overrides));
+    } catch (_error) {
+      // Ignore storage errors.
+    }
+  }, []);
+
+  const theme = themeId === 'custom'
+    ? getCustomTheme()
+    : (THEMES[themeId] || THEMES[DEFAULT_THEME]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -58,7 +77,7 @@ export function ThemeProvider({ children }) {
   }, [themeId, theme]);
 
   return (
-    <ThemeContext.Provider value={{ themeId, setThemeId, theme, themes: THEMES }}>
+    <ThemeContext.Provider value={{ themeId, setThemeId, theme, themes: THEMES, saveCustomTheme }}>
       {children}
     </ThemeContext.Provider>
   );

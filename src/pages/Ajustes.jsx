@@ -10,6 +10,12 @@ import { useEffect, useState } from 'react';
 import { useTheme } from '../ThemeContext';
 import { THEMES } from '../themes';
 
+const CUSTOM_THEME_DEFAULTS = {
+  accent: '#006DB6',
+  bg: '#020617',
+  text: '#f1f5f9',
+};
+
 function CredentialSection({
   buttonLabel,
   hasPassword,
@@ -99,7 +105,7 @@ function CredentialSection({
 
 function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
-  const { themeId, setThemeId } = useTheme();
+  const { themeId, setThemeId, saveCustomTheme } = useTheme();
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [ciaUser, setCiaUser] = useState('');
@@ -109,6 +115,19 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingSection, setSavingSection] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [customColors, setCustomColors] = useState(() => {
+    try {
+      const saved = localStorage.getItem('scraperapp-custom-theme');
+      const parsed = saved ? JSON.parse(saved) : {};
+      return {
+        accent: parsed.accent || CUSTOM_THEME_DEFAULTS.accent,
+        bg: parsed.bg || CUSTOM_THEME_DEFAULTS.bg,
+        text: parsed.text || CUSTOM_THEME_DEFAULTS.text,
+      };
+    } catch (_error) {
+      return { ...CUSTOM_THEME_DEFAULTS };
+    }
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -213,6 +232,39 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
     }
   };
 
+  const handleCustomColor = (key, value) => {
+    const next = { ...customColors, [key]: value };
+    setCustomColors(next);
+
+    const overrides = {
+      accent: next.accent,
+      accentHover: `${next.accent}cc`,
+      bg: next.bg,
+      text: next.text,
+      textStrong: next.text,
+      gradientFrom: `${next.accent}1a`,
+      gradientTo: `${next.accent}14`,
+    };
+
+    saveCustomTheme(overrides);
+
+    if (themeId === 'custom') {
+      const root = document.documentElement;
+      Object.entries(overrides).forEach(([themeKey, themeValue]) => {
+        const cssKey = `--${themeKey.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+        root.style.setProperty(cssKey, themeValue);
+      });
+    } else {
+      setThemeId('custom');
+    }
+  };
+
+  const handleResetCustom = () => {
+    localStorage.removeItem('scraperapp-custom-theme');
+    setCustomColors({ ...CUSTOM_THEME_DEFAULTS });
+    saveCustomTheme({});
+  };
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -313,14 +365,22 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                     <div className="flex gap-1">
                       <div
                         className="h-4 w-8 rounded"
-                        style={{ background: themeOption.bg, border: `1px solid ${themeOption.border}` }}
+                        style={{
+                          background: themeOption.id === 'custom' ? customColors.bg : themeOption.bg,
+                          border: `1px solid ${themeOption.border}`,
+                        }}
                       />
-                      <div className="h-4 w-4 rounded" style={{ background: themeOption.accent }} />
+                      <div
+                        className="h-4 w-4 rounded"
+                        style={{ background: themeOption.id === 'custom' ? customColors.accent : themeOption.accent }}
+                      />
                     </div>
                     <div
                       className="h-2 w-12 rounded"
                       style={{
-                        background: themeOption.bgCard,
+                        background: themeOption.id === 'custom'
+                          ? 'rgba(2, 6, 23, 0.6)'
+                          : themeOption.bgCard,
                         border: `1px solid ${themeOption.border}`,
                       }}
                     />
@@ -341,6 +401,93 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                 </button>
               ))}
             </div>
+
+            {themeId === 'custom' ? (
+              <section
+                className="mt-4 space-y-4 rounded-2xl border p-5"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
+              >
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                  Personalizar Mi Tema
+                </h4>
+
+                <label className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+                      Color de acento
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Botones, elementos activos y highlights
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                      {customColors.accent}
+                    </span>
+                    <input
+                      type="color"
+                      value={customColors.accent}
+                      onChange={(event) => handleCustomColor('accent', event.target.value)}
+                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
+                      style={{ accentColor: customColors.accent }}
+                    />
+                  </div>
+                </label>
+
+                <label className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+                      Fondo principal
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Color de fondo de toda la app
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                      {customColors.bg}
+                    </span>
+                    <input
+                      type="color"
+                      value={customColors.bg}
+                      onChange={(event) => handleCustomColor('bg', event.target.value)}
+                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
+                    />
+                  </div>
+                </label>
+
+                <label className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+                      Color de texto
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Texto principal de la interfaz
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                      {customColors.text}
+                    </span>
+                    <input
+                      type="color"
+                      value={customColors.text}
+                      onChange={(event) => handleCustomColor('text', event.target.value)}
+                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
+                    />
+                  </div>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleResetCustom}
+                  className="text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Restablecer valores por defecto
+                </button>
+              </section>
+            ) : null}
           </div>
         </div>
       </section>

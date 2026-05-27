@@ -26,14 +26,14 @@ const VERIFICATION = {
 
 vite v5.4.21 building for production...
 transforming...
-✓ 1762 modules transformed.
+✓ 1764 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                        0.41 kB | gzip: 0.27 kB
+dist/index.html                        0.41 kB | gzip: 0.28 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-naYlnb2n.css        22.09 kB | gzip: 5.06 kB
-dist/assets/index-BvkqC4uS.js        215.33 kB | gzip: 63.23 kB
-✓ built in 5.20s
+dist/assets/index-BMP17a7U.css        22.76 kB | gzip: 5.24 kB
+dist/assets/index-D6_SpU8j.js        220.98 kB | gzip: 64.86 kB
+✓ built in 4.00s
 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
 };
 

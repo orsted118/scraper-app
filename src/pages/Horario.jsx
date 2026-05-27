@@ -330,7 +330,10 @@ function Horario({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+      >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
@@ -351,7 +354,8 @@ function Horario({
               type="button"
               onClick={() => onSyncHorario?.({ clearCacheFirst: true })}
               disabled={loadingHorario}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-itson-blue px-5 py-3 text-sm font-semibold text-slate-50 transition hover:bg-itson-blue-light disabled:cursor-not-allowed disabled:bg-itson-blue/50"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ background: 'var(--accent)' }}
             >
               <RefreshCw className={`h-4 w-4 ${loadingHorario ? 'animate-spin' : ''}`} />
               {loadingHorario ? 'Sincronizando...' : 'Sincronizar'}
@@ -384,7 +388,10 @@ function Horario({
         </div>
       ) : (
         <>
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+          <section
+            className="rounded-2xl border p-5"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+          >
             <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Clases en Línea</h4>
             <div className="mt-4 space-y-3">
               {onlineMaterias.length === 0 ? (
@@ -461,7 +468,10 @@ function Horario({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+          <section
+            className="rounded-2xl border p-5"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+          >
             <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Horario semanal</h4>
             <div className="mt-4 overflow-x-auto">
               <table

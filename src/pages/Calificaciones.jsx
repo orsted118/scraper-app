@@ -84,14 +84,21 @@ function StatCard({ icon: Icon, label, value, tone = 'default' }) {
   };
 
   return (
-    <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+    <article
+      className="rounded-2xl border p-5"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+    >
       <div className="flex items-center gap-3">
         <span className={`rounded-2xl p-3 ${toneClasses[tone] || toneClasses.default}`}>
           <Icon className="h-5 w-5" />
         </span>
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+          <p className="text-xs uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold" style={{ color: 'var(--text)' }}>
+            {value}
+          </p>
         </div>
       </div>
     </article>
@@ -229,7 +236,10 @@ function Calificaciones({
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+      >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
@@ -250,7 +260,8 @@ function Calificaciones({
               type="button"
               onClick={onSyncCIA}
               disabled={loadingCIA}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-itson-blue px-5 py-3 text-sm font-semibold text-slate-50 transition hover:bg-itson-blue-light disabled:cursor-not-allowed disabled:bg-itson-blue/50"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ background: 'var(--accent)' }}
             >
               <RefreshCw className={`h-4 w-4 ${loadingCIA ? 'animate-spin' : ''}`} />
               {loadingCIA ? 'Sincronizando...' : 'Sincronizar'}

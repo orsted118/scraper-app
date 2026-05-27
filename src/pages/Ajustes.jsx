@@ -1,5 +1,14 @@
-import { AlertCircle, CheckCircle, FolderCog, Loader2, ShieldCheck } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle,
+  FolderCog,
+  Loader2,
+  Palette,
+  ShieldCheck,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTheme } from '../ThemeContext';
+import { THEMES } from '../themes';
 
 function CredentialSection({
   buttonLabel,
@@ -71,6 +80,7 @@ function CredentialSection({
 
 function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
+  const { themeId, setThemeId } = useTheme();
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [ciaUser, setCiaUser] = useState('');
@@ -252,6 +262,69 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
           userValueSetter={setCiaUser}
         />
       </div>
+
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+      >
+        <div className="flex items-start gap-3">
+          <Palette className="mt-1 h-5 w-5" style={{ color: 'var(--accent)' }} />
+          <div className="w-full">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+              Tema visual
+            </h3>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+              Personaliza la apariencia de la app
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Object.values(THEMES).map((themeOption) => (
+                <button
+                  key={themeOption.id}
+                  type="button"
+                  onClick={() => setThemeId(themeOption.id)}
+                  className="relative flex items-center gap-3 rounded-2xl border p-4 text-left transition hover:scale-[1.02]"
+                  style={{
+                    borderColor: themeId === themeOption.id ? themeOption.accent : 'var(--border)',
+                    background: themeId === themeOption.id ? `${themeOption.accent}15` : 'transparent',
+                    boxShadow: themeId === themeOption.id ? `0 0 0 2px ${themeOption.accent}40` : 'none',
+                  }}
+                >
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-1">
+                      <div
+                        className="h-4 w-8 rounded"
+                        style={{ background: themeOption.bg, border: `1px solid ${themeOption.border}` }}
+                      />
+                      <div className="h-4 w-4 rounded" style={{ background: themeOption.accent }} />
+                    </div>
+                    <div
+                      className="h-2 w-12 rounded"
+                      style={{
+                        background: themeOption.bgCard,
+                        border: `1px solid ${themeOption.border}`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                      {themeOption.name}
+                    </p>
+                    <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {themeOption.description}
+                    </p>
+                  </div>
+
+                  {themeId === themeOption.id ? (
+                    <CheckCircle className="h-4 w-4 shrink-0" style={{ color: themeOption.accent }} />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
         <div className="flex items-start gap-3">

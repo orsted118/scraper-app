@@ -528,7 +528,7 @@ function App() {
   const handleSyncActivities = () => loadActivities({ clearCacheFirst: true });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
         <Sidebar activePage={activePage} onNavigate={handleNavigate} />
         {!settingsReady ? (

@@ -4,15 +4,27 @@
 
 :root {
   color-scheme: dark;
+  --bg: #020617;
+  --bg-card: rgba(2, 6, 23, 0.6);
+  --bg-sidebar: rgba(15, 23, 42, 0.8);
+  --border: #1e293b;
+  --accent: #006DB6;
+  --accent-hover: #1a7ec4;
+  --accent-dark: #005a94;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --gradient-from: rgba(0, 109, 182, 0.10);
+  --gradient-to: rgba(0, 90, 148, 0.10);
 }
 
 body {
   margin: 0;
   font-family: Inter, 'Segoe UI', sans-serif;
   background:
-    radial-gradient(circle at top left, rgba(0, 109, 182, 0.10), transparent 32%),
-    radial-gradient(circle at top right, rgba(0, 90, 148, 0.10), transparent 24%),
-    #020617;
+    radial-gradient(circle at top left, var(--gradient-from), transparent 32%),
+    radial-gradient(circle at top right, var(--gradient-to), transparent 24%),
+    var(--bg);
+  color: var(--text);
 }
 
 * {

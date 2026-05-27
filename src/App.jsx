@@ -530,14 +530,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
-        <Sidebar
-          activePage={activePage}
-          onNavigate={handleNavigate}
-          onSyncAll={handleSyncAll}
-          syncingAll={syncingAll}
-          syncingModules={syncingModules}
-          userName={studentName}
-        />
+        <Sidebar activePage={activePage} onNavigate={handleNavigate} />
         {!settingsReady ? (
           <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
             <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">

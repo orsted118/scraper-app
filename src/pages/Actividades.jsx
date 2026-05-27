@@ -73,14 +73,30 @@ const settingsErrorCodes = new Set([
   'SESSION_EXPIRED',
 ]);
 
-function StatCard({ icon: Icon, label, value }) {
+function StatCard({ icon: Icon, label, value, tone = 'pending' }) {
+  const toneStyles = {
+    pending: {
+      background: 'var(--success-bg)',
+      color: 'var(--success-text)',
+    },
+    retrasada: {
+      background: 'var(--retrasada-bg)',
+      color: 'var(--retrasada-text)',
+    },
+    cerrada: {
+      background: 'var(--closed-bg)',
+      color: 'var(--closed-text)',
+    },
+  };
+  const toneStyle = toneStyles[tone] || toneStyles.pending;
+
   return (
     <article
       className="rounded-2xl border p-5"
       style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
     >
       <div className="flex items-center gap-3">
-        <span className="rounded-2xl p-3" style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}>
+        <span className="rounded-2xl p-3" style={toneStyle}>
           <Icon className="h-5 w-5" />
         </span>
         <div>
@@ -230,9 +246,9 @@ function Actividades({
         </article>
 
         <div className="grid gap-4">
-          <StatCard icon={Search} label="Pendientes" value={counts.pendiente} />
-          <StatCard icon={AlertCircle} label="Retrasadas" value={counts.retrasada} />
-          <StatCard icon={Zap} label="Cerradas" value={counts.cerrada} />
+          <StatCard icon={Search} label="Pendientes" value={counts.pendiente} tone="pending" />
+          <StatCard icon={AlertCircle} label="Retrasadas" value={counts.retrasada} tone="retrasada" />
+          <StatCard icon={Zap} label="Cerradas" value={counts.cerrada} tone="cerrada" />
         </div>
       </section>
 

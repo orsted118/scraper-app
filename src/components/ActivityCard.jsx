@@ -149,61 +149,93 @@ function getTimeContext(estado, fechaLimite) {
 function getCardTheme(estado, modalidad) {
   if (estado === 'cerrada') {
     return {
-      accent: 'border-l-slate-600',
-      dateText: 'text-slate-400',
-      iconBg: 'bg-slate-700/50',
-      iconText: 'text-slate-500',
-      pillClass: 'border border-slate-600 bg-slate-700/50 text-slate-300',
+      accentColor: 'var(--closed-text)',
+      dateColor: 'var(--closed-text)',
+      iconBg: 'var(--closed-bg)',
+      iconText: 'var(--closed-text)',
+      pillStyle: {
+        background: 'var(--closed-bg)',
+        borderColor: 'var(--closed-border)',
+        color: 'var(--closed-text)',
+      },
       pillLabel: 'CERRADA',
     };
   }
 
   if (estado === 'retrasada') {
     return {
-      accent: 'border-l-orange-500',
-      dateText: 'text-orange-400',
-      iconBg: 'bg-orange-500/20',
-      iconText: 'text-orange-400',
-      pillClass: 'border border-orange-500/40 bg-orange-500/10 text-orange-300',
+      accentColor: 'var(--retrasada-text)',
+      dateColor: 'var(--retrasada-text)',
+      iconBg: 'var(--retrasada-bg)',
+      iconText: 'var(--retrasada-text)',
+      pillStyle: {
+        background: 'var(--retrasada-bg)',
+        borderColor: 'var(--retrasada-border)',
+        color: 'var(--retrasada-text)',
+      },
       pillLabel: 'RETRASADA',
     };
   }
 
   if (modalidad === 'equipo') {
     return {
-      accent: 'border-l-red-500',
-      dateText: 'text-red-400',
-      iconBg: 'bg-red-500/20',
-      iconText: 'text-red-400',
-      pillClass: 'border border-red-500/40 bg-red-500/10 text-red-300',
+      accentColor: 'var(--error-text)',
+      dateColor: 'var(--error-text)',
+      iconBg: 'var(--error-bg)',
+      iconText: 'var(--error-text)',
+      pillStyle: {
+        background: 'var(--error-bg)',
+        borderColor: 'var(--error-border)',
+        color: 'var(--error-text)',
+      },
       pillLabel: 'EN EQUIPO',
     };
   }
 
   return {
-    accent: 'border-l-emerald-500',
-    dateText: 'text-emerald-400',
-    iconBg: 'bg-emerald-500/20',
-    iconText: 'text-emerald-400',
-    pillClass: '',
+    accentColor: 'var(--success-text)',
+    dateColor: 'var(--success-text)',
+    iconBg: 'var(--success-bg)',
+    iconText: 'var(--success-text)',
+    pillStyle: null,
     pillLabel: '',
   };
 }
 
 function getTimeContextClass(level) {
   if (level === 'critical') {
-    return 'animate-pulse border border-red-500/40 bg-red-500/20 text-red-300';
-  }
-
-  if (level === 'warning' || level === 'late') {
-    return 'border border-orange-500/40 bg-orange-500/20 text-orange-300';
-  }
-
-  if (level === 'closed') {
-    return 'border border-slate-600 bg-slate-700/50 text-slate-400';
+    return 'animate-pulse';
   }
 
   return '';
+}
+
+function getTimeContextStyle(level) {
+  if (level === 'critical') {
+    return {
+      background: 'var(--error-bg)',
+      borderColor: 'var(--error-border)',
+      color: 'var(--error-text)',
+    };
+  }
+
+  if (level === 'warning' || level === 'late') {
+    return {
+      background: 'var(--retrasada-bg)',
+      borderColor: 'var(--retrasada-border)',
+      color: 'var(--retrasada-text)',
+    };
+  }
+
+  if (level === 'closed') {
+    return {
+      background: 'var(--closed-bg)',
+      borderColor: 'var(--closed-border)',
+      color: 'var(--closed-text)',
+    };
+  }
+
+  return {};
 }
 
 function getTimeContextIcon(level) {
@@ -308,22 +340,29 @@ function ActivityCard({
 
   return (
     <article
-      className={`overflow-hidden rounded-[28px] border border-slate-800 border-l-4 bg-slate-950/70 shadow-[0_0_0_1px_rgba(15,23,42,0.5)] ${theme.accent}`}
+      className="overflow-hidden rounded-[28px] border border-l-4 shadow-[0_0_0_1px_rgba(15,23,42,0.5)]"
+      style={{
+        borderColor: 'var(--border)',
+        borderLeftColor: theme.accentColor,
+        background: 'var(--bg-card)',
+      }}
     >
       <div className="p-4">
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
           <div className="flex gap-3">
             <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 ${theme.iconBg}`}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10"
+              style={{ background: theme.iconBg, color: theme.iconText }}
             >
-              <CalendarX className={`h-5 w-5 ${theme.iconText}`} />
+              <CalendarX className="h-5 w-5" />
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 {topBadgeVisible ? (
                   <span
-                    className={`inline-flex rounded-2xl px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] ${theme.pillClass}`}
+                    className="inline-flex rounded-2xl border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
+                    style={theme.pillStyle || undefined}
                   >
                     {theme.pillLabel}
                   </span>
@@ -380,7 +419,10 @@ function ActivityCard({
             <div className="flex items-start justify-between gap-3 lg:flex-col lg:items-end">
               <div className="min-w-0 text-right">
                 <p className="text-xs text-slate-400">Fecha límite</p>
-                <p className={`mt-1 text-2xl font-semibold tracking-tight sm:text-[2.1rem] ${theme.dateText}`}>
+                <p
+                  className="mt-1 text-2xl font-semibold tracking-tight sm:text-[2.1rem]"
+                  style={{ color: theme.dateColor }}
+                >
                   {resolvedDeadline}
                 </p>
                 {resolvedDeadlineTime ? (
@@ -401,9 +443,10 @@ function ActivityCard({
             {timeContext.label ? (
               <div className="mt-3 flex justify-end">
                 <span
-                  className={`inline-flex items-center gap-2 rounded-2xl px-2.5 py-1 text-xs font-medium ${getTimeContextClass(
+                  className={`inline-flex items-center gap-2 rounded-2xl border px-2.5 py-1 text-xs font-medium ${getTimeContextClass(
                     timeContext.level,
                   )}`}
+                  style={getTimeContextStyle(timeContext.level)}
                 >
                   {TimeBadgeIcon ? <TimeBadgeIcon className="h-3.5 w-3.5" /> : null}
                   {timeContext.label}

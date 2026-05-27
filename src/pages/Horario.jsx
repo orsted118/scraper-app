@@ -239,6 +239,16 @@ function compactName(name) {
   return (name || '').length > 30 ? `${name.slice(0, 30)}…` : name || 'Materia';
 }
 
+const presencialCellToneStyle = {
+  background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
+  borderColor: 'color-mix(in srgb, var(--accent) 35%, transparent)',
+};
+
+const onlineCellToneStyle = {
+  background: 'var(--success-bg)',
+  borderColor: 'var(--success-border)',
+};
+
 function ScheduleSkeleton() {
   return (
     <div className="space-y-6">
@@ -525,9 +535,7 @@ function Horario({
                                 const { materia, session } = materiaSlot;
                                 const isOnline = (session?.modalidad || materia.modalidad) === 'en_linea';
                                 const isFirstSlot = isFirstSlotForMateria(materias, day, slot, materiaSlot);
-                                const baseClass = isOnline
-                                  ? 'border-emerald-500/40 bg-emerald-500/20'
-                                  : 'border-itson-blue/40 bg-itson-blue/20';
+                                const slotToneStyle = isOnline ? onlineCellToneStyle : presencialCellToneStyle;
 
                                 return (
                                   <div
@@ -536,7 +544,8 @@ function Horario({
                                   >
                                     {isFirstSlot ? (
                                       <div
-                                        className={`h-full overflow-hidden rounded-lg border px-1.5 py-0.5 ${baseClass}`}
+                                        className="h-full overflow-hidden rounded-lg border px-1.5 py-0.5"
+                                        style={slotToneStyle}
                                       >
                                         <p className="truncate text-[10px] font-semibold leading-tight text-white">
                                           {compactName(materia.nombre)}
@@ -546,7 +555,7 @@ function Horario({
                                         </p>
                                       </div>
                                     ) : (
-                                      <div className={`h-full rounded-b-lg border border-t-0 ${baseClass}`} />
+                                      <div className="h-full rounded-b-lg border border-t-0" style={slotToneStyle} />
                                     )}
                                   </div>
                                 );

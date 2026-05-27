@@ -16,6 +16,7 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     const root = document.documentElement;
+    root.style.setProperty('color-scheme', theme.mode === 'light' ? 'light' : 'dark');
     root.style.setProperty('--bg', theme.bg);
     root.style.setProperty('--bg-card', theme.bgCard);
     root.style.setProperty('--bg-sidebar', theme.bgSidebar);
@@ -27,6 +28,21 @@ export function ThemeProvider({ children }) {
     root.style.setProperty('--text-muted', theme.textMuted);
     root.style.setProperty('--gradient-from', theme.gradientFrom);
     root.style.setProperty('--gradient-to', theme.gradientTo);
+    root.style.setProperty('--pending-bg', theme.pendingBg);
+    root.style.setProperty('--pending-border', theme.pendingBorder);
+    root.style.setProperty('--pending-text', theme.pendingText);
+    root.style.setProperty('--retrasada-bg', theme.retrasadaBg);
+    root.style.setProperty('--retrasada-border', theme.retrasadaBorder);
+    root.style.setProperty('--retrasada-text', theme.retrasadaText);
+    root.style.setProperty('--closed-bg', theme.closedBg);
+    root.style.setProperty('--closed-border', theme.closedBorder);
+    root.style.setProperty('--closed-text', theme.closedText);
+    root.style.setProperty('--success-bg', theme.successBg);
+    root.style.setProperty('--success-border', theme.successBorder);
+    root.style.setProperty('--success-text', theme.successText);
+    root.style.setProperty('--error-bg', theme.errorBg);
+    root.style.setProperty('--error-border', theme.errorBorder);
+    root.style.setProperty('--error-text', theme.errorText);
 
     try {
       localStorage.setItem('scraperapp-theme', themeId);

@@ -1,5 +1,5 @@
 import logoItson from '../assets/logo-itson.png';
-import { Calendar, FolderCog, GraduationCap, ListChecks, RefreshCw } from 'lucide-react';
+import { Calendar, FolderCog, GraduationCap, ListChecks } from 'lucide-react';
 
 const navigationItems = [
   { id: 'activities', label: 'Actividades', icon: ListChecks },
@@ -8,48 +8,9 @@ const navigationItems = [
   { id: 'settings', label: 'Ajustes', icon: FolderCog },
 ];
 
-function getCurrentSemesterLabel() {
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-
-  if (month >= 1 && month <= 5) {
-    return `Enero - Mayo ${year}`;
-  }
-
-  if (month >= 8 && month <= 12) {
-    return `Agosto - Diciembre ${year}`;
-  }
-
-  return `Verano ${year}`;
-}
-
-function Sidebar({
-  activePage,
-  onNavigate,
-  onSyncAll,
-  syncingAll = false,
-  syncingModules = [],
-  userName,
-}) {
-  const displayName = userName?.trim() || 'Estudiante ITSON';
-  const semesterLabel = getCurrentSemesterLabel();
-  const syncingSet = new Set(Array.isArray(syncingModules) ? syncingModules : []);
-
-  const getStatusDot = (moduleId) => {
-    if (syncingSet.has(moduleId)) {
-      return 'animate-pulse bg-itson-blue';
-    }
-
-    if (activePage === moduleId) {
-      return 'animate-pulse bg-emerald-400';
-    }
-
-    return 'bg-slate-600';
-  };
-
+function Sidebar({ activePage, onNavigate }) {
   return (
-    <aside className="flex w-64 flex-col rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
+    <aside className="w-64 rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <img
@@ -58,8 +19,10 @@ function Sidebar({
             className="h-8 w-auto object-contain mix-blend-screen opacity-90"
           />
         </div>
-        <p className="mt-4 text-sm font-semibold text-white">{displayName}</p>
-        <p className="mt-1 text-xs text-slate-400">{semesterLabel}</p>
+        <p className="mt-3 text-xs text-itson-gray">iVirtual Academic Tracker</p>
+        <p className="mt-3 text-sm text-slate-400">
+          Consola enfocada en extraer actividades, fechas límite y adjuntos del portal académico.
+        </p>
       </div>
 
       <nav className="space-y-2">
@@ -82,23 +45,13 @@ function Sidebar({
                 <Icon className="h-4 w-4" />
                 {item.label}
               </span>
-              <span
-                className={`h-2 w-2 rounded-full ${getStatusDot(item.id)}`}
-              />
+              <span className="text-xs uppercase tracking-[0.25em]">
+                {isActive ? 'Live' : 'Idle'}
+              </span>
             </button>
           );
         })}
       </nav>
-
-      <button
-        type="button"
-        onClick={() => onSyncAll?.()}
-        disabled={syncingAll}
-        className="mt-auto flex w-full items-center gap-2 rounded-2xl border border-slate-700 px-3 py-2.5 text-xs text-slate-400 transition hover:border-itson-blue hover:text-itson-blue disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <RefreshCw className={`h-3.5 w-3.5 ${syncingAll ? 'animate-spin' : ''}`} />
-        {syncingAll ? 'Sincronizando...' : 'Sincronizar todo'}
-      </button>
     </aside>
   );
 }

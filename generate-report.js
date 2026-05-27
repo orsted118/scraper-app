@@ -31,9 +31,9 @@ rendering chunks...
 computing gzip size...
 dist/index.html                        0.41 kB | gzip: 0.27 kB
 dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-xQvnpD6q.css        22.99 kB | gzip: 5.20 kB
-dist/assets/index-DX1vi1gs.js        218.36 kB | gzip: 64.07 kB
-✓ built in 6.08s
+dist/assets/index-naYlnb2n.css        22.09 kB | gzip: 5.06 kB
+dist/assets/index-BvkqC4uS.js        215.33 kB | gzip: 63.23 kB
+✓ built in 5.20s
 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
 };
 

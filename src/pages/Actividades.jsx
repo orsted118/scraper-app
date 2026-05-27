@@ -2,7 +2,6 @@ import {
   Archive,
   AlertCircle,
   CheckCircle,
-  Globe,
   RefreshCw,
   Search,
   SearchX,
@@ -64,6 +63,80 @@ function getFriendlyErrorMessage(message = '') {
   return message?.includes('Timeout')
     ? 'iVirtual tardó demasiado en responder. Verifica tu conexión e intenta de nuevo.'
     : message;
+}
+
+function getActivityAnchorId(activity) {
+  const raw = activity?.id || `${activity?.nombre || ''}-${activity?.materia || ''}-${activity?.fechaLimite || ''}`;
+  const normalized = String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `activity-${normalized || 'item'}`;
+}
+
+function parseDeadline(activity) {
+  const parsed = parseSort(activity?.fechaLimite);
+  return parsed === null ? null : new Date(parsed);
+}
+
+function formatDeadline(date) {
+  if (!date) {
+    return 'Sin fecha visible';
+  }
+
+  return new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function getUrgentActivity(activities) {
+  const pendientes = activities
+    .filter((activity) => activity.estado === 'pendiente' && activity.fechaLimite !== 'Sin fecha visible')
+    .map((activity) => ({ activity, deadline: parseDeadline(activity) }))
+    .filter((item) => item.deadline)
+    .sort((left, right) => left.deadline - right.deadline);
+
+  if (pendientes.length > 0) {
+    return { activity: pendientes[0].activity, type: 'urgent', deadline: pendientes[0].deadline };
+  }
+
+  const retrasadas = activities
+    .filter((activity) => activity.estado === 'retrasada' && activity.fechaLimite !== 'Sin fecha visible')
+    .map((activity) => ({ activity, deadline: parseDeadline(activity) }))
+    .filter((item) => item.deadline)
+    .sort((left, right) => left.deadline - right.deadline);
+
+  if (retrasadas.length > 0) {
+    return { activity: retrasadas[0].activity, type: 'late', deadline: retrasadas[0].deadline };
+  }
+
+  return null;
+}
+
+function getRemainingLabel(deadline) {
+  if (!deadline) {
+    return '';
+  }
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const remainingDays = Math.ceil((deadline.getTime() - Date.now()) / dayMs);
+
+  if (remainingDays <= 0) {
+    return 'Vence hoy';
+  }
+
+  return `Faltan ${remainingDays} día${remainingDays === 1 ? '' : 's'}`;
+}
+
+function getLateLabel(deadline) {
+  if (!deadline) {
+    return '';
+  }
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const lateDays = Math.max(1, Math.ceil((Date.now() - deadline.getTime()) / dayMs));
+  return `${lateDays} día${lateDays === 1 ? '' : 's'} de retraso`;
 }
 
 const settingsErrorCodes = new Set([
@@ -138,6 +211,7 @@ function Actividades({
       (field || '').toLowerCase().includes(normalizedQuery),
       );
   });
+  const urgentInfo = useMemo(() => getUrgentActivity(activities), [activities]);
   const sortedActivities = useMemo(() => {
     const items = [...filteredActivities];
 
@@ -183,6 +257,32 @@ function Actividades({
     setSearchQuery('');
   };
 
+  const handleOpenUrgentActivity = (info) => {
+    if (!info?.activity) {
+      return;
+    }
+
+    const nextTab = info.type === 'late' ? 'retrasada' : 'pendiente';
+    setActiveTab(nextTab);
+    setSearchQuery('');
+
+    const anchorId = getActivityAnchorId(info.activity);
+    setTimeout(() => {
+      const target = document.getElementById(anchorId);
+      if (!target) {
+        return;
+      }
+
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.outline = '2px solid var(--accent)';
+      target.style.outlineOffset = '4px';
+
+      window.setTimeout(() => {
+        target.style.outline = 'none';
+      }, 1300);
+    }, 120);
+  };
+
   const emptyStateConfig = {
     pendiente: {
       icon: CheckCircle,
@@ -211,40 +311,130 @@ function Actividades({
           className="rounded-2xl border p-6"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
         >
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          {loading ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-5 w-36 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="h-8 w-4/5 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="h-4 w-3/5 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              <div className="h-10 w-52 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+            </div>
+          ) : (
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
-                <Globe className="h-3.5 w-3.5" />
-                Portal iVirtual ITSON
-              </div>
-              <div>
-                <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
-                  Extracción real de actividades
-                </h3>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-                  Inicia una sesión contra iVirtual, recorre los cursos inscritos y clasifica actividades
-                  en pendientes, retrasadas y cerradas con sus fechas límite, instrucciones y adjuntos.
+              {urgentInfo ? (
+                <>
+                  <span
+                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em]"
+                    style={
+                      urgentInfo.type === 'urgent'
+                        ? {
+                          borderColor: 'var(--accent)',
+                          background: 'color-mix(in srgb, var(--accent) 20%, transparent)',
+                          color: 'var(--accent)',
+                        }
+                        : {
+                          borderColor: 'var(--retrasada-border)',
+                          background: 'var(--retrasada-bg)',
+                          color: 'var(--retrasada-text)',
+                        }
+                    }
+                  >
+                    {urgentInfo.type === 'urgent' ? 'ATENCIÓN' : 'RETRASADA'}
+                  </span>
+
+                  <div>
+                    <h3 className="text-xl font-bold" style={{ color: 'var(--text-strong)' }}>
+                      {urgentInfo.activity.nombre}
+                    </h3>
+                    <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                      {urgentInfo.activity.materia || 'Materia no disponible'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p
+                      className="text-lg font-semibold"
+                      style={{
+                        color: urgentInfo.type === 'urgent' ? 'var(--error-text)' : 'var(--retrasada-text)',
+                      }}
+                    >
+                      {formatDeadline(urgentInfo.deadline)}
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      {urgentInfo.type === 'urgent'
+                        ? getRemainingLabel(urgentInfo.deadline)
+                        : getLateLabel(urgentInfo.deadline)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUrgentActivity(urgentInfo)}
+                      className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-slate-50 transition"
+                      style={{ background: 'var(--accent)' }}
+                    >
+                      Ver actividad
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onSync}
+                      disabled={loading}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{
+                        borderColor: 'var(--border-normal)',
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--text-normal)',
+                      }}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      Sincronizar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full"
+                      style={{ background: 'var(--success-bg)', color: 'var(--success-text)' }}
+                    >
+                      <CheckCircle className="h-6 w-6" />
+                    </span>
+                    <div>
+                      <h3 className="text-xl font-bold" style={{ color: 'var(--text-strong)' }}>
+                        Todo al día
+                      </h3>
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                        No tienes actividades pendientes ni retrasadas.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={onSync}
+                      disabled={loading}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ background: 'var(--accent)' }}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      Sincronizar
+                    </button>
+                    <p className="text-xs uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
+                      {formatLastSync(lastSyncAt)}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {urgentInfo ? (
+                <p className="text-xs uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
+                  {formatLastSync(lastSyncAt)}
                 </p>
-              </div>
+              ) : null}
             </div>
-
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={onSync}
-                disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ background: 'var(--accent)' }}
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                {loading ? 'Sincronizando...' : 'Sincronizar'}
-              </button>
-
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
-                {formatLastSync(lastSyncAt)}
-              </p>
-            </div>
-          </div>
+          )}
         </article>
 
         <div className="grid gap-4">
@@ -410,7 +600,9 @@ function Actividades({
       ) : sortedActivities.length > 0 ? (
         <div className="space-y-4">
           {sortedActivities.map((activity) => (
-            <ActivityCard key={activity.id} {...activity} />
+            <div key={getActivityAnchorId(activity)} id={getActivityAnchorId(activity)}>
+              <ActivityCard {...activity} />
+            </div>
           ))}
         </div>
       ) : normalizedQuery ? (

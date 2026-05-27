@@ -7,6 +7,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import ColorPicker from '../components/ColorPicker';
 import { useTheme } from '../ThemeContext';
 import { THEMES } from '../themes';
 
@@ -420,18 +421,11 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                       Botones, elementos activos y highlights
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                      {customColors.accent}
-                    </span>
-                    <input
-                      type="color"
-                      value={customColors.accent}
-                      onChange={(event) => handleCustomColor('accent', event.target.value)}
-                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
-                      style={{ accentColor: customColors.accent }}
-                    />
-                  </div>
+                  <ColorPicker
+                    label="Acento"
+                    value={customColors.accent}
+                    onChange={(nextHex) => handleCustomColor('accent', nextHex)}
+                  />
                 </label>
 
                 <label className="flex items-center justify-between gap-4">
@@ -443,17 +437,11 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                       Color de fondo de toda la app
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                      {customColors.bg}
-                    </span>
-                    <input
-                      type="color"
-                      value={customColors.bg}
-                      onChange={(event) => handleCustomColor('bg', event.target.value)}
-                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
-                    />
-                  </div>
+                  <ColorPicker
+                    label="Fondo"
+                    value={customColors.bg}
+                    onChange={(nextHex) => handleCustomColor('bg', nextHex)}
+                  />
                 </label>
 
                 <label className="flex items-center justify-between gap-4">
@@ -465,17 +453,11 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                       Texto principal de la interfaz
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                      {customColors.text}
-                    </span>
-                    <input
-                      type="color"
-                      value={customColors.text}
-                      onChange={(event) => handleCustomColor('text', event.target.value)}
-                      className="h-9 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0.5"
-                    />
-                  </div>
+                  <ColorPicker
+                    label="Texto"
+                    value={customColors.text}
+                    onChange={(nextHex) => handleCustomColor('text', nextHex)}
+                  />
                 </label>
 
                 <button

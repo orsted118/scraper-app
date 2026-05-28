@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { app, ipcMain } = require('electron');
+const electron = require('electron');
+const app = electron?.app;
+const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
 const pdfjsLib = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
 
@@ -14,7 +16,17 @@ function normalizeWhitespace(value) {
 }
 
 function getCIACachePath() {
-  return path.join(app.getPath('userData'), 'cia-cache.json');
+  return path.join(getCIAUserDataPath(), 'cia-cache.json');
+}
+
+function getCIAUserDataPath() {
+  if (app && typeof app.getPath === 'function') {
+    return app.getPath('userData');
+  }
+
+  const fallbackPath = path.join(process.cwd(), '.local-data');
+  fs.mkdirSync(fallbackPath, { recursive: true });
+  return fallbackPath;
 }
 
 function discardCIACache(cachePath) {
@@ -197,9 +209,139 @@ function parseFinalGrade(value) {
     return null;
   }
 
-  const normalized = value.replace(',', '.');
+  if (/^\s*-+\s*$/.test(value) || /^[A-Z]\s*$/i.test(value)) {
+    return null;
+  }
+
+  const normalized = String(value).replace(',', '.');
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getGradeStatus(promedio, calificaciones = []) {
+  const hasGrades = calificaciones.some((item) => Number.isFinite(item?.calificacion));
+
+  if (!hasGrades || !Number.isFinite(promedio)) {
+    return 'sin_calificacion';
+  }
+
+  if (promedio >= 7) {
+    return 'aprobada';
+  }
+
+  if (promedio >= 6) {
+    return 'en_riesgo';
+  }
+
+  return 'reprobada';
+}
+
+function normalizeCourseCode(value = '') {
+  return normalizeWhitespace(value).replace(/\s+/g, '').toUpperCase();
+}
+
+function cleanCourseName(value = '') {
+  return normalizeWhitespace(
+    value
+      .replace(/\s+-\s*/g, ' ')
+      .replace(/\s{2,}/g, ' '),
+  );
+}
+
+function buildPartialEntries(cells) {
+  const relevantCells = cells
+    .filter((item) => item.x >= 220 && item.x < 705)
+    .filter((item) => /^-?\d+(?:[.,]\d+)?$/.test(item.text) || /^\s*-+\s*$/.test(item.text));
+
+  const visiblePartials = relevantCells
+    .filter((item) => Number.isFinite(parseFinalGrade(item.text)))
+    .map((item, index) => ({
+      nombre: `Parcial ${index + 1}`,
+      etiqueta: `P${index + 1}`,
+      parcial: `P${index + 1}`,
+      calificacion: parseFinalGrade(item.text),
+      sobre: 10,
+    }));
+
+  if (visiblePartials.length > 0) {
+    return visiblePartials;
+  }
+
+  // The current CIA PDF often renders partial columns as "-" even when final
+  // grades are visible. Keep explicit partial slots so the UI can distinguish
+  // "no partial uploaded yet" from "only final was parsed".
+  return Array.from({ length: Math.min(3, Math.max(1, relevantCells.length || 3)) }, (_, index) => ({
+    nombre: `Parcial ${index + 1}`,
+    etiqueta: `P${index + 1}`,
+    parcial: `P${index + 1}`,
+    calificacion: null,
+    sobre: 10,
+  }));
+}
+
+function buildComponentFromRow(row, fallbackTipo = 'Teoría') {
+  return {
+    tipo: row.componente || fallbackTipo,
+    calificaciones: row.calificaciones,
+    promedio: row.promedio,
+  };
+}
+
+function groupMateriasByCode(rows) {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const code = normalizeCourseCode(row.codigo || row.clave);
+    if (!code) return;
+
+    if (!groups.has(code)) {
+      groups.set(code, []);
+    }
+
+    groups.get(code).push(row);
+  });
+
+  return [...groups.entries()].map(([codigo, groupRows]) => {
+    const primary = groupRows[0];
+    const numericPromedios = groupRows
+      .map((row) => row.promedio)
+      .filter((value) => Number.isFinite(value));
+    const promedio =
+      numericPromedios.length > 0
+        ? Number((numericPromedios.reduce((sum, value) => sum + value, 0) / numericPromedios.length).toFixed(2))
+        : null;
+    const hasLabInName = /(?:c\/lab|\/lab|laboratorio)/i.test(primary.nombre);
+    const hasMultipleComponents = groupRows.length > 1;
+    const tieneComponentes = hasMultipleComponents || hasLabInName;
+    let componentes = [];
+
+    if (hasMultipleComponents) {
+      componentes = groupRows.map((row, index) => buildComponentFromRow(row, index === 0 ? 'Teoría' : 'Laboratorio'));
+    } else if (hasLabInName) {
+      componentes = [
+        buildComponentFromRow(primary, 'Teoría'),
+        {
+          tipo: 'Laboratorio',
+          calificaciones: primary.calificaciones,
+          promedio: primary.promedio,
+        },
+      ];
+    }
+
+    const calificaciones = primary.calificaciones || [];
+
+    return {
+      codigo,
+      clave: codigo,
+      nombre: primary.nombre,
+      profesor: primary.profesor || '',
+      calificaciones,
+      promedio,
+      estado: getGradeStatus(promedio, calificaciones),
+      tieneComponentes,
+      componentes,
+    };
+  });
 }
 
 function extractMateriasFromPage(pageTextItems) {
@@ -215,7 +357,7 @@ function extractMateriasFromPage(pageTextItems) {
     groupedRows.get(rowKey).push(item);
   });
 
-  const materias = [];
+  const rows = [];
 
   [...groupedRows.entries()]
     .sort((a, b) => b[0] - a[0])
@@ -232,83 +374,56 @@ function extractMateriasFromPage(pageTextItems) {
         return;
       }
 
-      const codeIndex = sortedItems.findIndex((item) => isGradeCode(item.text));
+      const codeIndex = sortedItems.findIndex((item) => item.x >= 20 && item.x <= 75 && isGradeCode(item.text));
 
       if (codeIndex < 0) {
         return;
       }
 
-      const clave = sortedItems[codeIndex].text;
-      const contentItems = sortedItems.slice(codeIndex + 1);
-      const nombreParts = [];
-      const partialGrades = [];
-      let finalGrade = null;
+      const codigo = normalizeCourseCode(sortedItems[codeIndex].text);
+      const nombre = cleanCourseName(
+        sortedItems
+          .filter((item) => item.x > 70 && item.x < 225)
+          .map((item) => item.text)
+          .filter((text) => text && !/^(?:TOTAL|CALIF|FALTAS|-+)$/i.test(text))
+          .join(' '),
+      );
 
-      contentItems.forEach((item) => {
-        const isNumeric = /^-?\d+(?:[.,]\d+)?$/.test(item.text);
-
-        if (item.x >= 760 && isNumeric) {
-          finalGrade = parseFinalGrade(item.text);
-          return;
-        }
-
-        if (item.x >= 700) {
-          return;
-        }
-
-        if (isNumeric) {
-          partialGrades.push(parseFinalGrade(item.text));
-          return;
-        }
-
-        if (/^(?:TOTAL|CALIF|FALTAS)$/i.test(item.text)) {
-          return;
-        }
-
-        nombreParts.push(item.text);
-      });
-
-      const nombre = normalizeWhitespace(nombreParts.join(' '));
-
-      if (!nombre || /^(?:REGISTRO DE EVALUACIONES|INSTITUTO TECNOL[ÓO]GICO|CICLO LECTIVO|PLAN|NOMBRE|PROGRAMA|ID ALUMNO)/i.test(nombre)) {
+      if (!nombre || /^(?:REGISTRO DE EVALUACIONES|INSTITUTO TECNOL[ÓO]GICO|CICLO LECTIVO|PLAN\b|NOMBRE\b|PROGRAMA\b|ID ALUMNO)/i.test(nombre)) {
         return;
       }
 
-      const partialEntries = partialGrades
-        .filter((value) => Number.isFinite(value))
-        .map((value, index) => ({ parcial: `Parcial ${index + 1}`, calificacion: value }));
-      const calificaciones =
-        partialEntries.length > 0
-          ? [
-              ...partialEntries,
-              ...(Number.isFinite(finalGrade) ? [{ parcial: 'Final', calificacion: finalGrade }] : []),
-            ]
-          : [{ parcial: 'Final', calificacion: finalGrade }];
+      const finalGradeItem = sortedItems
+        .filter((item) => item.x >= 740)
+        .sort((a, b) => b.x - a.x)
+        .find((item) => /^-?\d+(?:[.,]\d+)?$/.test(item.text) || /^\s*-+\s*$/.test(item.text) || /^[A-Z]\s*$/i.test(item.text));
+      const finalGrade = parseFinalGrade(finalGradeItem?.text);
+      const partialEntries = buildPartialEntries(sortedItems);
+      const calificaciones = [
+        ...partialEntries,
+        {
+          nombre: 'Final',
+          etiqueta: 'Final',
+          parcial: 'Final',
+          calificacion: finalGrade,
+          sobre: 10,
+        },
+      ];
 
       const promedio = Number.isFinite(finalGrade) ? finalGrade : null;
 
-      let estado = 'sin_calificacion';
-      if (promedio !== null) {
-        if (promedio >= 70) {
-          estado = 'aprobada';
-        } else if (promedio >= 60) {
-          estado = 'en_riesgo';
-        } else {
-          estado = 'reprobada';
-        }
-      }
-
-      materias.push({
-        clave,
+      rows.push({
+        codigo,
+        clave: codigo,
         nombre,
         profesor: '',
         calificaciones,
         promedio,
-        estado,
+        estado: getGradeStatus(promedio, calificaciones),
       });
     });
 
-  return materias;
+  return groupMateriasByCode(rows);
 }
 
 async function extractCalificacionesFromPdf(buffer) {

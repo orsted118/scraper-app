@@ -19,22 +19,32 @@ const MAX_DIFF_BYTES = 150 * 1024;
 
 const VERIFICATION = {
   buildStatus: 'PASS',
-  testsRun: 'ninguno',
-  verificationCmd: 'npm run build',
-  verificationOutput: `> scraper-app@0.1.0 build
+  testsRun: 'Comando obligatorio de CIA + npm run build',
+  verificationCmd: 'node -e "require(\'dotenv\').config(); const c=require(\'./electron/handlers/cia\'); c.clearCIACache(); c.getCalificacionesWithCache().then(r => { r.materias?.forEach(m => console.log(m.nombre, \'|\', m.codigo, \'|\', m.profesor, \'|\', JSON.stringify(m.calificaciones), \'|\', m.promedio)); console.log(\'Total:\', r.materias?.length); })"',
+  verificationOutput: `◇ injected env (5) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+Precálculo | 1165M |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":6,"sobre":10}] | 6
+Ingles Universitario A1 | 1043D |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":7,"sobre":10}] | 7
+Sist Operativos y Arq de Comp | 1123C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
+Matematicas Discretas | 1178M |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":7,"sobre":10}] | 7
+Programacion II c/Lab | 1124C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
+Tecnologia y Empresa | 1115C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
+Tutoria 2 (INSOF) | 1132T |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":null,"sobre":10}] | null
+Total: 7
+
+> scraper-app@0.1.0 build
 > vite build
 
-The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
 vite v5.4.21 building for production...
 transforming...
-✓ 1765 modules transformed.
+✓ 1766 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                        0.41 kB | gzip:  0.28 kB
-dist/assets/logo-itson-GKrD7IS7.png   37.09 kB
-dist/assets/index-CwYUsmUR.css        28.03 kB | gzip:  6.09 kB
-dist/assets/index-Dpb30FCB.js        272.34 kB | gzip: 75.95 kB
-✓ built in 6.41s`,
+dist/index.html                      0.41 kB │ gzip:  0.27 kB
+dist/assets/logo-itson-GKrD7IS7.png  37.09 kB
+dist/assets/index-ByOxmHud.css       28.90 kB │ gzip:  6.24 kB
+dist/assets/index-C9dellb7.js        278.47 kB │ gzip: 77.13 kB
+✓ built in 9.76s
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
 };
 
 function ensureReportsDir() {

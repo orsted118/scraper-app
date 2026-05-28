@@ -4,39 +4,10 @@ import {
   BookOpen,
   CheckCircle2,
   GraduationCap,
-  Loader2,
   RefreshCw,
+  XCircle,
 } from 'lucide-react';
-
-const statusLabels = {
-  aprobada: 'Aprobada',
-  en_riesgo: 'En riesgo',
-  reprobada: 'Reprobada',
-  sin_calificacion: 'Sin calificación',
-};
-
-const statusStyles = {
-  aprobada: {
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    background: 'rgba(16, 185, 129, 0.1)',
-    color: 'rgb(209, 250, 229)',
-  },
-  en_riesgo: {
-    borderColor: 'rgba(249, 115, 22, 0.3)',
-    background: 'rgba(249, 115, 22, 0.1)',
-    color: 'rgb(254, 215, 170)',
-  },
-  reprobada: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    background: 'rgba(239, 68, 68, 0.1)',
-    color: 'rgb(254, 202, 202)',
-  },
-  sin_calificacion: {
-    borderColor: 'var(--border-normal)',
-    background: 'var(--bg-tertiary)',
-    color: 'var(--text-normal)',
-  },
-};
+import GradeCard from '../components/GradeCard';
 
 const ciaFriendlyErrors = {
   CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
@@ -56,7 +27,28 @@ function formatGrade(value) {
   }
 
   const numericValue = Number(value);
-  return Number.isInteger(numericValue) ? `${numericValue}` : numericValue.toFixed(1);
+  return Number.isInteger(numericValue) ? numericValue.toFixed(1) : numericValue.toFixed(1);
+}
+
+function getMateriaStatus(materia) {
+  const promedio = typeof materia.promedio === 'number' ? materia.promedio : null;
+  const hasGrades = Array.isArray(materia.calificaciones)
+    ? materia.calificaciones.some((item) => typeof item.calificacion === 'number')
+    : false;
+
+  if (!hasGrades || promedio === null) {
+    return 'sin_calificacion';
+  }
+
+  if (promedio >= 7) {
+    return 'aprobada';
+  }
+
+  if (promedio >= 6) {
+    return 'en_riesgo';
+  }
+
+  return 'reprobada';
 }
 
 function formatLastSync(lastSyncAt) {
@@ -93,10 +85,11 @@ function getFriendlyCIAErrorMessage(errorCode, fallbackMessage = '') {
 }
 
 function StatCard({ icon: Icon, label, value, tone = 'default' }) {
-  const toneClasses = {
-    default: 'bg-itson-blue/10 text-itson-blue',
-    emerald: 'bg-emerald-500/10 text-emerald-300',
-    orange: 'bg-orange-500/10 text-orange-300',
+  const toneStyles = {
+    default: { background: 'rgba(0, 109, 182, 0.12)', color: 'var(--accent-hover)' },
+    emerald: { background: 'var(--success-bg)', color: 'var(--success-text)' },
+    orange: { background: 'var(--retrasada-bg)', color: 'var(--retrasada-text)' },
+    red: { background: 'var(--error-bg)', color: 'var(--error-text)' },
   };
 
   return (
@@ -105,7 +98,7 @@ function StatCard({ icon: Icon, label, value, tone = 'default' }) {
       style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
     >
       <div className="flex items-center gap-3">
-        <span className={`rounded-2xl p-3 ${toneClasses[tone] || toneClasses.default}`}>
+        <span className="rounded-2xl p-3" style={toneStyles[tone] || toneStyles.default}>
           <Icon className="h-5 w-5" />
         </span>
         <div>
@@ -121,103 +114,6 @@ function StatCard({ icon: Icon, label, value, tone = 'default' }) {
   );
 }
 
-function StatusBadge({ status }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
-      style={statusStyles[status] || statusStyles.sin_calificacion}
-    >
-      {statusLabels[status] || statusLabels.sin_calificacion}
-    </span>
-  );
-}
-
-function PartialChip({ parcial, calificacion }) {
-  const numericValue = calificacion === null ? null : Number(calificacion);
-
-  const toneClasses =
-    numericValue === null
-      ? ''
-      : numericValue >= 70
-        ? 'bg-emerald-500/20 text-emerald-300'
-        : numericValue >= 60
-          ? 'bg-orange-500/20 text-orange-300'
-          : 'bg-red-500/20 text-red-300';
-  const toneStyle = numericValue === null
-    ? {
-      borderColor: 'var(--border-normal)',
-      background: 'var(--bg-tertiary)',
-      color: 'var(--text-muted)',
-    }
-    : undefined;
-
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${toneClasses}`}
-      style={toneStyle}
-    >
-      <span>{parcial}</span>
-      <span>{formatGrade(calificacion)}</span>
-    </span>
-  );
-}
-
-function GradeCard({ materia }) {
-  const partials = Array.isArray(materia.calificaciones) && materia.calificaciones.length > 0
-    ? materia.calificaciones
-    : [{ parcial: 'Final', calificacion: null }];
-
-  return (
-    <article
-      className="rounded-2xl border p-6 shadow-lg shadow-slate-950/20"
-      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <div>
-            <h3 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
-              {materia.nombre || 'Materia sin nombre'}
-            </h3>
-            <p className="text-sm text-slate-400">{materia.clave || 'Clave no disponible'}</p>
-          </div>
-          <p className="text-sm text-slate-400">
-            {materia.profesor || 'Profesor no visible en CIA'}
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3">
-          <StatusBadge status={materia.estado} />
-        </div>
-      </div>
-
-      <div className="mt-5 flex flex-wrap gap-2">
-        {partials.map((item) => (
-          <PartialChip
-            key={`${materia.clave || materia.nombre}-${item.parcial}`}
-            parcial={item.parcial}
-            calificacion={item.calificacion}
-          />
-        ))}
-      </div>
-
-      <div
-        className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4"
-        style={{ borderColor: 'var(--border-subtle)' }}
-      >
-        <p className="text-sm text-slate-400">
-          Promedio:{' '}
-          <span style={{ color: 'var(--text-strong)' }}>
-            {materia.promedio === null || materia.promedio === undefined ? '—' : formatGrade(materia.promedio)}
-          </span>
-        </p>
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
-          CIA ITSON · semestre actual
-        </p>
-      </div>
-    </article>
-  );
-}
-
 function Calificaciones({
   calificaciones = [],
   errorCIA,
@@ -228,8 +124,9 @@ function Calificaciones({
   onSyncCIA,
 }) {
   const materias = Array.isArray(calificaciones) ? calificaciones : [];
-  const aprobadas = materias.filter((materia) => materia.estado === 'aprobada').length;
-  const enRiesgo = materias.filter((materia) => materia.estado === 'en_riesgo').length;
+  const aprobadas = materias.filter((materia) => getMateriaStatus(materia) === 'aprobada').length;
+  const enRiesgo = materias.filter((materia) => getMateriaStatus(materia) === 'en_riesgo').length;
+  const reprobadas = materias.filter((materia) => getMateriaStatus(materia) === 'reprobada').length;
   const numericAverages = materias
     .map((materia) => (typeof materia.promedio === 'number' ? materia.promedio : null))
     .filter((value) => value !== null);
@@ -309,10 +206,11 @@ function Calificaciones({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={BookOpen} label="Total de materias" value={materias.length} />
         <StatCard icon={CheckCircle2} label="Materias aprobadas" value={aprobadas} tone="emerald" />
         <StatCard icon={AlertTriangle} label="Materias en riesgo" value={enRiesgo} tone="orange" />
+        <StatCard icon={XCircle} label="Materias reprobadas" value={reprobadas} tone="red" />
         <StatCard
           icon={GraduationCap}
           label="Promedio general"
@@ -335,9 +233,9 @@ function Calificaciones({
           ))}
         </div>
       ) : materias.length > 0 ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3">
           {materias.map((materia, index) => (
-            <GradeCard key={`${materia.clave || materia.nombre || 'materia'}-${index}`} materia={materia} />
+            <GradeCard key={`${materia.codigo || materia.clave || materia.nombre || 'materia'}-${index}`} materia={materia} />
           ))}
         </div>
       ) : (

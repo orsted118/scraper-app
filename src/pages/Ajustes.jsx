@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  BellRing,
   CheckCircle,
   FolderCog,
   Loader2,
@@ -111,6 +112,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const [password, setPassword] = useState('');
   const [ciaUser, setCiaUser] = useState('');
   const [ciaPassword, setCiaPassword] = useState('');
+  const [notifMinutesBefore, setNotifMinutesBefore] = useState(10);
   const [hasPassword, setHasPassword] = useState(false);
   const [hasCIAPassword, setHasCIAPassword] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -138,7 +140,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
         if (mounted) {
           setFeedback({
             type: 'error',
-            message: 'ScraperApp debe ejecutarse dentro de Electron para administrar credenciales.',
+            message: 'DVPotro debe ejecutarse dentro de Electron para administrar credenciales.',
           });
           setSettingsLoading(false);
         }
@@ -156,6 +158,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
         setHasPassword(Boolean(response?.hasPassword));
         setCiaUser(response?.ciaUser || '');
         setHasCIAPassword(Boolean(response?.hasCIAPassword));
+        setNotifMinutesBefore(Number(response?.notifMinutesBefore) || 10);
       } catch (_error) {
         if (mounted) {
           setFeedback({
@@ -181,7 +184,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
     if (!api) {
       setFeedback({
         type: 'error',
-        message: 'ScraperApp debe ejecutarse dentro de Electron para guardar credenciales.',
+        message: 'DVPotro debe ejecutarse dentro de Electron para guardar credenciales.',
       });
       return;
     }
@@ -195,6 +198,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
         password: section === 'ivirtual' ? password : '',
         ciaUser,
         ciaPassword: section === 'cia' ? ciaPassword : '',
+        notifMinutesBefore,
       });
 
       if (!result?.success) {
@@ -227,6 +231,55 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
       setFeedback({
         type: 'error',
         message: 'No fue posible guardar las credenciales.',
+      });
+    } finally {
+      setSavingSection('');
+    }
+  };
+
+  const handleNotificationSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!api) {
+      setFeedback({
+        type: 'error',
+        message: 'DVPotro debe ejecutarse dentro de Electron para guardar la configuración.',
+      });
+      return;
+    }
+
+    setSavingSection('notifications');
+    setFeedback({ type: '', message: '' });
+
+    try {
+      const result = await api.saveSettings({
+        user,
+        password: '',
+        ciaUser,
+        ciaPassword: '',
+        notifMinutesBefore,
+      });
+
+      if (!result?.success) {
+        setFeedback({
+          type: 'error',
+          message: result?.error || 'No fue posible guardar la configuración.',
+        });
+        return;
+      }
+
+      setFeedback({
+        type: 'success',
+        message: 'Preferencia de notificaciones guardada correctamente',
+      });
+
+      if (typeof onSettingsSaved === 'function') {
+        await onSettingsSaved();
+      }
+    } catch (_error) {
+      setFeedback({
+        type: 'error',
+        message: 'No fue posible guardar la configuración.',
       });
     } finally {
       setSavingSection('');
@@ -299,7 +352,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
           icon={FolderCog}
           isLoading={settingsLoading}
           isSaving={savingSection === 'ivirtual'}
-          note="ScraperApp usa variables locales en .env para autenticarse contra iVirtual. Ahora puedes administrarlas desde la app sin editar archivos manualmente."
+          note="DVPotro usa variables locales en .env para autenticarse contra iVirtual. Ahora puedes administrarlas desde la app sin editar archivos manualmente."
           onSubmit={(event) => {
             event.preventDefault();
             handleSubmit('ivirtual');
@@ -334,6 +387,56 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
           userValueSetter={setCiaUser}
         />
       </div>
+
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
+        <div className="flex items-start gap-3">
+          <BellRing className="mt-1 h-5 w-5" style={{ color: 'var(--accent)' }} />
+          <div className="w-full">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+              Notificaciones de clases
+            </h3>
+            <p className="mt-2 text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
+              Define con cuánta anticipación DVPotro debe avisarte antes de una clase del horario CIA.
+            </p>
+
+            <form className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={handleNotificationSubmit}>
+              <label className="block flex-1 space-y-2">
+                <span className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
+                  Avisar antes de clase
+                </span>
+                <select
+                  value={notifMinutesBefore}
+                  onChange={(event) => setNotifMinutesBefore(Number(event.target.value))}
+                  className="w-full rounded-2xl border px-4 py-3 text-sm outline-none transition focus:border-itson-blue focus:ring-2 focus:ring-itson-blue/30"
+                  style={{
+                    borderColor: 'var(--border-normal)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-strong)',
+                  }}
+                >
+                  <option value={5}>5 minutos antes</option>
+                  <option value={10}>10 minutos antes</option>
+                  <option value={15}>15 minutos antes</option>
+                  <option value={30}>30 minutos antes</option>
+                  <option value={60}>1 hora antes</option>
+                </select>
+              </label>
+
+              <button
+                type="submit"
+                disabled={settingsLoading || savingSection === 'notifications'}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-itson-blue px-5 py-3 text-sm font-semibold text-slate-50 transition hover:bg-itson-blue-light disabled:cursor-not-allowed disabled:bg-itson-blue/50"
+              >
+                {savingSection === 'notifications' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {savingSection === 'notifications' ? 'Guardando...' : 'Guardar aviso'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
 
       <section
         className="rounded-2xl border p-6"

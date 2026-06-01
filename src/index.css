@@ -69,3 +69,23 @@ a {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
+
+.view-container {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.view-container.exiting {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.compact-row-details {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.18s ease;
+}
+
+.compact-row-details.expanded {
+  max-height: 200px;
+}

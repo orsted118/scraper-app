@@ -1,6 +1,6 @@
-# ScraperApp
+# DVPotro
 
-ScraperApp es una aplicación de escritorio para estudiantes ITSON que unifica, en una sola interfaz, la información académica que normalmente está separada entre **iVirtual** y **CIA**.
+DVPotro es una aplicación de escritorio para estudiantes ITSON que unifica, en una sola interfaz, la información académica que normalmente está separada entre **iVirtual** y **CIA**.
 
 La app está orientada a uso diario: revisar pendientes, detectar riesgos (retrasos/vencimientos), abrir enlaces de clase remota y consultar calificaciones sin navegar manualmente por múltiples sistemas.
 
@@ -15,9 +15,9 @@ El flujo habitual del estudiante implica:
 - entrar a CIA para revisar horario y calificaciones,
 - y consolidar todo manualmente.
 
-ScraperApp automatiza ese proceso para reducir tiempo y errores de seguimiento.
+DVPotro automatiza ese proceso para reducir tiempo y errores de seguimiento.
 
-### Qué hace ScraperApp
+### Qué hace DVPotro
 
 1. **Actividades (iVirtual)**
    - Clasifica actividades en: `pendiente`, `retrasada`, `cerrada`.

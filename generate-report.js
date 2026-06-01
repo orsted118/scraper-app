@@ -19,32 +19,35 @@ const MAX_DIFF_BYTES = 150 * 1024;
 
 const VERIFICATION = {
   buildStatus: 'PASS',
-  testsRun: 'Comando obligatorio de CIA + npm run build',
-  verificationCmd: 'node -e "require(\'dotenv\').config(); const c=require(\'./electron/handlers/cia\'); c.clearCIACache(); c.getCalificacionesWithCache().then(r => { r.materias?.forEach(m => console.log(m.nombre, \'|\', m.codigo, \'|\', m.profesor, \'|\', JSON.stringify(m.calificaciones), \'|\', m.promedio)); console.log(\'Total:\', r.materias?.length); })"',
-  verificationOutput: `◇ injected env (5) from .env // tip: ⌁ auth for agents [www.vestauth.com]
-Precálculo | 1165M |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":6,"sobre":10}] | 6
-Ingles Universitario A1 | 1043D |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":7,"sobre":10}] | 7
-Sist Operativos y Arq de Comp | 1123C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
-Matematicas Discretas | 1178M |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":7,"sobre":10}] | 7
-Programacion II c/Lab | 1124C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
-Tecnologia y Empresa | 1115C |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":9,"sobre":10}] | 9
-Tutoria 2 (INSOF) | 1132T |  | [{"nombre":"Parcial 1","etiqueta":"P1","parcial":"P1","calificacion":null,"sobre":10},{"nombre":"Parcial 2","etiqueta":"P2","parcial":"P2","calificacion":null,"sobre":10},{"nombre":"Parcial 3","etiqueta":"P3","parcial":"P3","calificacion":null,"sobre":10},{"nombre":"Final","etiqueta":"Final","parcial":"Final","calificacion":null,"sobre":10}] | null
-Total: 7
-
-> scraper-app@0.1.0 build
+  testsRun: 'npm run build + npm run dist:dir + branding asset/config/static reference checks',
+  verificationCmd: 'npm run build; npm run dist:dir; node branding verification; rg old active branding references',
+  verificationOutput: `> dvpotro@0.1.0 build
 > vite build
 
 vite v5.4.21 building for production...
-transforming...
-✓ 1766 modules transformed.
-rendering chunks...
-computing gzip size...
-dist/index.html                      0.41 kB │ gzip:  0.27 kB
-dist/assets/logo-itson-GKrD7IS7.png  37.09 kB
-dist/assets/index-ByOxmHud.css       28.90 kB │ gzip:  6.24 kB
-dist/assets/index-C9dellb7.js        278.47 kB │ gzip: 77.13 kB
-✓ built in 9.76s
-The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.`,
+✓ 1767 modules transformed.
+dist/index.html                        0.47 kB │ gzip:  0.30 kB
+dist/assets/dvpotro-logo-CBq7ehc7.png  547.24 kB
+dist/assets/index-DSm_0RCx.css         30.38 kB │ gzip:  6.54 kB
+dist/assets/index-fJoIziKb.js          297.64 kB │ gzip: 81.87 kB
+✓ built in 4.93s
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+> dvpotro@0.1.0 dist:dir
+> vite build && electron-builder --dir
+
+✓ 1767 modules transformed.
+✓ built in 4.83s
+• electron-builder version=26.8.1
+• loaded configuration file=package.json (build field)
+• packaging platform=win32 arch=x64 electron=42.2.0 appOutDir=release\\win-unpacked
+• updating asar integrity executable resource executablePath=release\\win-unpacked\\DVPotro.exe
+Warnings observed: package author missing, duplicate dependency references, Vite CJS deprecation, Node DEP0190 from electron-builder.
+
+branding verification OK
+active branding reference scan OK: no old visible references
+release/win-unpacked/DVPotro.exe exists (226508800 bytes)
+Assets created: build/icon.ico, build/icon.png, build/icon.icns, build/icon-{16,32,64,128,256,512}.png, src/assets/branding/dvpotro-logo*.png, public/favicon.png`,
 };
 
 function ensureReportsDir() {

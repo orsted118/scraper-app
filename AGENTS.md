@@ -1,6 +1,6 @@
-# ScraperApp — Contexto para Agentes IA
+# DVPotro — Contexto para Agentes IA
 
-ScraperApp es una app de escritorio Windows para estudiantes de ITSON. Centraliza **actividades (iVirtual)**, **horario (CIA + iVirtual)** y **calificaciones (CIA)** en una sola UI.
+DVPotro es una app de escritorio Windows para estudiantes de ITSON. Centraliza **actividades (iVirtual)**, **horario (CIA + iVirtual)** y **calificaciones (CIA)** en una sola UI.
 
 ---
 
@@ -48,7 +48,8 @@ scraper-app/
 │  ├─ App.jsx                      # Orquestación de estado, navegación, carga de módulos
 │  ├─ index.css                    # Base global + gradiente + util line-clamp-3
 │  ├─ assets/
-│  │  └─ logo-itson.png            # Logo institucional
+│  │  ├─ logo-itson.png            # Logo institucional legado
+│  │  └─ branding/                 # Assets oficiales DVPotro
 │  ├─ components/
 │  │  ├─ Sidebar.jsx
 │  │  ├─ TaskPanel.jsx

@@ -25,6 +25,7 @@ function getSettings() {
     hasPassword: Boolean(process.env.IVIRTUAL_PASS),
     ciaUser: process.env.CIA_USER || '',
     hasCIAPassword: Boolean(process.env.CIA_PASS),
+    notifMinutesBefore: Number(process.env.NOTIF_MINUTES_BEFORE) || 10,
   };
 }
 
@@ -40,12 +41,13 @@ function upsertEnvValue(lines, key, value) {
   return [...lines, nextLine];
 }
 
-function saveSettings({ user, password, ciaUser, ciaPassword }) {
+function saveSettings({ user, password, ciaUser, ciaPassword, notifMinutesBefore }) {
   try {
     const normalizedUser = typeof user === 'string' ? user.trim() : '';
-    const normalizedPassword = typeof password === 'string' ? password : '';
+    const normalizedPassword = typeof password === 'string' ? password.trim() : '';
     const normalizedCIAUser = typeof ciaUser === 'string' ? ciaUser.trim() : '';
-    const normalizedCIAPassword = typeof ciaPassword === 'string' ? ciaPassword : '';
+    const normalizedCIAPassword = typeof ciaPassword === 'string' ? ciaPassword.trim() : '';
+    const normalizedNotifMinutes = Number(notifMinutesBefore);
 
     if (!normalizedUser) {
       return { success: false, error: 'El ID de usuario es requerido.' };
@@ -58,6 +60,15 @@ function saveSettings({ user, password, ciaUser, ciaPassword }) {
     let envLines = readEnvLines().filter((line) => line.trim().length > 0);
     envLines = upsertEnvValue(envLines, 'IVIRTUAL_USER', normalizedUser);
     envLines = upsertEnvValue(envLines, 'CIA_USER', normalizedCIAUser);
+
+    if (Number.isFinite(normalizedNotifMinutes) && normalizedNotifMinutes > 0) {
+      envLines = upsertEnvValue(
+        envLines,
+        'NOTIF_MINUTES_BEFORE',
+        String(Math.round(normalizedNotifMinutes)),
+      );
+      process.env.NOTIF_MINUTES_BEFORE = String(Math.round(normalizedNotifMinutes));
+    }
 
     if (normalizedPassword.trim()) {
       envLines = upsertEnvValue(envLines, 'IVIRTUAL_PASS', normalizedPassword);

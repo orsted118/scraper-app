@@ -2,6 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { app, ipcMain, session, shell } = require('electron');
 
+const SAFE_OPEN_EXTENSIONS = new Set([
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.txt', '.rtf', '.csv', '.png', '.jpg', '.jpeg', '.gif',
+  '.bmp', '.svg', '.webp', '.mp4', '.mp3', '.wav', '.ogg',
+]);
+
 function sanitizeFileName(name) {
   const sanitized = (name || '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
@@ -70,8 +76,17 @@ function downloadFileWithSession(url, name) {
     };
 
     const handleWillDownload = (_event, item) => {
-      if (item.getURL() !== url) {
-        return;
+      const itemUrl = item.getURL();
+      if (itemUrl !== url) {
+        try {
+          const originalHost = new URL(url).hostname;
+          const itemHost = new URL(itemUrl).hostname;
+          if (originalHost !== itemHost) {
+            return;
+          }
+        } catch (_urlError) {
+          return;
+        }
       }
 
       item.setSavePath(targetPath);
@@ -81,11 +96,17 @@ function downloadFileWithSession(url, name) {
           return;
         }
 
-        const openError = await shell.openPath(targetPath);
+        const ext = path.extname(targetPath).toLowerCase();
 
-        if (openError) {
-          finish({ success: false, error: openError });
-          return;
+        if (SAFE_OPEN_EXTENSIONS.has(ext)) {
+          const openError = await shell.openPath(targetPath);
+
+          if (openError) {
+            finish({ success: false, error: openError });
+            return;
+          }
+        } else {
+          shell.showItemInFolder(targetPath);
         }
 
         finish({ success: true, path: targetPath });

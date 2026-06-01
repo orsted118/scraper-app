@@ -184,6 +184,16 @@ function readHorarioCache() {
   return parsed;
 }
 
+let cachedHorarioMaterias = [];
+
+function updateCachedHorarioMaterias(payload) {
+  cachedHorarioMaterias = Array.isArray(payload?.materias) ? payload.materias : [];
+}
+
+function getCachedHorario() {
+  return Array.isArray(cachedHorarioMaterias) ? cachedHorarioMaterias : [];
+}
+
 function writeHorarioCache(payload) {
   const nextPayload = {
     materias: Array.isArray(payload?.materias) ? payload.materias : [],
@@ -192,11 +202,13 @@ function writeHorarioCache(payload) {
   };
 
   fs.writeFileSync(getHorarioCachePath(), JSON.stringify(nextPayload, null, 2), 'utf8');
+  updateCachedHorarioMaterias(nextPayload);
   return nextPayload;
 }
 
 function clearHorarioCache() {
   discardFile(getHorarioCachePath());
+  updateCachedHorarioMaterias({ materias: [] });
   return { success: true };
 }
 
@@ -2093,51 +2105,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       }
     }
 
-    const forumDiscussions = await page
-      .evaluate(() =>
-        Array.from(document.querySelectorAll('a[href*="/mod/forum/view.php"]'))
-          .map((anchor) => anchor.href)
-          .slice(0, 2),
-      )
-      .catch(() => []);
-
-    for (const forumUrl of forumDiscussions) {
-      if (!consumeResourceBudget()) {
-        break;
-      }
-
-      try {
-        await gotoWithRetry(detailPage, forumUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 12_000,
-        });
-
-        const discussions = await detailPage
-          .evaluate(() =>
-            Array.from(document.querySelectorAll('a[href*="/mod/forum/discuss.php"]'))
-              .map((anchor) => anchor.href)
-              .slice(0, 3),
-          )
-          .catch(() => []);
-
-        for (const discussionUrl of discussions) {
-          if (!consumeResourceBudget()) {
-            break;
-          }
-
-          const link = await extractLinkFromPage(detailPage, discussionUrl, {
-            timeout: 10_000,
-            courseOrigin,
-          });
-
-          if (link) {
-            return { link, layer: 'CAPA_7_FORUM_THREADS' };
-          }
-        }
-      } catch (_error) {
-        // Continue with next forum.
-      }
-    }
+    // CAPA_7 removed: duplicate of CAPA_4 forum scan above.
 
     const bookResources = await page
       .evaluate(() =>
@@ -2150,7 +2118,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
             (resource) =>
               /remoto|clase|meet|zoom|teams|enlace|liga|acceso|sesi[oó]n|videollamada/i.test(
                 resource.text,
-              ) || true,
+              ),
           )
           .map((resource) => resource.href)
           .slice(0, 3),
@@ -2418,7 +2386,7 @@ function computeDaysWithClasses(materias) {
   return ordered;
 }
 
-async function scrapeHorario() {
+async function scrapeHorario(controller = {}) {
   const ciaUser = process.env.CIA_USER?.trim();
   const ciaPass = process.env.CIA_PASS?.trim();
 
@@ -2430,6 +2398,7 @@ async function scrapeHorario() {
   const ivirtualPass = process.env.IVIRTUAL_PASS?.trim();
 
   const browser = await chromium.launch({ headless: true });
+  controller.browser = browser;
 
   try {
     const context = await browser.newContext();
@@ -2529,43 +2498,66 @@ async function diagnosticarCIA(page) {
   }
 }
 
+let activeHorarioController = null;
+
 async function getHorarioWithCache() {
+  if (activeHorarioController) {
+    return { error: 'Ya hay un escaneo de horario en progreso. Espera a que termine.' };
+  }
+
   const cached = readHorarioCache();
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+    const cachedWithManualLinks = applyManualLinks(cached);
+    updateCachedHorarioMaterias(cachedWithManualLinks);
+
     return {
-      ...applyManualLinks(cached),
+      ...cachedWithManualLinks,
       fromCache: true,
     };
   }
 
-  let timeoutId;
-  const timeoutPromise = new Promise((resolve) => {
-    timeoutId = setTimeout(
-      () =>
-        resolve(
-          buildHorarioError('El escaneo del horario tardó demasiado. Intenta de nuevo.'),
-        ),
-      GLOBAL_TIMEOUT_MS,
-    );
-  });
+  const controller = { cancelled: false, browser: null };
+  activeHorarioController = controller;
 
-  const scrapePromise = Promise.resolve(scrapeHorario()).finally(() => {
-    clearTimeout(timeoutId);
-  });
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(
+        async () => {
+          controller.cancelled = true;
+          if (controller.browser) {
+            await controller.browser.close().catch(() => {});
+          }
+          resolve(
+            buildHorarioError('El escaneo del horario tardó demasiado. Intenta de nuevo.'),
+          );
+        },
+        GLOBAL_TIMEOUT_MS,
+      );
+    });
 
-  const result = await Promise.race([scrapePromise, timeoutPromise]);
+    const scrapePromise = Promise.resolve(scrapeHorario(controller)).finally(() => {
+      clearTimeout(timeoutId);
+    });
 
-  if (result?.error) {
-    return result;
+    const result = await Promise.race([scrapePromise, timeoutPromise]);
+
+    if (result?.error) {
+      return result;
+    }
+
+    const cachedPayload = writeHorarioCache(result);
+    const cachedWithManualLinks = applyManualLinks(cachedPayload);
+    updateCachedHorarioMaterias(cachedWithManualLinks);
+
+    return {
+      ...cachedWithManualLinks,
+      fromCache: false,
+    };
+  } finally {
+    activeHorarioController = null;
   }
-
-  const cachedPayload = writeHorarioCache(result);
-
-  return {
-    ...applyManualLinks(cachedPayload),
-    fromCache: false,
-  };
 }
 
 function registerHorarioHandlers() {
@@ -2582,6 +2574,7 @@ function registerHorarioHandlers() {
 
 module.exports = {
   clearHorarioCache,
+  getCachedHorario,
   getHorarioCachePath,
   getHorarioWithCache,
   readHorarioCache,

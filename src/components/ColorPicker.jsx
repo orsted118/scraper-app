@@ -854,7 +854,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                     Elegir color
                   </h3>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Selector premium personalizado para ScraperApp
+                    Selector premium personalizado para DVPotro
                   </p>
                 </div>
               </div>

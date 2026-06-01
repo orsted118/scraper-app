@@ -96,6 +96,51 @@ function getGradeLabel(item) {
   return item?.etiqueta || item?.parcial || item?.nombre || 'Parcial';
 }
 
+function getVisibleGrades(grades = []) {
+  return Array.isArray(grades)
+    ? grades.filter((grade) => grade?.calificacion !== null && grade?.calificacion !== undefined)
+    : [];
+}
+
+function normalizeGradeForCompare(grade) {
+  return {
+    nombre: grade?.nombre || '',
+    etiqueta: grade?.etiqueta || '',
+    parcial: grade?.parcial || '',
+    calificacion: normalizeGrade(grade?.calificacion),
+    sobre: normalizeGrade(grade?.sobre),
+  };
+}
+
+function areGradeListsEqual(first = [], second = []) {
+  const firstNormalized = (Array.isArray(first) ? first : []).map(normalizeGradeForCompare);
+  const secondNormalized = (Array.isArray(second) ? second : []).map(normalizeGradeForCompare);
+
+  return JSON.stringify(firstNormalized) === JSON.stringify(secondNormalized);
+}
+
+function hasDuplicatedComponentData(componentes = []) {
+  if (!Array.isArray(componentes) || componentes.length < 2) {
+    return false;
+  }
+
+  const [firstComponent] = componentes;
+
+  return componentes.every((component) => (
+    normalizeGrade(component?.promedio) === normalizeGrade(firstComponent?.promedio) &&
+    areGradeListsEqual(component?.calificaciones, firstComponent?.calificaciones)
+  ));
+}
+
+function shouldRenderComponents(materia) {
+  return Boolean(
+    materia?.tieneComponentes &&
+    Array.isArray(materia.componentes) &&
+    materia.componentes.length > 0 &&
+    !hasDuplicatedComponentData(materia.componentes),
+  );
+}
+
 function StatusBadge({ status }) {
   const meta = STATUS_META[status] || STATUS_META.sin_calificacion;
   const Icon = meta.icon;
@@ -136,19 +181,11 @@ function GradeChip({ grade }) {
 
 function EmptyGrades() {
   return (
-    <div className="flex items-center gap-3 rounded-xl border px-4 py-3" style={{
-      background: 'var(--bg-secondary)',
-      borderColor: 'var(--border-subtle)',
-    }}>
-      <ClipboardList className="h-5 w-5 shrink-0" style={{ color: 'var(--text-muted)' }} />
-      <div>
-        <p className="text-sm font-medium" style={{ color: 'var(--text-normal)' }}>
-          Sin calificaciones registradas aún
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          El profesor aún no ha subido calificaciones.
-        </p>
-      </div>
+    <div className="flex items-center justify-center gap-2 px-4 py-3">
+      <ClipboardList className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
+      <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+        Sin calificaciones registradas
+      </p>
     </div>
   );
 }
@@ -156,7 +193,7 @@ function EmptyGrades() {
 function ComponentRow({ component, index }) {
   const isLab = /lab/i.test(component?.tipo || '');
   const label = component?.tipo || (index === 0 ? 'Teoría' : 'Laboratorio');
-  const grades = Array.isArray(component?.calificaciones) ? component.calificaciones : [];
+  const visibleGrades = getVisibleGrades(component?.calificaciones);
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -172,7 +209,7 @@ function ComponentRow({ component, index }) {
       </span>
 
       <div className="flex min-w-0 flex-1 flex-wrap gap-2">
-        {grades.length > 0 ? grades.map((grade) => (
+        {visibleGrades.length > 0 ? visibleGrades.map((grade) => (
           <GradeChip key={`${label}-${getGradeLabel(grade)}`} grade={grade} />
         )) : <EmptyGrades />}
       </div>
@@ -190,11 +227,8 @@ function ComponentRow({ component, index }) {
 }
 
 function GradeList({ materia }) {
-  const hasComponents =
-    materia?.tieneComponentes &&
-    Array.isArray(materia.componentes) &&
-    materia.componentes.length > 0;
-  const grades = Array.isArray(materia?.calificaciones) ? materia.calificaciones : [];
+  const hasComponents = shouldRenderComponents(materia);
+  const visibleGrades = getVisibleGrades(materia?.calificaciones);
 
   if (hasComponents) {
     return (
@@ -211,13 +245,13 @@ function GradeList({ materia }) {
     );
   }
 
-  if (grades.length === 0) {
+  if (visibleGrades.length === 0) {
     return <EmptyGrades />;
   }
 
   return (
     <div className="flex flex-wrap justify-center gap-3">
-      {grades.map((grade) => (
+      {visibleGrades.map((grade) => (
         <GradeChip key={getGradeLabel(grade)} grade={grade} />
       ))}
     </div>
@@ -227,7 +261,7 @@ function GradeList({ materia }) {
 function GradeCard({ materia }) {
   const status = getMateriaStatus(materia);
   const meta = STATUS_META[status] || STATUS_META.sin_calificacion;
-  const Icon = materia?.tieneComponentes ? FlaskConical : Code2;
+  const Icon = shouldRenderComponents(materia) ? FlaskConical : Code2;
   const promedio = normalizeGrade(materia?.promedio);
 
   return (

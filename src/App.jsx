@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
@@ -6,6 +6,7 @@ import Actividades from './pages/Actividades';
 import Horario from './pages/Horario';
 import Calificaciones from './pages/Calificaciones';
 import Ajustes from './pages/Ajustes';
+import dvpotroLogo from './assets/branding/dvpotro-logo.png';
 
 const pageRegistry = {
   activities: {
@@ -66,6 +67,14 @@ function App() {
   const ActivePage = pageConfig.component;
 
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
+  const hasFinales = calificaciones.some(
+    (materia) =>
+      Array.isArray(materia.calificaciones) &&
+      materia.calificaciones.some(
+        (calificacion) =>
+          calificacion.parcial === 'Final' && calificacion.calificacion !== null,
+      ),
+  );
 
   const addSyncingModule = (moduleId) => {
     setSyncingModules((previous) => {
@@ -101,6 +110,8 @@ function App() {
       NO_PASSWORD: 'Falta tu contraseña en la configuración. Ve a Ajustes.',
       SESSION_EXPIRED:
         'Tu sesión de iVirtual expiró o las credenciales son incorrectas. Ve a Ajustes y verifica tu contraseña.',
+      LOGIN_FAILED:
+        'No fue posible iniciar sesión en iVirtual. Verifica tus credenciales en Ajustes.',
       NO_INTERNET: 'Sin conexión a internet. Verifica tu red e intenta de nuevo.',
       CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
       CIA_NO_USER: 'Falta tu usuario del CIA en la configuración. Ve a Ajustes.',
@@ -126,7 +137,14 @@ function App() {
       ajustes: 'settings',
     };
 
-    setActivePage(pageAliases[pageId] || pageId);
+    const nextPage = pageAliases[pageId] || pageId;
+
+    if (nextPage === 'calificaciones' && !hasFinales) {
+      setActivePage('activities');
+      return;
+    }
+
+    setActivePage(nextPage);
   };
 
   const refreshSettings = async () => {
@@ -171,7 +189,7 @@ function App() {
     try {
       if (!api) {
         if (!silent) {
-          setError('ScraperApp debe ejecutarse dentro de Electron.');
+          setError('DVPotro debe ejecutarse dentro de Electron.');
           setErrorCode('');
           setActivities([]);
         }
@@ -283,7 +301,7 @@ function App() {
     try {
       if (!api) {
         if (!silent) {
-          setErrorCIA('ScraperApp debe ejecutarse dentro de Electron.');
+          setErrorCIA('DVPotro debe ejecutarse dentro de Electron.');
           setErrorCIACode('');
           setCalificaciones([]);
         }
@@ -354,7 +372,7 @@ function App() {
     try {
       if (!api) {
         if (!silent) {
-          setErrorHorario('ScraperApp debe ejecutarse dentro de Electron.');
+          setErrorHorario('DVPotro debe ejecutarse dentro de Electron.');
           setHorario({ materias: [], diasConClases: [] });
         }
         return;
@@ -510,6 +528,12 @@ function App() {
   }, [activePage, ciaCargado]);
 
   useEffect(() => {
+    if (activePage === 'calificaciones' && !hasFinales) {
+      setActivePage('activities');
+    }
+  }, [activePage, hasFinales]);
+
+  useEffect(() => {
     if (!api) return;
 
     api.onProgress((data) => {
@@ -530,12 +554,24 @@ function App() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
-        <Sidebar activePage={activePage} onNavigate={handleNavigate} />
+        <Sidebar
+          activePage={activePage}
+          diasConClases={horario?.diasConClases ?? []}
+          hasFinales={hasFinales}
+          horario={horario?.materias ?? []}
+          onNavigate={handleNavigate}
+        />
         {!settingsReady ? (
           <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
             <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
               <div className="rounded-3xl border border-slate-800 bg-slate-950/70 px-8 py-10 text-center">
-                <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Workspace</p>
+                <img
+                  src={dvpotroLogo}
+                  alt="DVPotro"
+                  className="mx-auto h-14 w-14 object-contain"
+                  draggable="false"
+                />
+                <p className="mt-5 text-sm uppercase tracking-[0.25em] text-slate-500">DVPotro</p>
                 <p className="mt-3 text-lg font-semibold text-white">
                   Cargando configuración inicial...
                 </p>
@@ -568,9 +604,7 @@ function App() {
               loading={loading}
               onSettingsSaved={refreshSettings}
               onSync={handleSyncActivities}
-              onSyncHorario={({ clearCacheFirst = false } = {}) =>
-                loadHorario({ clearCacheFirst })
-              }
+              onSyncHorario={loadHorario}
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
               onNavigate={handleNavigate}
               progress={progress}

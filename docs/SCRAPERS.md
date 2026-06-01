@@ -1,6 +1,6 @@
 # Documentación de Scrapers
 
-Este documento describe el comportamiento real de los scrapers actuales en ScraperApp.
+Este documento describe el comportamiento real de los scrapers actuales en DVPotro.
 
 ---
 

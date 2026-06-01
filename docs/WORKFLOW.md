@@ -1,6 +1,6 @@
 # Workflow Claude + Codex
 
-Este archivo estandariza cómo operar tareas en ScraperApp entre planeación (Claude) e implementación (Codex).
+Este archivo estandariza cómo operar tareas en DVPotro entre planeación (Claude) e implementación (Codex).
 
 ---
 

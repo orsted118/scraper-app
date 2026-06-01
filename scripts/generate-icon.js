@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 const pngToIco = pngToIcoModule.default || pngToIcoModule;
-const sizes = [16, 32, 48, 64, 128, 256];
+const sizes = [16, 32, 64, 128, 256, 512];
 
 function createSquarePng(source) {
   const squareSize = Math.max(source.width, source.height);
@@ -52,7 +52,7 @@ function resizeNearest(source, size) {
 
 async function generateIcon() {
   const rootDir = path.resolve(__dirname, '..');
-  const sourcePath = path.join(rootDir, 'src', 'assets', 'logo-itson.png');
+  const sourcePath = path.join(rootDir, 'src', 'assets', 'branding', 'dvpotro-logo.png');
   const buildDir = path.join(rootDir, 'build');
   const tempDir = path.join(buildDir, '.icon-tmp');
 
@@ -72,8 +72,9 @@ async function generateIcon() {
   const buffer = await pngToIco(resizedPngPaths);
   fs.mkdirSync(buildDir, { recursive: true });
   fs.writeFileSync(path.join(buildDir, 'icon.ico'), buffer);
+  fs.copyFileSync(sourcePath, path.join(buildDir, 'icon.png'));
   fs.rmSync(tempDir, { recursive: true, force: true });
-  console.log('✅ Ícono generado en build/icon.ico');
+  console.log('✅ Íconos DVPotro generados en build/icon.ico y build/icon.png');
 }
 
 generateIcon().catch((error) => {

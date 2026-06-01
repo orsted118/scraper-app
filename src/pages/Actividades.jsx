@@ -2,9 +2,16 @@ import {
   Archive,
   AlertCircle,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  LayoutGrid,
+  List,
+  Paperclip,
   RefreshCw,
   Search,
   SearchX,
+  Table2,
   Zap,
   X,
 } from 'lucide-react';
@@ -16,6 +23,25 @@ const tabs = [
   { id: 'retrasada', label: 'Retrasadas' },
   { id: 'cerrada', label: 'Cerradas', title: 'Actividades que cerraron sin ser entregadas' },
 ];
+
+const VIEW_MODES = [
+  { id: 'cards', Icon: LayoutGrid, label: 'Tarjetas' },
+  { id: 'compact', Icon: List, label: 'Lista compacta' },
+  { id: 'table', Icon: Table2, label: 'Tabla' },
+  { id: 'kanban', Icon: Columns3, label: 'Kanban' },
+];
+
+const KANBAN_COLUMNS = [
+  { id: 'pendiente', label: 'Pendientes', tone: 'pending' },
+  { id: 'retrasada', label: 'Retrasadas', tone: 'retrasada' },
+  { id: 'cerrada', label: 'Cerradas', tone: 'cerrada' },
+];
+
+const STATUS_ORDER = {
+  retrasada: 0,
+  pendiente: 1,
+  cerrada: 2,
+};
 
 function formatLastSync(lastSyncAt) {
   if (!lastSyncAt) {
@@ -194,23 +220,47 @@ function Actividades({
   const [activeTab, setActiveTab] = useState('pendiente');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('deadline-asc');
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('scraper-view-mode') || 'cards';
+    } catch (_error) {
+      return 'cards';
+    }
+  });
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [expandedId, setExpandedId] = useState('');
+  const [tableSort, setTableSort] = useState({ col: 'fecha', dir: 'asc' });
   const friendlyError = getFriendlyErrorMessage(error);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
   const counts = {
     pendiente: activities.filter((item) => item.estado === 'pendiente').length,
     retrasada: activities.filter((item) => item.estado === 'retrasada').length,
     cerrada: activities.filter((item) => item.estado === 'cerrada').length,
   };
-  const tabActivities = activities.filter((item) => item.estado === activeTab);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredActivities = tabActivities.filter((item) => {
+  const filteredActivities = useMemo(() => {
+    const tabActs = activities.filter((item) => item.estado === activeTab);
+
     if (!normalizedQuery) {
-      return true;
+      return tabActs;
     }
 
-    return [item.nombre, item.materia].some((field) =>
-      (field || '').toLowerCase().includes(normalizedQuery),
-      );
-  });
+    return tabActs.filter((item) =>
+      [item.nombre, item.materia].some((field) =>
+        (field || '').toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }, [activities, activeTab, normalizedQuery]);
+  const kanbanActivities = useMemo(() => {
+    if (!normalizedQuery) {
+      return activities;
+    }
+
+    return activities.filter((item) =>
+      [item.nombre, item.materia].some((field) =>
+        (field || '').toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }, [activities, normalizedQuery]);
   const urgentInfo = useMemo(() => getUrgentActivity(activities), [activities]);
   const sortedActivities = useMemo(() => {
     const items = [...filteredActivities];
@@ -251,6 +301,25 @@ function Actividades({
         return items;
     }
   }, [filteredActivities, sortBy]);
+  const tableActivities = useMemo(() => {
+    const items = [...sortedActivities];
+    const direction = tableSort.dir === 'asc' ? 'asc' : 'desc';
+    const multiplier = direction === 'asc' ? 1 : -1;
+
+    return items.sort((left, right) => {
+      switch (tableSort.col) {
+        case 'actividad':
+          return multiplier * compareText(left.nombre || '', right.nombre || '');
+        case 'materia':
+          return multiplier * compareText(left.materia || '', right.materia || '');
+        case 'estado':
+          return multiplier * ((STATUS_ORDER[left.estado] ?? 99) - (STATUS_ORDER[right.estado] ?? 99));
+        case 'fecha':
+        default:
+          return compareByDeadline(left, right, direction);
+      }
+    });
+  }, [sortedActivities, tableSort]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
@@ -283,6 +352,317 @@ function Actividades({
     }, 120);
   };
 
+  function changeViewMode(newMode) {
+    if (newMode === viewMode || isTransitioning) return;
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setViewMode(newMode);
+      try {
+        localStorage.setItem('scraper-view-mode', newMode);
+      } catch (_error) {
+        // localStorage puede no estar disponible fuera del renderer.
+      }
+      setIsTransitioning(false);
+    }, 120);
+  }
+
+  const handleTableSort = (col) => {
+    setTableSort((current) => ({
+      col,
+      dir: current.col === col && current.dir === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const handleAttachmentClick = async (attachment) => {
+    const url = attachment?.url || attachment?.href;
+    const name = getAttachmentLabel(attachment);
+
+    if (!url) {
+      return;
+    }
+
+    if (window.scraperApp?.downloadFile) {
+      await window.scraperApp.downloadFile(url, name);
+      return;
+    }
+
+    window.scraperApp?.openExternal?.(url);
+  };
+
+  const renderStatusBadge = (estado) => {
+    const tone = getStatusTone(estado);
+
+    return (
+      <span
+        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+        style={{ background: tone.background, borderColor: tone.border, color: tone.color }}
+      >
+        {tone.label}
+      </span>
+    );
+  };
+
+  const renderEmptyState = () => {
+    if (normalizedQuery) {
+      return (
+        <div
+          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+        >
+          <SearchX className="h-8 w-8 text-slate-600" />
+          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
+            Sin actividades que coincidan con la búsqueda.
+          </p>
+        </div>
+      );
+    }
+
+    const emptyState = emptyStateConfig[activeTab] || emptyStateConfig.pendiente;
+    const EmptyIcon = emptyState.icon;
+
+    return (
+      <div
+        className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
+        <EmptyIcon className={`h-8 w-8 ${emptyState.iconClass}`} />
+        <p className="mt-4 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+          {emptyState.title}
+        </p>
+        <p className="mt-2 max-w-md text-sm text-slate-400">{emptyState.subtitle}</p>
+      </div>
+    );
+  };
+
+  const renderCardsView = () => (
+    <div className="space-y-4">
+      {sortedActivities.map((activity) => (
+        <div key={getActivityAnchorId(activity)} id={getActivityAnchorId(activity)}>
+          <ActivityCard {...activity} />
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderCompactView = () => (
+    <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      {sortedActivities.map((activity) => {
+        const anchorId = getActivityAnchorId(activity);
+        const isExpanded = expandedId === anchorId;
+        const tone = getStatusTone(activity.estado);
+        const attachments = getActivityAttachments(activity);
+        const instructions = (activity.instrucciones || '').trim();
+
+        return (
+          <div
+            key={anchorId}
+            id={anchorId}
+            className="border-b last:border-b-0"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setExpandedId((current) => (current === anchorId ? '' : anchorId))}
+              className="grid min-h-[44px] w-full grid-cols-[auto_minmax(0,1fr)_minmax(120px,0.45fr)_minmax(120px,auto)] items-center gap-3 px-4 py-2 text-left transition hover:bg-white/5"
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: tone.dot }} />
+              <span className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                {activity.nombre}
+              </span>
+              <span className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                {activity.materia || 'Materia no disponible'}
+              </span>
+              <span className="text-right text-xs" style={{ color: 'var(--text-muted)' }}>
+                {activity.fechaLimite || 'Sin fecha visible'}
+              </span>
+            </button>
+
+            <div className={`compact-row-details ${isExpanded ? 'expanded' : ''}`}>
+              <div className="space-y-3 px-8 pb-4 pt-1">
+                {instructions ? (
+                  <p
+                    className="text-sm leading-6"
+                    style={{
+                      color: 'var(--text-normal)',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {instructions}
+                  </p>
+                ) : (
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Sin instrucciones visibles.
+                  </p>
+                )}
+
+                {attachments.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {attachments.map((attachment) => (
+                      <button
+                        key={`${attachment.url || attachment.href}-${getAttachmentLabel(attachment)}`}
+                        type="button"
+                        onClick={() => handleAttachmentClick(attachment)}
+                        className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition hover:border-itson-blue/50"
+                        style={{
+                          borderColor: 'var(--border-normal)',
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-normal)',
+                        }}
+                      >
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {getAttachmentLabel(attachment)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderTableView = () => {
+    const columns = [
+      { id: 'actividad', label: 'Actividad' },
+      { id: 'materia', label: 'Materia' },
+      { id: 'fecha', label: 'Vence' },
+      { id: 'estado', label: 'Estado' },
+    ];
+
+    return (
+      <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <table className="w-full border-collapse text-sm">
+          <thead style={{ background: 'var(--bg-secondary)' }}>
+            <tr>
+              {columns.map((column) => {
+                const isActive = tableSort.col === column.id;
+                const SortIcon = tableSort.dir === 'asc' ? ChevronUp : ChevronDown;
+
+                return (
+                  <th
+                    key={column.id}
+                    className="border-b px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em]"
+                    style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleTableSort(column.id)}
+                      className="inline-flex items-center gap-1 transition hover:text-itson-blue"
+                      style={{ color: isActive ? 'var(--accent)' : 'inherit' }}
+                    >
+                      {column.label}
+                      {isActive ? <SortIcon className="h-[13px] w-[13px]" /> : null}
+                    </button>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {tableActivities.map((activity, index) => (
+              <tr
+                key={getActivityAnchorId(activity)}
+                id={getActivityAnchorId(activity)}
+                className="transition hover:bg-white/5"
+                style={{ background: index % 2 === 1 ? 'var(--bg-tertiary)' : 'transparent' }}
+              >
+                <td className="border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-strong)' }}>
+                  <span className="line-clamp-1 font-medium">{activity.nombre}</span>
+                </td>
+                <td className="border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+                  {activity.materia || 'Materia no disponible'}
+                </td>
+                <td className="border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+                  {activity.fechaLimite || 'Sin fecha visible'}
+                </td>
+                <td className="border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)' }}>
+                  {renderStatusBadge(activity.estado)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderKanbanView = () => (
+    <div className="grid gap-3 md:grid-cols-3">
+      {KANBAN_COLUMNS.map((column) => {
+        const tone = getStatusTone(column.id);
+        const columnItems = kanbanActivities
+          .filter((activity) => activity.estado === column.id)
+          .sort((left, right) => compareByDeadline(left, right, 'asc') || compareText(left.nombre || '', right.nombre || ''));
+
+        return (
+          <section
+            key={column.id}
+            className="min-h-64 rounded-2xl border p-3"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                {column.label}
+              </h3>
+              <span
+                className="rounded-full border px-2 py-0.5 text-xs font-semibold"
+                style={{ background: tone.background, borderColor: tone.border, color: tone.color }}
+              >
+                {columnItems.length}
+              </span>
+            </div>
+
+            {columnItems.length > 0 ? (
+              <div className="space-y-2">
+                {columnItems.map((activity) => (
+                  <article
+                    key={getActivityAnchorId(activity)}
+                    id={getActivityAnchorId(activity)}
+                    className="rounded-xl border p-3"
+                    style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
+                  >
+                    <p className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                      {activity.nombre}
+                    </p>
+                    <p className="mt-1 truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {activity.materia || 'Materia no disponible'}
+                    </p>
+                    <p className="mt-2 text-xs" style={{ color: tone.color }}>
+                      {activity.fechaLimite || 'Sin fecha visible'}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed px-3 py-6 text-center text-xs" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+                Sin actividades
+              </p>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+
+  const renderActiveView = () => {
+    switch (viewMode) {
+      case 'compact':
+        return renderCompactView();
+      case 'table':
+        return renderTableView();
+      case 'kanban':
+        return renderKanbanView();
+      case 'cards':
+      default:
+        return renderCardsView();
+    }
+  };
+
   const emptyStateConfig = {
     pendiente: {
       icon: CheckCircle,
@@ -303,6 +683,7 @@ function Actividades({
       subtitle: 'No hay actividades cerradas sin entregar en este semestre.',
     },
   };
+  const visibleActivityCount = viewMode === 'kanban' ? kanbanActivities.length : sortedActivities.length;
 
   return (
     <div className="space-y-6">
@@ -462,7 +843,7 @@ function Actividades({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
@@ -513,35 +894,37 @@ function Actividades({
           <option value="name-asc">Nombre A-Z</option>
           <option value="subject-asc">Materia</option>
         </select>
-      </div>
 
-      <section
-        className="rounded-2xl border p-3"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
-      >
-        <div className="flex flex-wrap gap-2">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTab;
+        <div
+          className="flex items-center gap-1 rounded-2xl border p-1"
+          style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
+          aria-label="Cambiar modo de vista"
+        >
+          {VIEW_MODES.map(({ id, Icon, label }) => {
+            const isActive = viewMode === id;
 
             return (
               <button
-                key={tab.id}
+                key={id}
                 type="button"
-                onClick={() => handleTabChange(tab.id)}
-                title={tab.title || tab.label}
-                className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-itson-blue text-slate-50'
-                    : ''
-                }`}
-                style={
-                  isActive
-                    ? undefined
-                    : {
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-normal)',
-                    }
-                }
+                title={label}
+                aria-label={label}
+                aria-pressed={isActive}
+                onClick={() => changeViewMode(id)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  border: '1px solid',
+                  borderColor: isActive ? 'var(--accent)' : 'transparent',
+                  background: isActive ? 'var(--accent)' : 'transparent',
+                  color: isActive ? '#fff' : 'var(--text-muted)',
+                  cursor: isTransitioning ? 'wait' : 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
                 onMouseEnter={(event) => {
                   if (!isActive) {
                     event.currentTarget.style.background = 'var(--bg-tertiary)';
@@ -550,17 +933,66 @@ function Actividades({
                 }}
                 onMouseLeave={(event) => {
                   if (!isActive) {
-                    event.currentTarget.style.background = 'var(--bg-secondary)';
-                    event.currentTarget.style.color = 'var(--text-normal)';
+                    event.currentTarget.style.background = 'transparent';
+                    event.currentTarget.style.color = 'var(--text-muted)';
                   }
                 }}
               >
-                {tab.label}
+                <Icon className="h-4 w-4" />
               </button>
             );
           })}
         </div>
-      </section>
+      </div>
+
+      {viewMode !== 'kanban' ? (
+        <section
+          className="rounded-2xl border p-3"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+        >
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeTab;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleTabChange(tab.id)}
+                  title={tab.title || tab.label}
+                  className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-itson-blue text-slate-50'
+                      : ''
+                  }`}
+                  style={
+                    isActive
+                      ? undefined
+                      : {
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--text-normal)',
+                      }
+                  }
+                  onMouseEnter={(event) => {
+                    if (!isActive) {
+                      event.currentTarget.style.background = 'var(--bg-tertiary)';
+                      event.currentTarget.style.color = 'var(--text-strong)';
+                    }
+                  }}
+                  onMouseLeave={(event) => {
+                    if (!isActive) {
+                      event.currentTarget.style.background = 'var(--bg-secondary)';
+                      event.currentTarget.style.color = 'var(--text-normal)';
+                    }
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {loading ? (
         <div className="space-y-4">
@@ -597,47 +1029,72 @@ function Actividades({
             </div>
           ))}
         </div>
-      ) : sortedActivities.length > 0 ? (
-        <div className="space-y-4">
-          {sortedActivities.map((activity) => (
-            <div key={getActivityAnchorId(activity)} id={getActivityAnchorId(activity)}>
-              <ActivityCard {...activity} />
-            </div>
-          ))}
-        </div>
-      ) : normalizedQuery ? (
-        <div
-          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
-          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
-        >
-          <SearchX className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
-            Sin actividades que coincidan con la búsqueda.
-          </p>
-        </div>
       ) : (
-        <div
-          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
-          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
-        >
-          {(() => {
-            const emptyState = emptyStateConfig[activeTab] || emptyStateConfig.pendiente;
-            const EmptyIcon = emptyState.icon;
-
-            return (
-              <>
-                <EmptyIcon className={`h-8 w-8 ${emptyState.iconClass}`} />
-                <p className="mt-4 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
-                  {emptyState.title}
-                </p>
-                <p className="mt-2 max-w-md text-sm text-slate-400">{emptyState.subtitle}</p>
-              </>
-            );
-          })()}
+        <div className={`view-container ${isTransitioning ? 'exiting' : ''}`}>
+          {visibleActivityCount > 0 ? renderActiveView() : renderEmptyState()}
         </div>
       )}
     </div>
   );
+}
+
+function getStatusTone(estado = 'pendiente') {
+  const toneMap = {
+    pendiente: {
+      dot: '#10b981',
+      background: 'var(--success-bg)',
+      border: 'var(--success-border)',
+      color: 'var(--success-text)',
+      label: 'Pendiente',
+    },
+    retrasada: {
+      dot: '#f97316',
+      background: 'var(--retrasada-bg)',
+      border: 'var(--retrasada-border)',
+      color: 'var(--retrasada-text)',
+      label: 'Retrasada',
+    },
+    cerrada: {
+      dot: '#64748b',
+      background: 'var(--closed-bg)',
+      border: 'var(--closed-border)',
+      color: 'var(--closed-text)',
+      label: 'Cerrada',
+    },
+  };
+
+  return toneMap[estado] || toneMap.pendiente;
+}
+
+function getActivityAttachments(activity = {}) {
+  if (Array.isArray(activity.adjuntos) && activity.adjuntos.length > 0) {
+    return activity.adjuntos;
+  }
+
+  return Array.isArray(activity.archivos) ? activity.archivos : [];
+}
+
+function getAttachmentLabel(attachment = {}) {
+  return attachment.name || attachment.nombre || attachment.titulo || 'Adjunto';
+}
+
+function compareByDeadline(left, right, direction = 'asc') {
+  const leftDate = parseSort(left?.fechaLimite);
+  const rightDate = parseSort(right?.fechaLimite);
+
+  if (leftDate === null && rightDate === null) {
+    return 0;
+  }
+
+  if (leftDate === null) {
+    return 1;
+  }
+
+  if (rightDate === null) {
+    return -1;
+  }
+
+  return direction === 'asc' ? leftDate - rightDate : rightDate - leftDate;
 }
 
 export default Actividades;

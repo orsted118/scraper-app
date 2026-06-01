@@ -5,11 +5,12 @@ const { autoUpdater } = require('electron-updater');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerCIAHandlers } = require('./handlers/cia');
 const { registerFileHandlers } = require('./handlers/files');
-const { registerHorarioHandlers } = require('./handlers/horario');
+const { getCachedHorario, registerHorarioHandlers } = require('./handlers/horario');
 const { registerSettingsHandlers } = require('./handlers/settings');
-const { registerNotificationHandlers } = require('./handlers/notifications');
+const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const appIconPath = path.join(__dirname, '..', 'build', process.platform === 'darwin' ? 'icon.icns' : 'icon.ico');
 const envPath = isDev
   ? path.resolve(__dirname, '..', '.env')
   : path.join(app.getPath('userData'), '.env');
@@ -20,7 +21,8 @@ if (fs.existsSync(envPath)) {
 
 function createMainWindow() {
   const mainWindow = new BrowserWindow({
-    title: 'iVirtual Tracker — ITSON',
+    title: 'DVPotro',
+    icon: appIconPath,
     width: 1440,
     height: 900,
     minWidth: 1100,
@@ -34,6 +36,10 @@ function createMainWindow() {
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
+  mainWindow.webContents.once('did-finish-load', () => {
+    startClassNotifier(getCachedHorario);
+  });
+
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
@@ -44,6 +50,7 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  app.setName('DVPotro');
   registerScraperHandlers();
   registerCIAHandlers();
   registerHorarioHandlers();

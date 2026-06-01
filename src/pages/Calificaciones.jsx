@@ -244,8 +244,9 @@ function Calificaciones({
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
         >
           <BookOpen className="h-8 w-8 text-slate-600" />
-          <p className="mt-4 text-sm" style={{ color: 'var(--text-normal)' }}>
-            No hay materias disponibles para mostrar.
+          <p className="mt-4 max-w-md text-sm leading-6" style={{ color: 'var(--text-normal)' }}>
+            Las calificaciones finales estarán disponibles al cierre del semestre.
+            Cuando CIA las publique, esta sección se activará automáticamente.
           </p>
         </div>
       )}

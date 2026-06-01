@@ -133,17 +133,19 @@ async function loginToCIA(page, user, password) {
   await page.goto(CIA_ENTRY_URL, { waitUntil: 'domcontentloaded' });
   await page.locator('#txtITSONET').fill(user);
   await page.locator('#btnConexionTrayectorias').click();
-  await page.waitForTimeout(1500);
+  await page.getByRole('button', { name: 'Continuar' }).waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS }).catch(() => {});
 
   await page.getByRole('button', { name: 'Continuar' }).click();
-  await page.waitForTimeout(1500);
-
   await page.locator('#userid').waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+
   await page.locator('#userid').fill(user);
   await page.locator('#pwd').fill(password);
   await page.getByRole('button', { name: 'Iniciar Sesión' }).click();
 
-  await page.waitForTimeout(4000);
+  await page.getByRole('link', { name: 'Autoservicio', exact: true })
+    .last()
+    .waitFor({ state: 'visible', timeout: 15_000 })
+    .catch(() => {});
 
   const autoservicioLink = page.getByRole('link', { name: 'Autoservicio', exact: true }).last();
 
@@ -157,7 +159,13 @@ async function loginToCIA(page, user, password) {
 async function openBoletaPage(page) {
   const autoservicioLink = page.getByRole('link', { name: 'Autoservicio', exact: true }).last();
   await autoservicioLink.click();
-  await page.waitForTimeout(8000);
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll('iframe')).some(
+        (f) => f.src && f.src.includes('CO_EMPLOYEE_SELF_SERVICE'),
+      ),
+    { timeout: 15_000 },
+  ).catch(() => {});
 
   const navFrame = page.frames().find(
     (frame) =>
@@ -471,8 +479,32 @@ async function scrapeCIAWithPlaywright() {
     const boletaFrame = await openBoletaPage(page);
     await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_INSTITUTION', 'ITSON');
     await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_ACAD_CAREER', 'LIC');
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_STRM', '3147');
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_ACAD_PROG', 'INSOF');
+
+    const latestSemester = await boletaFrame.evaluate(() => {
+      const select = document.getElementById('ITSR_RUN_BOLCAL_STRM');
+      if (!select) return null;
+      const options = Array.from(select.options).filter((o) => o.value && o.value.trim() !== '');
+      return options.length > 0 ? options[options.length - 1].value : null;
+    });
+
+    if (!latestSemester) {
+      throw new Error('No se encontró un semestre disponible en el formulario de boleta.');
+    }
+
+    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_STRM', latestSemester);
+
+    const academicProgram = await boletaFrame.evaluate(() => {
+      const select = document.getElementById('ITSR_RUN_BOLCAL_ACAD_PROG');
+      if (!select) return null;
+      const options = Array.from(select.options).filter((o) => o.value && o.value.trim() !== '');
+      return options.length > 0 ? options[options.length - 1].value : null;
+    });
+
+    if (!academicProgram) {
+      throw new Error('No se encontró un programa académico en el formulario de boleta.');
+    }
+
+    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_ACAD_PROG', academicProgram);
     await boletaFrame.locator('#ITSRDERIVBOLCAL_PUSH').click();
 
     let reportFrame = null;
@@ -486,7 +518,7 @@ async function scrapeCIAWithPlaywright() {
       }
 
       reportFrame = null;
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(3000);
     }
 
     if (!reportFrame) {
@@ -495,7 +527,7 @@ async function scrapeCIAWithPlaywright() {
 
     const detLink = reportFrame.locator('a[href*="CDM_WRK_INDEX_BTN"]').first();
     await detLink.click({ force: true });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
 
     const detailFrame = await waitForFrameText(page, /Detalle Informe/i);
     const pdfHref = await detailFrame

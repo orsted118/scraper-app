@@ -1,5 +1,5 @@
 {
-  "name": "scraper-app",
+  "name": "dvpotro",
   "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
@@ -37,9 +37,9 @@
     "vite": "^5.4.2"
   },
   "build": {
-    "appId": "mx.itson.ivirtual-tracker",
-    "productName": "iVirtual Tracker ITSON",
-    "copyright": "ITSON — Instituto Tecnológico de Sonora",
+    "appId": "mx.itson.dvpotro",
+    "productName": "DVPotro",
+    "copyright": "DVPotro — ITSON academic tracker",
     "win": {
       "signAndEditExecutable": false,
       "target": [
@@ -62,20 +62,21 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "iVirtual Tracker ITSON",
-      "runAfterFinish": true
+      "shortcutName": "DVPotro",
+      "runAfterFinish": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "node_modules/**/*",
       "package.json",
-      "index.html"
+      "index.html",
+      "build/icon.*"
     ],
     "directories": {
       "output": "release"
@@ -85,5 +86,6 @@
       "owner": "orsted118",
       "repo": "Scrap-Its"
     }
-  }
+  },
+  "description": "DVPotro desktop academic tracker for ITSON portals."
 }

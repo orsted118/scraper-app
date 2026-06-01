@@ -13,7 +13,7 @@ const ACTIVITY_NAVIGATION_TIMEOUT_MS = 20_000;
 const CHUNK_TIMEOUT_MS = 25_000;
 const GLOBAL_SCRAPE_TIMEOUT_MS = 5 * 60 * 1000;
 const CHUNK_SIZE = 3;
-const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 
 function mapSameSite(sameSite) {
   if (sameSite === 'Strict') {
@@ -171,6 +171,7 @@ function withTimeout(taskFactory, timeoutMs, onTimeout) {
             return;
           }
 
+          console.error('[withTimeout] Assignment detail error:', error?.message || error);
           resolve(null);
         },
       );
@@ -248,12 +249,25 @@ function buildScrapeError(message) {
   return { error: message };
 }
 
+const SPANISH_MONTHS = {
+  enero: 'January', febrero: 'February', marzo: 'March',
+  abril: 'April', mayo: 'May', junio: 'June',
+  julio: 'July', agosto: 'August', septiembre: 'September',
+  octubre: 'October', noviembre: 'November', diciembre: 'December',
+};
+
 function parseDueDate(value) {
   if (!value) {
     return null;
   }
 
-  const parsed = Date.parse(value.replace(/\s+/g, ' ').trim());
+  let normalized = value.replace(/\s+/g, ' ').trim();
+
+  for (const [es, en] of Object.entries(SPANISH_MONTHS)) {
+    normalized = normalized.replace(new RegExp(es, 'gi'), en);
+  }
+
+  const parsed = Date.parse(normalized);
   return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
@@ -305,7 +319,7 @@ async function loginToIVirtual(page, username, password) {
   const currentUrl = page.url();
 
   if (currentUrl.includes('/login/')) {
-    return buildScrapeError('SESSION_EXPIRED');
+    return buildScrapeError('LOGIN_FAILED');
   }
 
   return null;
@@ -646,7 +660,7 @@ async function syncCookiesToElectronSession(playwrightContext) {
   );
 }
 
-async function scrapeIVirtualActivities(event) {
+async function scrapeIVirtualActivities(event, controller = {}) {
   const username = process.env.IVIRTUAL_USER?.trim();
   const password = process.env.IVIRTUAL_PASS?.trim();
 
@@ -666,6 +680,7 @@ async function scrapeIVirtualActivities(event) {
 
   try {
     browser = await chromium.launch({ headless: true });
+    controller.browser = browser;
     const context = await browser.newContext();
     context.setDefaultTimeout(PAGE_TIMEOUT_MS);
     const page = await context.newPage();
@@ -736,6 +751,7 @@ async function scrapeIVirtualActivities(event) {
                       url: assignment.url,
                     };
                   } catch (_error) {
+                    console.error('[scraper] Failed to collect details for:', assignment.url, _error?.message);
                     return null;
                   }
                 },
@@ -800,7 +816,13 @@ async function scrapeIVirtualActivities(event) {
   }
 }
 
+let activeScrapeController = null;
+
 async function getActivitiesWithCache(event) {
+  if (activeScrapeController) {
+    return { error: 'Ya hay un escaneo en progreso. Espera a que termine.' };
+  }
+
   const cached = readActivitiesCache();
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
@@ -811,24 +833,36 @@ async function getActivitiesWithCache(event) {
     };
   }
 
-  let timeoutId;
-  const timeoutPromise = new Promise((resolve) => {
-    timeoutId = setTimeout(
-      () =>
-        resolve(
-          buildScrapeError(
-            'El escaneo tardó demasiado. iVirtual puede estar lento. Intenta de nuevo.',
-          ),
-        ),
-      GLOBAL_SCRAPE_TIMEOUT_MS,
-    );
-  });
+  const controller = { cancelled: false, browser: null };
+  activeScrapeController = controller;
 
-  const scrapePromise = Promise.resolve(scrapeIVirtualActivities(event)).finally(() => {
-    clearTimeout(timeoutId);
-  });
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(
+        async () => {
+          controller.cancelled = true;
+          if (controller.browser) {
+            await controller.browser.close().catch(() => {});
+          }
+          resolve(
+            buildScrapeError(
+              'El escaneo tardó demasiado. iVirtual puede estar lento. Intenta de nuevo.',
+            ),
+          );
+        },
+        GLOBAL_SCRAPE_TIMEOUT_MS,
+      );
+    });
 
-  return Promise.race([scrapePromise, timeoutPromise]);
+    const scrapePromise = Promise.resolve(scrapeIVirtualActivities(event, controller)).finally(() => {
+      clearTimeout(timeoutId);
+    });
+
+    return await Promise.race([scrapePromise, timeoutPromise]);
+  } finally {
+    activeScrapeController = null;
+  }
 }
 
 function registerScraperHandlers() {

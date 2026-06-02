@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react';
-import dvpotroLogo from '../assets/branding/dvpotro-logo.png';
+import dvpotroLogo from '../assets/branding/dvpotro-logo-128.png';
 
 function Onboarding({ onNavigate }) {
   return (
@@ -37,3 +37,4 @@ function Onboarding({ onNavigate }) {
 }
 
 export default Onboarding;
+

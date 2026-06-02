@@ -19,35 +19,30 @@ const MAX_DIFF_BYTES = 150 * 1024;
 
 const VERIFICATION = {
   buildStatus: 'PASS',
-  testsRun: 'npm run build + npm run dist:dir + branding asset/config/static reference checks',
-  verificationCmd: 'npm run build; npm run dist:dir; node branding verification; rg old active branding references',
-  verificationOutput: `> dvpotro@0.1.0 build
+  testsRun: 'npm run build + CSS build check + MES select removal check',
+  verificationCmd: 'npm run build; node check sync-all-btn in dist CSS; node check MES select removed',
+  verificationOutput: `$ npm run build
+> dvpotro@0.1.0 build
 > vite build
 
 vite v5.4.21 building for production...
-✓ 1767 modules transformed.
-dist/index.html                        0.47 kB │ gzip:  0.30 kB
-dist/assets/dvpotro-logo-CBq7ehc7.png  547.24 kB
-dist/assets/index-DSm_0RCx.css         30.38 kB │ gzip:  6.54 kB
-dist/assets/index-fJoIziKb.js          297.64 kB │ gzip: 81.87 kB
-✓ built in 4.93s
-The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+transforming...
+✓ 1768 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                            0.47 kB │ gzip:  0.30 kB
+dist/assets/dvpotro-logo-128-BsNSF5CX.png  9.18 kB
+dist/assets/index-BHL7YJJ7.css             34.79 kB │ gzip:  7.22 kB
+dist/assets/index-BZ6s7_Bs.js              321.55 kB │ gzip: 87.78 kB
+✓ built in 9.82s
 
-> dvpotro@0.1.0 dist:dir
-> vite build && electron-builder --dir
+$ node check sync-all-btn in dist CSS
+sync-all-btn in CSS: true
 
-✓ 1767 modules transformed.
-✓ built in 4.83s
-• electron-builder version=26.8.1
-• loaded configuration file=package.json (build field)
-• packaging platform=win32 arch=x64 electron=42.2.0 appOutDir=release\\win-unpacked
-• updating asar integrity executable resource executablePath=release\\win-unpacked\\DVPotro.exe
-Warnings observed: package author missing, duplicate dependency references, Vite CJS deprecation, Node DEP0190 from electron-builder.
+$ node check MES select removed
+MES select removed: true
 
-branding verification OK
-active branding reference scan OK: no old visible references
-release/win-unpacked/DVPotro.exe exists (226508800 bytes)
-Assets created: build/icon.ico, build/icon.png, build/icon.icns, build/icon-{16,32,64,128,256,512}.png, src/assets/branding/dvpotro-logo*.png, public/favicon.png`,
+Note: Vite printed its existing CJS Node API deprecation warning after the checks.`,
 };
 
 function ensureReportsDir() {

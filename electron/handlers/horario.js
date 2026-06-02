@@ -913,6 +913,61 @@ async function loginToCIA(page, user, password) {
   return null;
 }
 
+async function tryExtractStudentName(page) {
+  const selectors = [
+    '#ctl00_cLabel_nombre',
+    '.user-name',
+    '#user-name',
+    '[id*="Nombre"],[id*="nombre"],[class*="username"]',
+    '.navbar-text',
+    'span[id*="Name"]',
+  ];
+
+  for (const selector of selectors) {
+    try {
+      const element = await page.$(selector);
+
+      if (!element) {
+        continue;
+      }
+
+      const text = normalizeWhitespace(await element.textContent());
+      if (text.length > 3 && /\s/.test(text) && !/\d{5,}/.test(text)) {
+        return text;
+      }
+    } catch (_error) {
+      // Continue with the next selector.
+    }
+  }
+
+  try {
+    const bodyText = await page.evaluate(() => document.body?.innerText || '');
+    const match = bodyText.match(/[Bb]ienvenid[oa],?\s+([A-ZÁÉÍÓÚ][a-záéíóú][\w\sÁÉÍÓÚáéíóú]{3,50})/);
+    if (match) {
+      return normalizeWhitespace(match[1]);
+    }
+  } catch (_error) {
+    // Silent fallback.
+  }
+
+  return null;
+}
+
+async function persistStudentNameFromCIA(page) {
+  const nombre = await tryExtractStudentName(page);
+
+  if (!nombre) {
+    return;
+  }
+
+  try {
+    const { saveStudentName } = require('./settings');
+    await saveStudentName(nombre);
+  } catch (_error) {
+    // Student name persistence must never block horario scraping.
+  }
+}
+
 async function getTargetContentFrame(page, timeout = 25_000) {
   return waitForFrame(page, async (frame) => frame.name() === 'TargetContent', timeout);
 }
@@ -2413,6 +2468,7 @@ async function scrapeHorario(controller = {}) {
       return loginResult;
     }
 
+    await persistStudentNameFromCIA(page);
     await applyResourceBlocking(page);
     let scheduleFrame;
     try {
@@ -2427,6 +2483,7 @@ async function scrapeHorario(controller = {}) {
         if (retryLogin?.error) {
           return retryLogin;
         }
+        await persistStudentNameFromCIA(page);
         scheduleFrame = await openHorarioPage(page);
       } else {
         throw error;

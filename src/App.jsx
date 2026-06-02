@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
 import Actividades from './pages/Actividades';
 import Horario from './pages/Horario';
+import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Ajustes from './pages/Ajustes';
-import dvpotroLogo from './assets/branding/dvpotro-logo.png';
+import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
 const pageRegistry = {
   activities: {
@@ -18,6 +19,11 @@ const pageRegistry = {
     title: 'Horario',
     description: 'Visualiza clases del semestre y enlaces de videollamada para materias en línea.',
     component: Horario,
+  },
+  calendario: {
+    title: 'Calendario Escolar',
+    description: 'Consulta fechas académicas oficiales publicadas por ITSON.',
+    component: Calendario,
   },
   calificaciones: {
     title: 'Calificaciones',
@@ -40,11 +46,13 @@ function App() {
   const [settingsReady, setSettingsReady] = useState(false);
   const [activities, setActivities] = useState([]);
   const [horario, setHorario] = useState({ materias: [], diasConClases: [] });
+  const [calendarData, setCalendarData] = useState({ events: [], calendarTypes: [], timestamp: null, error: null });
   const [calificaciones, setCalificaciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingHorario, setLoadingHorario] = useState(false);
+  const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
   const [loadingCIA, setLoadingCIA] = useState(false);
-  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncState, setSyncState] = useState({ status: 'idle', lastSync: null });
   const [syncingModules, setSyncingModules] = useState([]);
   const [error, setError] = useState('');
   const [errorHorario, setErrorHorario] = useState('');
@@ -57,8 +65,10 @@ function App() {
   const [progress, setProgress] = useState({ current: 0, total: 0, curso: '' });
   const [actividadesCargado, setActividadesCargado] = useState(false);
   const [horarioCargado, setHorarioCargado] = useState(false);
+  const [calendarCargado, setCalendarCargado] = useState(false);
   const [ciaCargado, setCiaCargado] = useState(false);
   const [studentName, setStudentName] = useState('');
+  const [settingsData, setSettingsData] = useState({});
 
   const initializedRef = useRef(false);
   const nearExpiryRefreshLaunchedRef = useRef(false);
@@ -75,6 +85,30 @@ function App() {
           calificacion.parcial === 'Final' && calificacion.calificacion !== null,
       ),
   );
+  const proximaEntrega = useMemo(() => {
+    const pending = (activities || []).filter(
+      (activity) => activity.estado === 'pendiente' || activity.estado === 'retrasada',
+    );
+
+    if (!pending.length) {
+      return null;
+    }
+
+    return [...pending].sort((left, right) => {
+      if (!left.fechaLimite) return 1;
+      if (!right.fechaLimite) return -1;
+      return new Date(left.fechaLimite) - new Date(right.fechaLimite);
+    })[0];
+  }, [activities]);
+  const calendarCount = useMemo(() => {
+    const now = Date.now();
+    const in30 = now + 30 * 24 * 60 * 60 * 1000;
+
+    return (calendarData.events || []).filter((event) => {
+      const time = new Date(event.inicio).getTime();
+      return Number.isFinite(time) && time >= now && time <= in30;
+    }).length;
+  }, [calendarData]);
 
   const addSyncingModule = (moduleId) => {
     setSyncingModules((previous) => {
@@ -135,6 +169,9 @@ function App() {
       horario: 'horario',
       calificaciones: 'calificaciones',
       ajustes: 'settings',
+      calendario: 'calendario',
+      notifications: 'activities',
+      notificaciones: 'activities',
     };
 
     const nextPage = pageAliases[pageId] || pageId;
@@ -156,17 +193,21 @@ function App() {
 
     try {
       const settings = await api.getSettings();
+      setSettingsData(settings || {});
       const hasUser = Boolean(settings?.user?.trim());
       const hasPassword = Boolean(settings?.hasPassword);
-      const preferredIdentity = settings?.ciaUser?.trim() || settings?.user?.trim() || '';
+      const preferredIdentity =
+        settings?.studentName?.trim() || settings?.ciaUser?.trim() || settings?.user?.trim() || '';
       setStudentName(formatStudentDisplayName(preferredIdentity));
       setShowOnboarding(!(hasUser || hasPassword));
       setActividadesCargado(false);
       setHorarioCargado(false);
+      setCalendarCargado(false);
       setCiaCargado(false);
       initializedRef.current = false;
       nearExpiryRefreshLaunchedRef.current = false;
     } catch (_error) {
+      setSettingsData({});
       setStudentName('');
       setShowOnboarding(false);
     } finally {
@@ -429,51 +470,204 @@ function App() {
     }
   };
 
+  const loadCalendar = async (options = {}) => {
+    const normalizedOptions = typeof options === 'string' ? { calendarType: options } : options || {};
+    const { clearCacheFirst = false, silent = false } = normalizedOptions;
+    const savedCalendarType = (() => {
+      try {
+        return typeof window !== 'undefined' ? window.localStorage.getItem('dvpotro-cal-type') : null;
+      } catch (_error) {
+        return null;
+      }
+    })();
+    const calendarType =
+      normalizedOptions.calendarType ||
+      calendarData.calendarType ||
+      savedCalendarType ||
+      'Profesional Asociado y Licenciatura';
+
+    if (silent) {
+      addSyncingModule('calendario');
+    } else {
+      setIsCalendarSyncing(true);
+    }
+
+    try {
+      if (!api?.runCalendario) {
+        if (!silent) {
+          setCalendarData({
+            events: [],
+            calendarTypes: [],
+            calendarType,
+            timestamp: null,
+            error: 'DVPotro debe ejecutarse dentro de Electron.',
+          });
+        }
+        return;
+      }
+
+      if (clearCacheFirst && api.clearCalendarioCache) {
+        await api.clearCalendarioCache();
+      }
+
+      const result = await api.runCalendario({ calendarType });
+
+      if (result?.error) {
+        setCalendarData({
+          events: [],
+          calendarTypes: Array.isArray(calendarData.calendarTypes) ? calendarData.calendarTypes : [],
+          calendarType,
+          timestamp: null,
+          error: result.error,
+        });
+        return;
+      }
+
+      setCalendarData({
+        events: Array.isArray(result?.events) ? result.events : [],
+        calendarTypes: Array.isArray(result?.calendarTypes) ? result.calendarTypes : [],
+        calendarType: result?.calendarType || calendarType,
+        timestamp: result?.timestamp || null,
+        error: null,
+      });
+    } catch (error) {
+      setCalendarData({
+        events: [],
+        calendarTypes: Array.isArray(calendarData.calendarTypes) ? calendarData.calendarTypes : [],
+        calendarType,
+        timestamp: null,
+        error: error?.message || 'No fue posible cargar el calendario escolar.',
+      });
+    } finally {
+      if (silent) {
+        removeSyncingModule('calendario');
+      } else {
+        setIsCalendarSyncing(false);
+      }
+    }
+  };
+
   const handleSyncAll = async () => {
-    if (!api?.syncAll) {
+    const scraperApi = typeof window !== 'undefined' ? window.scraperApp : api;
+
+    if (syncState.status === 'syncing' || !scraperApi) {
       return;
     }
 
-    setSyncingAll(true);
+    setSyncState((current) => ({ ...current, status: 'syncing' }));
     addSyncingModule('activities');
     addSyncingModule('horario');
-    addSyncingModule('calificaciones');
+    addSyncingModule('calendario');
+    if (hasFinales) {
+      addSyncingModule('calificaciones');
+    }
 
     try {
-      const result = await api.syncAll();
+      const calls = [
+        { id: 'activities', promise: scraperApi.runScraper?.() },
+        { id: 'horario', promise: scraperApi.runHorario?.() },
+        { id: 'calendario', promise: scraperApi.runCalendario?.({}) },
+      ];
 
-      if (result?.actividades?.activities) {
-        setActivities(result.actividades.activities);
-        if (result.actividades?.timestamp) {
-          setLastSyncAt(new Date(result.actividades.timestamp).toISOString());
-        }
+      if (hasFinales) {
+        calls.push({ id: 'calificaciones', promise: scraperApi.runCIA?.() });
       }
 
-      if (result?.horario?.materias) {
-        setHorario({
-          materias: Array.isArray(result.horario.materias) ? result.horario.materias : [],
-          diasConClases: Array.isArray(result.horario.diasConClases)
-            ? result.horario.diasConClases
-            : [],
-        });
-        if (result.horario?.timestamp) {
-          setLastSyncHorario(new Date(result.horario.timestamp).toISOString());
-        }
-      }
+      const results = await Promise.allSettled(calls.map((call) => call.promise));
+      let hasErrors = false;
 
-      if (result?.calificaciones?.materias) {
-        setCalificaciones(result.calificaciones.materias);
-        if (result.calificaciones?.timestamp) {
-          setLastSyncCIA(new Date(result.calificaciones.timestamp).toISOString());
+      results.forEach((result, index) => {
+        const moduleId = calls[index]?.id;
+
+        if (result.status === 'rejected') {
+          hasErrors = true;
+          return;
         }
-      }
+
+        const response = result.value;
+
+        if (response?.error) {
+          hasErrors = true;
+
+          if (moduleId === 'activities') {
+            setErrorCode(response.error);
+            setError(getFriendlyIVirtualError(response.error));
+          }
+
+          if (moduleId === 'horario') {
+            setErrorHorario(getFriendlyIVirtualError(response.error));
+          }
+
+          if (moduleId === 'calendario') {
+            setCalendarData({ events: [], calendarTypes: [], timestamp: null, error: response.error });
+          }
+
+          if (moduleId === 'calificaciones') {
+            setErrorCIACode(response.error);
+            setErrorCIA(getFriendlyIVirtualError(response.error));
+          }
+
+          return;
+        }
+
+        if (moduleId === 'activities') {
+          const activitiesList = Array.isArray(response?.activities) ? response.activities : [];
+          setActivities(activitiesList);
+          setError('');
+          setErrorCode('');
+          if (response?.timestamp) {
+            setLastSyncAt(new Date(response.timestamp).toISOString());
+          }
+        }
+
+        if (moduleId === 'horario') {
+          setHorario({
+            materias: Array.isArray(response?.materias) ? response.materias : [],
+            diasConClases: Array.isArray(response?.diasConClases) ? response.diasConClases : [],
+          });
+          setErrorHorario('');
+          if (response?.timestamp) {
+            setLastSyncHorario(new Date(response.timestamp).toISOString());
+          }
+        }
+
+        if (moduleId === 'calendario') {
+          setCalendarData({
+            events: Array.isArray(response?.events) ? response.events : [],
+            calendarTypes: Array.isArray(response?.calendarTypes) ? response.calendarTypes : [],
+            calendarType: response?.calendarType || 'Profesional Asociado y Licenciatura',
+            timestamp: response?.timestamp || null,
+            error: null,
+          });
+        }
+
+        if (moduleId === 'calificaciones') {
+          const materiasList = Array.isArray(response?.materias) ? response.materias : [];
+          setCalificaciones(materiasList);
+          setErrorCIA('');
+          setErrorCIACode('');
+          if (response?.timestamp) {
+            setLastSyncCIA(new Date(response.timestamp).toISOString());
+          }
+        }
+      });
+
+      const nextStatus = hasErrors ? 'error' : 'done';
+      setSyncState({ status: nextStatus, lastSync: new Date() });
+      setTimeout(
+        () => setSyncState((current) => ({ ...current, status: 'idle' })),
+        hasErrors ? 4000 : 3000,
+      );
     } catch (_error) {
-      // Fallo silencioso: cada módulo maneja sus errores individualmente.
+      setSyncState((current) => ({ ...current, status: 'error' }));
+      setTimeout(() => setSyncState((current) => ({ ...current, status: 'idle' })), 4000);
     } finally {
       removeSyncingModule('activities');
       removeSyncingModule('horario');
-      removeSyncingModule('calificaciones');
-      setSyncingAll(false);
+      removeSyncingModule('calendario');
+      if (hasFinales) {
+        removeSyncingModule('calificaciones');
+      }
     }
   };
 
@@ -521,6 +715,13 @@ function App() {
   }, [activePage, horarioCargado]);
 
   useEffect(() => {
+    if (activePage === 'calendario' && !calendarCargado) {
+      setCalendarCargado(true);
+      loadCalendar({ silent: true });
+    }
+  }, [activePage, calendarCargado]);
+
+  useEffect(() => {
     if (activePage === 'calificaciones' && !ciaCargado) {
       setCiaCargado(true);
       loadCalificaciones({ silent: true });
@@ -556,10 +757,19 @@ function App() {
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
         <Sidebar
           activePage={activePage}
+          activities={activities}
+          calendarCount={calendarCount}
           diasConClases={horario?.diasConClases ?? []}
+          errorHorario={errorHorario}
           hasFinales={hasFinales}
           horario={horario?.materias ?? []}
+          horarioData={horario}
+          onSyncAll={handleSyncAll}
           onNavigate={handleNavigate}
+          proximaEntrega={proximaEntrega}
+          settingsData={settingsData}
+          studentName={studentName}
+          syncState={syncState}
         />
         {!settingsReady ? (
           <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
@@ -589,6 +799,7 @@ function App() {
           <TaskPanel title={pageConfig.title} description={pageConfig.description}>
             <ActivePage
               activities={activities}
+              calendarData={calendarData}
               calificaciones={calificaciones}
               horario={horario}
               errorCIA={errorCIA}
@@ -599,11 +810,12 @@ function App() {
               lastSyncCIA={lastSyncCIA}
               lastSyncAt={lastSyncAt}
               lastSyncHorario={lastSyncHorario}
+              isSyncing={isCalendarSyncing}
               loadingCIA={loadingCIA}
               loadingHorario={loadingHorario}
               loading={loading}
               onSettingsSaved={refreshSettings}
-              onSync={handleSyncActivities}
+              onSync={activePage === 'calendario' ? loadCalendar : handleSyncActivities}
               onSyncHorario={loadHorario}
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
               onNavigate={handleNavigate}
@@ -617,3 +829,4 @@ function App() {
 }
 
 export default App;
+

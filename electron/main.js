@@ -8,6 +8,7 @@ const { registerFileHandlers } = require('./handlers/files');
 const { getCachedHorario, registerHorarioHandlers } = require('./handlers/horario');
 const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
+const calendarioHandler = require('./handlers/calendario');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const appIconPath = path.join(__dirname, '..', 'build', process.platform === 'darwin' ? 'icon.icns' : 'icon.ico');
@@ -57,6 +58,8 @@ app.whenReady().then(() => {
   registerFileHandlers();
   registerSettingsHandlers();
   registerNotificationHandlers();
+  ipcMain.handle('calendario:run', (_event, options) => calendarioHandler.run(options || {}));
+  ipcMain.handle('calendario:clear-cache', () => calendarioHandler.clearCache());
   ipcMain.removeHandler('shell:open-external');
   ipcMain.handle('shell:open-external', async (_event, url) => {
     if (url && typeof url === 'string' && url.startsWith('http')) {
@@ -72,11 +75,13 @@ app.whenReady().then(() => {
     clearActivitiesCache();
     clearHorarioCache();
     clearCIACache();
+    calendarioHandler.clearCache();
 
-    const [actividades, horario, calificaciones] = await Promise.allSettled([
+    const [actividades, horario, calificaciones, calendario] = await Promise.allSettled([
       getActivitiesWithCache(),
       getHorarioWithCache(),
       getCalificacionesWithCache(),
+      calendarioHandler.run({}),
     ]);
 
     return {
@@ -90,6 +95,10 @@ app.whenReady().then(() => {
         calificaciones.status === 'fulfilled'
           ? calificaciones.value
           : { error: calificaciones.reason?.message },
+      calendario:
+        calendario.status === 'fulfilled'
+          ? calendario.value
+          : { error: calendario.reason?.message },
     };
   });
   createMainWindow();
@@ -110,3 +119,4 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+

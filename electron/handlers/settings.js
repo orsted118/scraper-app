@@ -26,6 +26,7 @@ function getSettings() {
     ciaUser: process.env.CIA_USER || '',
     hasCIAPassword: Boolean(process.env.CIA_PASS),
     notifMinutesBefore: Number(process.env.NOTIF_MINUTES_BEFORE) || 10,
+    studentName: process.env.STUDENT_NAME || '',
   };
 }
 
@@ -96,6 +97,30 @@ function saveSettings({ user, password, ciaUser, ciaPassword, notifMinutesBefore
   }
 }
 
+async function saveStudentName(name) {
+  try {
+    const normalizedName = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
+
+    if (!normalizedName) {
+      return { success: false, error: 'Nombre de estudiante vacío.' };
+    }
+
+    let envLines = readEnvLines().filter((line) => line.trim().length > 0);
+    envLines = upsertEnvValue(envLines, 'STUDENT_NAME', normalizedName);
+
+    const envPath = getEnvFilePath();
+    fs.writeFileSync(envPath, `${envLines.join('\n')}\n`, 'utf8');
+    process.env.STUDENT_NAME = normalizedName;
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error?.message || 'No fue posible guardar el nombre del estudiante.',
+    };
+  }
+}
+
 function registerSettingsHandlers() {
   ipcMain.handle('settings:get', async () => getSettings());
   ipcMain.handle('settings:save', async (_event, payload) => saveSettings(payload || {}));
@@ -105,5 +130,6 @@ module.exports = {
   getEnvFilePath,
   getSettings,
   registerSettingsHandlers,
+  saveStudentName,
   saveSettings,
 };

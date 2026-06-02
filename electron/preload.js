@@ -5,8 +5,10 @@ contextBridge.exposeInMainWorld('scraperApp', {
   runScraper: (payload) => ipcRenderer.invoke('scraper:run', payload),
   runCIA: () => ipcRenderer.invoke('cia:run'),
   runHorario: () => ipcRenderer.invoke('horario:run'),
+  runCalendario: (options) => ipcRenderer.invoke('calendario:run', options || {}),
   clearCIACache: () => ipcRenderer.invoke('cia:clear-cache'),
   clearHorarioCache: () => ipcRenderer.invoke('horario:clear-cache'),
+  clearCalendarioCache: () => ipcRenderer.invoke('calendario:clear-cache'),
   saveHorarioLink: (numeroClase, link) =>
     ipcRenderer.invoke('horario:save-link', { numeroClase, link }),
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -23,3 +25,4 @@ contextBridge.exposeInMainWorld('scraperApp', {
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   syncAll: () => ipcRenderer.invoke('sync:all'),
 });
+

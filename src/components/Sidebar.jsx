@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { id: 'activities', label: 'Actividades', icon: BookOpen, target: 'activities' },
   { id: 'calendario', label: 'Calendario', icon: CalendarDays, target: 'calendario' },
   { id: 'horario', label: 'Horario', icon: Clock, target: 'horario' },
-  { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'activities' },
+  { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];
 
@@ -190,14 +190,6 @@ function Sidebar({
       if (hasHorario) {
         return <span className="h-2 w-2 rounded-full" style={{ background: '#10b981' }} />;
       }
-    }
-
-    if (itemId === 'notifications' && delayedCount > 0) {
-      return (
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: '#ef4444' }}>
-          {delayedCount}
-        </span>
-      );
     }
 
     return null;

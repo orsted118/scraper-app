@@ -6,6 +6,7 @@ import Actividades from './pages/Actividades';
 import Horario from './pages/Horario';
 import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
+import Notificaciones from './pages/Notificaciones';
 import Ajustes from './pages/Ajustes';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
@@ -24,6 +25,11 @@ const pageRegistry = {
     title: 'Calendario Escolar',
     description: 'Consulta fechas académicas oficiales publicadas por ITSON.',
     component: Calendario,
+  },
+  notifications: {
+    title: 'Notificaciones',
+    description: 'Bandeja visual de avisos simulados de CIA, iVirtual, horario y calendario.',
+    component: Notificaciones,
   },
   calificaciones: {
     title: 'Calificaciones',
@@ -170,8 +176,8 @@ function App() {
       calificaciones: 'calificaciones',
       ajustes: 'settings',
       calendario: 'calendario',
-      notifications: 'activities',
-      notificaciones: 'activities',
+      notifications: 'notifications',
+      notificaciones: 'notifications',
     };
 
     const nextPage = pageAliases[pageId] || pageId;

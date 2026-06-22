@@ -1,9 +1,18 @@
-Se rediseñó la pantalla de Notificaciones para reducir ruido visual y dejar el feed como protagonista. Eliminé por completo el hero/banner grande de arriba con el degradado, el ícono de campana y las StatTiles, y lo reemplacé por un header compacto de una sola fila con el título Notificaciones, el contador de sin leer y el botón Marcar todo como leído alineado a la derecha.
+# Self-report: Simplificación visual de Notificaciones
 
-Las NotificationCard se conservaron sin cambios porque ya tenían una buena jerarquía visual: barra lateral de color, ícono, badge de canal y punto de leído/no leído. También mantuve la barra de búsqueda y los filtros rápidos tal como estaban.
+## Qué se pidió
+Rediseñar la pantalla de Notificaciones (src/pages/Notificaciones.jsx) para reducir ruido visual: eliminar el hero/banner grande de arriba, simplificar el header a una sola fila compacta, limpiar el sidebar quitando la sección de "Acciones rápidas" y el bloque "Estado de la bandeja / Resumen rápido", dejando solo "Canales activos". Mantener filters, search bar y el feed de NotificationCards exactamente como estaban.
 
-En la columna derecha simplifiqué el panel de resumen: dejé solo el bloque de Canales activos con sus conteos y eliminé por completo la sección de Acciones rápidas, que era texto de relleno y no aportaba valor real a la pantalla.
+## Qué se hizo
+- **Header**: se reemplazó el bloque con ícono Bell envuelto en un contenedor con border/background por una fila simple: título "Notificaciones" + contador "X sin leer" + botón "Marcar todo como leído" a la derecha. Sin borde, sin background decorativo, sin ícono.
+- **Sidebar**: se eliminó la cabecera "Estado de la bandeja / Resumen rápido" con su ícono Filter, y el sub-contenedor anidado. Quedó solo "Canales activos" como sección única, directa.
+- **Imports**: se eliminó Filter y Megaphone de las importaciones de lucide-react (no se usaban después de los cambios).
 
-Verifiqué además que la navegación de Notificaciones ya apunta a su propia página en Sidebar y App, así que no tocó lógica de rutas en esta tarea. El cambio quedó enfocado exclusivamente en la maquetación visual del módulo.
+## Decisiones autónomas
+- No se tocaron los NotificationCards, el sistema de filtros, la búsqueda, ni la agrupación por buckets (se pidió explícitamente mantenerlos).
+- El botón "Marcar todo como leído" se mantiene siempre visible (no condicional a que haya no-leídos).
+- El layout responsive (lg:grid) se conservó intacto.
 
-La validación de build pasó correctamente con npm run build.
+## Verificación
+- `npm run build`: PASS, 1769 módulos, build en 13.74s, sin errores.
+- No se requirieron cambios en otros archivos (Sidebar.jsx, App.jsx, etc.).

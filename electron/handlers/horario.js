@@ -96,6 +96,9 @@ async function gotoWithRetry(page, url, options = {}, maxRetries = 2) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
+      if (attempt > 0) {
+        console.log(`Reintentando navegación, intento ${attempt} de ${maxRetries}`);
+      }
       return await page.goto(url, {
         waitUntil: 'domcontentloaded',
         timeout: PAGE_TIMEOUT_MS,
@@ -883,6 +886,7 @@ async function switchScheduleView(frame, viewPatterns) {
 }
 
 async function loginToCIA(page, user, password) {
+  console.log(`Iniciando inicio de sesión en portal CIA para el usuario: ${user}`);
   await gotoWithRetry(page, CIA_ENTRY_URL, {
     timeout: CIA_LOGIN_TIMEOUT_MS,
     waitUntil: 'domcontentloaded',
@@ -907,9 +911,11 @@ async function loginToCIA(page, user, password) {
 
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
   if (!(await autoservicioLink.count().catch(() => 0))) {
+    console.error(`Inicio de sesión fallido en CIA para el usuario: ${user}`);
     return buildHorarioError('Credenciales CIA inválidas o no configuradas.');
   }
 
+  console.log('Inicio de sesión en portal CIA exitoso');
   return null;
 }
 
@@ -1009,13 +1015,14 @@ async function clickHorarioEntry(page) {
 }
 
 async function openHorarioPage(page) {
+  console.log('Iniciando navegación a la página de horario...');
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
   await autoservicioLink.click().catch(() => {});
   await waitForPeopleSoftNav(page, 20_000);
   await clickHorarioEntry(page);
   await waitForPeopleSoftNav(page, 20_000);
 
-  return waitForFrame(
+  const frame = await waitForFrame(
     page,
     async (frame) =>
       frame.name() === 'TargetContent' &&
@@ -1023,9 +1030,12 @@ async function openHorarioPage(page) {
         (await frameHasAnyText(frame, [/vista listado/i, /vista horario semanal/i, /class schedule/i]))),
     30_000,
   );
+  console.log('Frame de horario obtenido correctamente');
+  return frame;
 }
 
 async function collectIdentifiersFromListView(scheduleFrame) {
+  console.log('Extrayendo identificadores de materias desde la vista listado...');
   await switchScheduleView(scheduleFrame, [/vista listado/i, /list view/i]);
   await waitForPeopleSoftNav(scheduleFrame.page(), 12_000);
 
@@ -1104,10 +1114,12 @@ async function collectIdentifiersFromListView(scheduleFrame) {
     };
   });
 
-  return uniqueByKey(
+  const uniqueEntries = uniqueByKey(
     entries.filter((entry) => entry.numeroClase || entry.codigo || entry.nombre),
     (entry) => entry.numeroClase || `${entry.codigo}-${entry.seccion}-${entry.horaInicio || 'na'}`,
   );
+  console.log(`Identificadores extraídos: ${uniqueEntries.length} materias encontradas.`);
+  return uniqueEntries;
 }
 
 function combineScheduleRows(rows, identifiers) {
@@ -1273,6 +1285,7 @@ function deriveDaysFromSessions(materia) {
 async function collectWeeklySchedule(scheduleFrame, identifiers) {
   const normalizedIdentifiers = Array.isArray(identifiers) ? identifiers : [];
 
+  console.log('Extrayendo clases de la cuadrícula de horario semanal...');
   await switchScheduleView(scheduleFrame, [
     /vista horario semanal/i,
     /weekly schedule/i,
@@ -1422,6 +1435,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     .catch(() => []);
 
   if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    console.log('No se encontraron clases en la vista semanal de horario.');
     return normalizedIdentifiers;
   }
 
@@ -1670,7 +1684,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     });
   });
 
-  return [...mergedByCode.values()]
+  const result = [...mergedByCode.values()]
     .map((materia) => ({
       ...materia,
       dias: deriveDaysFromSessions(materia),
@@ -1684,6 +1698,8 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       Array.isArray(row.dias) &&
       row.dias.length > 0,
   );
+  console.log(`Extracción semanal consolidada. Total: ${result.length} materias estructuradas.`);
+  return result;
 }
 
 function chunkArray(items, chunkSize) {
@@ -1695,6 +1711,7 @@ function chunkArray(items, chunkSize) {
 }
 
 async function loginToIVirtual(context, user, password) {
+  console.log(`Iniciando inicio de sesión en iVirtual para el usuario: ${user}`);
   const page = await context.newPage();
   page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
@@ -1719,9 +1736,11 @@ async function loginToIVirtual(context, user, password) {
 
   if (page.url().includes('/login/')) {
     await page.close().catch(() => {});
+    console.error(`Inicio de sesión fallido en iVirtual para el usuario: ${user}`);
     return { success: false, error: 'No fue posible iniciar sesión en iVirtual para buscar enlaces.' };
   }
 
+  console.log('Inicio de sesión en iVirtual exitoso');
   return { success: true, page };
 }
 
@@ -2319,6 +2338,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
 }
 
 async function findLinkForOnlineCourse(context, dashboardPage, materia, cachedCourses = null) {
+  console.log(`Buscando enlace de videollamada para ${materia.nombre} (${materia.codigo})...`);
   const courses = Array.isArray(cachedCourses) ? cachedCourses : await collectCourseLinks(dashboardPage);
   const match = pickBestCourseMatch(courses, materia);
 
@@ -2331,7 +2351,11 @@ async function findLinkForOnlineCourse(context, dashboardPage, materia, cachedCo
   await applyResourceBlocking(page);
 
   try {
-    return await findMeetLinkInCourse(page, match.url);
+    const result = await findMeetLinkInCourse(page, match.url);
+    if (result && result.link) {
+      console.log(`Enlace de videollamada encontrado en iVirtual: ${result.link} (Capa: ${result.layer})`);
+    }
+    return result;
   } finally {
     await page.close().catch(() => {});
   }
@@ -2366,9 +2390,11 @@ async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {
   }
 
   if (!ivirtualUser || !ivirtualPass) {
+    console.log('No se configuraron credenciales de iVirtual. Se omite la búsqueda de enlaces de videollamada.');
     return materias;
   }
 
+  console.log(`Iniciando búsqueda de enlaces para ${onlineIndexes.length} materias en línea...`);
   const browser = await chromium.launch({ headless: true });
 
   try {
@@ -2419,6 +2445,7 @@ async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {
     }
 
     await dashboardPage.close().catch(() => {});
+    console.log('Búsqueda de enlaces de videollamada en iVirtual completada');
     return nextMaterias;
   } finally {
     await browser.close();
@@ -2442,16 +2469,19 @@ function computeDaysWithClasses(materias) {
 }
 
 async function scrapeHorario(controller = {}) {
+  console.log('Iniciando proceso de extracción de horario...');
   const ciaUser = process.env.CIA_USER?.trim();
   const ciaPass = process.env.CIA_PASS?.trim();
 
   if (!ciaUser || !ciaPass) {
+    console.error('Error: Credenciales de CIA no configuradas.');
     return buildHorarioError('Credenciales CIA inválidas o no configuradas.');
   }
 
   const ivirtualUser = process.env.IVIRTUAL_USER?.trim();
   const ivirtualPass = process.env.IVIRTUAL_PASS?.trim();
 
+  console.log('Lanzando instancia de Chromium...');
   const browser = await chromium.launch({ headless: true });
   controller.browser = browser;
 
@@ -2474,6 +2504,7 @@ async function scrapeHorario(controller = {}) {
     try {
       scheduleFrame = await openHorarioPage(page);
     } catch (error) {
+      console.warn(`Error al abrir página de horario en primer intento. Reintentando desde inicio...`);
       if ((error?.message || '').includes('No se encontró el frame esperado')) {
         await page.goto(CIA_ENTRY_URL, {
           waitUntil: 'domcontentloaded',
@@ -2491,6 +2522,7 @@ async function scrapeHorario(controller = {}) {
     }
 
     if (await isScheduleAccessBlocked(scheduleFrame)) {
+      console.error('Acceso bloqueado al horario en portal CIA.');
       return buildHorarioError('CIA_SCHEDULE_UNAVAILABLE');
     }
 
@@ -2498,6 +2530,7 @@ async function scrapeHorario(controller = {}) {
     let materias = await collectWeeklySchedule(scheduleFrame, identifiers);
 
     if (materias.length === 0 && (await isScheduleAccessBlocked(scheduleFrame))) {
+      console.error('Acceso bloqueado detectado después de carga de horario.');
       return buildHorarioError('CIA_SCHEDULE_UNAVAILABLE');
     }
 
@@ -2519,8 +2552,10 @@ async function scrapeHorario(controller = {}) {
       timestamp: Date.now(),
     };
 
+    console.log(`Horario extraído: ${payload.materias.length} clases encontradas.`);
     return applyManualLinks(payload);
   } catch (error) {
+    console.error(`Error durante scraping de horario: ${error.message}`);
     if (error?.message === 'NO_INTERNET') {
       return buildHorarioError('Sin conexión a internet. Verifica tu red e intenta de nuevo.');
     }
@@ -2559,12 +2594,14 @@ let activeHorarioController = null;
 
 async function getHorarioWithCache() {
   if (activeHorarioController) {
+    console.log('Intento de extracción concurrentes bloqueado.');
     return { error: 'Ya hay un escaneo de horario en progreso. Espera a que termine.' };
   }
 
   const cached = readHorarioCache();
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+    console.log('Sirviendo horario desde la caché.');
     const cachedWithManualLinks = applyManualLinks(cached);
     updateCachedHorarioMaterias(cachedWithManualLinks);
 
@@ -2574,6 +2611,7 @@ async function getHorarioWithCache() {
     };
   }
 
+  console.log('Iniciando extracción de horario en vivo...');
   const controller = { cancelled: false, browser: null };
   activeHorarioController = controller;
 
@@ -2586,6 +2624,7 @@ async function getHorarioWithCache() {
           if (controller.browser) {
             await controller.browser.close().catch(() => {});
           }
+          console.error(`Timeout de escaneo global superado (${GLOBAL_TIMEOUT_MS}ms).`);
           resolve(
             buildHorarioError('El escaneo del horario tardó demasiado. Intenta de nuevo.'),
           );

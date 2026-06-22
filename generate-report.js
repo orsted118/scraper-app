@@ -19,30 +19,27 @@ const MAX_DIFF_BYTES = 150 * 1024;
 
 const VERIFICATION = {
   buildStatus: 'PASS',
-  testsRun: 'npm run build + CSS build check + MES select removal check',
-  verificationCmd: 'npm run build; node check sync-all-btn in dist CSS; node check MES select removed',
-  verificationOutput: `$ npm run build
+  testsRun: 'npm run build + notifications route checks',
+  verificationCmd: `node -e "const fs = require('fs'); const app = fs.readFileSync('src/App.jsx','utf8'); const sidebar = fs.readFileSync('src/components/Sidebar.jsx','utf8'); console.log('notifications page:', app.includes(\"notifications: {\")); console.log('sidebar target:', sidebar.includes(\"target: 'notifications'\")); console.log('page exists:', fs.existsSync('src/pages/Notificaciones.jsx'));"`,
+verificationOutput: `$ npm run build
 > dvpotro@0.1.0 build
 > vite build
 
 vite v5.4.21 building for production...
 transforming...
-✓ 1768 modules transformed.
+✓ 1769 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/index.html                            0.47 kB │ gzip:  0.30 kB
 dist/assets/dvpotro-logo-128-BsNSF5CX.png  9.18 kB
-dist/assets/index-BHL7YJJ7.css             34.79 kB │ gzip:  7.22 kB
-dist/assets/index-BZ6s7_Bs.js              321.55 kB │ gzip: 87.78 kB
-✓ built in 9.82s
+dist/assets/index-_4KKbzMN.css             37.93 kB │ gzip:  7.75 kB
+dist/assets/index-Bjfn2_UT.js              338.62 kB │ gzip: 91.37 kB
+✓ built in 8.13s
 
-$ node check sync-all-btn in dist CSS
-sync-all-btn in CSS: true
-
-$ node check MES select removed
-MES select removed: true
-
-Note: Vite printed its existing CJS Node API deprecation warning after the checks.`,
+$ node -e "const fs = require('fs'); const app = fs.readFileSync('src/App.jsx','utf8'); const sidebar = fs.readFileSync('src/components/Sidebar.jsx','utf8'); console.log('notifications page:', app.includes(\"notifications: {\")); console.log('sidebar target:', sidebar.includes(\"target: 'notifications'\")); console.log('page exists:', fs.existsSync('src/pages/Notificaciones.jsx'));"
+notifications page: true
+sidebar target: true
+page exists: true`,
 };
 
 function ensureReportsDir() {

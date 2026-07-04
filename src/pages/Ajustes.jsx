@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ColorPicker from '../components/ColorPicker';
+import { useSidebar } from '../SidebarContext';
 import { useTheme } from '../ThemeContext';
 import { THEMES } from '../themes';
 
@@ -108,6 +109,7 @@ function CredentialSection({
 function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const { themeId, setThemeId, saveCustomTheme } = useTheme();
+  const { sidebarCompact, setSidebarCompact } = useSidebar();
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [ciaUser, setCiaUser] = useState('');
@@ -434,6 +436,47 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
                 {savingSection === 'notifications' ? 'Guardando...' : 'Guardar aviso'}
               </button>
             </form>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="rounded-2xl border p-6"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
+        <div className="flex items-start gap-3">
+          <Palette className="mt-1 h-5 w-5" style={{ color: 'var(--accent)' }} />
+          <div className="w-full">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+              Apariencia
+            </h3>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+              Preferencias visuales de la interfaz.
+            </p>
+
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}>
+              <div className="min-w-0">
+                <p className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                  Sidebar compacto
+                </p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Reduce el sidebar a solo íconos para aprovechar más espacio.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sidebarCompact}
+                onClick={() => setSidebarCompact(!sidebarCompact)}
+                className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition"
+                style={{ background: sidebarCompact ? 'var(--accent)' : 'var(--border-normal)' }}
+              >
+                <span
+                  className="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  style={{ transform: sidebarCompact ? 'translateX(24px)' : 'translateX(4px)' }}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </section>

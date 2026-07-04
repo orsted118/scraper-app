@@ -8,6 +8,7 @@ import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Notificaciones from './pages/Notificaciones';
 import Ajustes from './pages/Ajustes';
+import ArchivosRecientes from './pages/ArchivosRecientes';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
 const pageRegistry = {
@@ -40,6 +41,11 @@ const pageRegistry = {
     title: 'Ajustes',
     description: 'Revisa el estado de la integración y la configuración local requerida.',
     component: Ajustes,
+  },
+  archivos: {
+    title: 'Archivos Recientes',
+    description: 'Consulta y abre las últimas descargas desde Electron.',
+    component: ArchivosRecientes,
   },
 };
 
@@ -178,6 +184,7 @@ function App() {
       calendario: 'calendario',
       notifications: 'notifications',
       notificaciones: 'notifications',
+      archivos: 'archivos',
     };
 
     const nextPage = pageAliases[pageId] || pageId;
@@ -760,7 +767,7 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
-      <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
         <Sidebar
           activePage={activePage}
           activities={activities}

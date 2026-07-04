@@ -10,6 +10,7 @@ import {
   MapPin,
   RefreshCw,
 } from 'lucide-react';
+import StackedEventCards from '../components/StackedEventCards';
 
 const MONTHS = [
   'Enero',
@@ -177,6 +178,18 @@ function getEventsForDay(events, date, filterCat = 'Todas') {
     .sort((left, right) => new Date(left.inicio) - new Date(right.inicio));
 }
 
+function getEventDateForMonth(event) {
+  const direct = getValidDate(event?.inicio || event?.date || event?.fechaInicio || event?.fecha);
+  if (direct) return direct;
+
+  const raw = String(event?.inicio || event?.date || event?.fechaInicio || event?.fecha || '').trim();
+  const match = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return null;
+
+  const parsed = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function groupEventsByMonth(events) {
   return events.reduce((groups, event) => {
     const date = getValidDate(event.inicio);
@@ -205,7 +218,7 @@ function SelectField({ label, value, onChange, children, className = '' }) {
           background: 'var(--bg-secondary)',
           borderColor: 'var(--border-normal)',
           color: 'var(--text-strong)',
-        }}
+                  }}
       >
         {children}
       </select>
@@ -302,6 +315,19 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
     () => getEventsForDay(events, selectedDay, filterCat),
     [events, filterCat, selectedDay],
   );
+  const visibleMonthEvents = useMemo(() => {
+    return events
+      .filter((event) => {
+        const date = getEventDateForMonth(event);
+        return date && date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      })
+      .sort((left, right) => {
+        const leftDate = getEventDateForMonth(left);
+        const rightDate = getEventDateForMonth(right);
+        return (leftDate?.getTime() || 0) - (rightDate?.getTime() || 0);
+      });
+  }, [currentMonth, currentYear, events]);
+  const toolbarPreviewEvents = visibleMonthEvents.length ? visibleMonthEvents : events.slice(0, 5);
   const groupedEvents = groupEventsByMonth(filteredEvents);
   const hasEvents = events.length > 0;
   const monthLabel = `${MONTHS[currentMonth]} ${currentYear}`;
@@ -362,33 +388,103 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
   return (
     <div className="space-y-5">
       <section
-        className="rounded-2xl border p-6"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+        className="rounded-2xl border p-4"
+        style={{
+          borderColor: 'var(--border)',
+          background: 'var(--bg-card)',
+        }}
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
-              <CalendarDays className="h-3.5 w-3.5" />
-              ITSON · {currentYear}
+        <div className="flex items-start gap-6">
+          <div className="min-w-0 flex-1">
+            <div className="mb-4">
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                Seleccionar un calendario
+              </label>
+              <select
+                value={selectedCalendarType}
+                onChange={(event) => handleCalendarTypeChange(event.target.value)}
+                className="w-full max-w-[360px] appearance-none rounded-xl border px-3 py-2 pr-9 text-sm outline-none transition focus:ring-2 focus:ring-itson-blue/30"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-normal)',
+                  color: 'var(--text-strong)',
+                }}
+              >
+                {calendarTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
             </div>
-            <h3 className="mt-4 text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
-              Calendario Escolar
-            </h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
-              Consulta fechas académicas oficiales publicadas por ITSON.
-            </p>
+
+            <div className="flex flex-wrap items-end gap-5">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[12px] uppercase tracking-[0.16em]" style={{ color: 'var(--text-strong)' }}>
+                  Mes
+                </span>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={goToPreviousMonth}
+                    className="grid h-9 w-9 place-items-center rounded-xl border transition hover:opacity-80"
+                    style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)', color: 'var(--text-strong)' }}
+                    aria-label="Mes anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <p className="min-w-[120px] text-center text-[17px] font-bold tracking-[-0.02em]" style={{ color: 'var(--text-strong)' }}>
+                    {monthLabel}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={goToNextMonth}
+                    className="grid h-9 w-9 place-items-center rounded-xl border transition hover:opacity-80"
+                    style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)', color: 'var(--text-strong)' }}
+                    aria-label="Mes siguiente"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <SelectField label="Categoría" value={filterCat} onChange={setFilterCat} className="min-w-[180px]">
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </SelectField>
+
+              <div className="flex rounded-xl border p-1" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}>
+                {[
+                  { id: 'list', label: 'Lista', Icon: List },
+                  { id: 'grid', label: 'Grilla', Icon: LayoutGrid },
+                ].map(({ id, label, Icon }) => {
+                  const active = viewMode === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setViewMode(id)}
+                      className="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                      style={{
+                        background: active ? 'var(--accent)' : 'transparent',
+                        color: active ? 'white' : 'var(--text-muted)',
+                      }}
+                      title={label}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => syncCalendar({ clearCacheFirst: true })}
-            disabled={isSyncing}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: 'var(--accent)' }}
-          >
-            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
-          </button>
+          <div className="shrink-0 self-start pt-0.5">
+            <StackedEventCards events={toolbarPreviewEvents} currentMonth={currentMonth} />
+          </div>
         </div>
       </section>
 
@@ -423,83 +519,6 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
 
       {hasEvents ? (
         <>
-          <section
-            className="rounded-2xl border p-4"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
-          >
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={goToPreviousMonth}
-                  className="rounded-xl border p-2 transition hover:scale-105"
-                  style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
-                  aria-label="Mes anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <p className="min-w-[160px] text-center text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
-                  {monthLabel}
-                </p>
-                <button
-                  type="button"
-                  onClick={goToNextMonth}
-                  className="rounded-xl border p-2 transition hover:scale-105"
-                  style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
-                  aria-label="Mes siguiente"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-3">
-                <SelectField
-                  label="Seleccionar un calendario"
-                  value={selectedCalendarType}
-                  onChange={handleCalendarTypeChange}
-                  className="min-w-[260px]"
-                >
-                  {calendarTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </SelectField>
-
-                <SelectField label="Categoría" value={filterCat} onChange={setFilterCat}>
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </SelectField>
-                <div className="flex rounded-xl border p-1" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}>
-                  {[
-                    { id: 'list', label: 'Lista', Icon: List },
-                    { id: 'grid', label: 'Grilla', Icon: LayoutGrid },
-                  ].map(({ id, label, Icon }) => {
-                    const active = viewMode === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setViewMode(id)}
-                        className="rounded-lg px-3 py-2 text-xs font-semibold transition"
-                        style={{
-                          background: active ? 'var(--accent)' : 'transparent',
-                          color: active ? '#fff' : 'var(--text-muted)',
-                        }}
-                        title={label}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </section>
-
           {viewMode === 'grid' ? (
             <>
               <section

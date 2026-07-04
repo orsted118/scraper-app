@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('scraperApp', {
   downloadFile: (url, name) => ipcRenderer.invoke('files:download', { url, name }),
   inspectFile: (payload) => ipcRenderer.invoke('files:inspect', payload),
   parseFile: (payload) => ipcRenderer.invoke('files:parse', payload),
+  archivos: {
+    getRecientes: () => ipcRenderer.invoke('archivos:get-recientes'),
+    abrir: (filePath) => ipcRenderer.invoke('archivos:abrir', filePath),
+    mostrarEnCarpeta: (filePath) =>
+      ipcRenderer.invoke('archivos:mostrar-en-carpeta', filePath),
+  },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   syncAll: () => ipcRenderer.invoke('sync:all'),
 });

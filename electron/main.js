@@ -5,6 +5,7 @@ const { autoUpdater } = require('electron-updater');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerCIAHandlers } = require('./handlers/cia');
 const { registerFileHandlers } = require('./handlers/files');
+const { registerArchivosHandlers } = require('./handlers/archivos');
 const { getCachedHorario, registerHorarioHandlers } = require('./handlers/horario');
 const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
@@ -56,6 +57,7 @@ app.whenReady().then(() => {
   registerCIAHandlers();
   registerHorarioHandlers();
   registerFileHandlers();
+  registerArchivosHandlers();
   registerSettingsHandlers();
   registerNotificationHandlers();
   ipcMain.handle('calendario:run', (_event, options) => calendarioHandler.run(options || {}));

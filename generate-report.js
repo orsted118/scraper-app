@@ -19,27 +19,34 @@ const MAX_DIFF_BYTES = 150 * 1024;
 
 const VERIFICATION = {
   buildStatus: 'PASS',
-  testsRun: 'npm run build + notifications route checks',
-  verificationCmd: `node -e "const fs = require('fs'); const app = fs.readFileSync('src/App.jsx','utf8'); const sidebar = fs.readFileSync('src/components/Sidebar.jsx','utf8'); console.log('notifications page:', app.includes(\"notifications: {\")); console.log('sidebar target:', sidebar.includes(\"target: 'notifications'\")); console.log('page exists:', fs.existsSync('src/pages/Notificaciones.jsx'));"`,
-verificationOutput: `$ npm run build
+  testsRun: 'npm run build + checks de activos ASCII, ascii-fg y sección Fondo ASCII',
+  verificationCmd: `npm run build
+node -e "const fs=require('fs'); console.log('contexto existe:', fs.existsSync('src/AsciiBackgroundContext.jsx')); console.log('AsciiBackdrop existe:', fs.existsSync('src/components/AsciiBackdrop.jsx')); console.log('AsciiLab eliminado:', !fs.existsSync('src/pages/AsciiLab.jsx')); console.log('manos.json existe:', fs.existsSync('src/assets/ascii-defaults/manos.json')); console.log('coyote.json existe:', fs.existsSync('src/assets/ascii-defaults/coyote.json')); console.log('gato.json existe:', fs.existsSync('src/assets/ascii-defaults/gato.json')); console.log('pajaro.json existe:', fs.existsSync('src/assets/ascii-defaults/pajaro.json')); const ajustes = fs.readFileSync('src/pages/Ajustes.jsx','utf8'); console.log('seccion Fondo ASCII en Ajustes:', ajustes.includes('Fondo ASCII')); const css = fs.readFileSync('src/index.css','utf8'); console.log('ascii-fg definido:', css.includes('--ascii-fg'));\""`,
+  verificationOutput: `$ npm run build
 > dvpotro@0.1.0 build
 > vite build
 
 vite v5.4.21 building for production...
 transforming...
-✓ 1769 modules transformed.
+✓ 1780 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                            0.47 kB │ gzip:  0.30 kB
+dist/index.html                            0.47 kB │ gzip:   0.30 kB
 dist/assets/dvpotro-logo-128-BsNSF5CX.png  9.18 kB
-dist/assets/index-_4KKbzMN.css             37.93 kB │ gzip:  7.75 kB
-dist/assets/index-Bjfn2_UT.js              338.62 kB │ gzip: 91.37 kB
-✓ built in 8.13s
+dist/assets/index-9flYp8Ot.css             38.06 kB │ gzip:   7.74 kB
+dist/assets/index-BJFKfqkt.js              2,087.50 kB │ gzip: 297.19 kB
+✓ built in 22.31s
 
-$ node -e "const fs = require('fs'); const app = fs.readFileSync('src/App.jsx','utf8'); const sidebar = fs.readFileSync('src/components/Sidebar.jsx','utf8'); console.log('notifications page:', app.includes(\"notifications: {\")); console.log('sidebar target:', sidebar.includes(\"target: 'notifications'\")); console.log('page exists:', fs.existsSync('src/pages/Notificaciones.jsx'));"
-notifications page: true
-sidebar target: true
-page exists: true`,
+$ node -e "..."
+contexto existe: true
+AsciiBackdrop existe: true
+AsciiLab eliminado: true
+manos.json existe: true
+coyote.json existe: true
+gato.json existe: true
+pajaro.json existe: true
+seccion Fondo ASCII en Ajustes: true
+ascii-fg definido: true`,
 };
 
 function ensureReportsDir() {
@@ -395,3 +402,4 @@ function main() {
 }
 
 main();
+

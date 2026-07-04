@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
+  FolderOpen,
   Info,
   Loader2,
   Settings,
@@ -12,11 +13,13 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import dvpotroLogo from '../assets/branding/dvpotro-logo-128.png';
 import { getNextClass } from '../utils/horario.js';
+import { useSidebar } from '../SidebarContext';
 
 const NAV_ITEMS = [
   { id: 'activities', label: 'Actividades', icon: BookOpen, target: 'activities' },
   { id: 'calendario', label: 'Calendario', icon: CalendarDays, target: 'calendario' },
   { id: 'horario', label: 'Horario', icon: Clock, target: 'horario' },
+  { id: 'archivos', label: 'Archivos', icon: FolderOpen, target: 'archivos' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];
@@ -138,6 +141,10 @@ function Sidebar({
   syncState = { status: 'idle', lastSync: null },
 }) {
   const [nextClass, setNextClass] = useState(null);
+  // Sidebar compact is an independent visual preference (decoupled from any
+  // background system): collapses the sidebar to an icon-only rail.
+  const { sidebarCompact } = useSidebar();
+  const compact = sidebarCompact;
   const materiasHorario = Array.isArray(horarioData?.materias)
     ? horarioData.materias
     : (Array.isArray(horario) ? horario : []);
@@ -206,25 +213,28 @@ function Sidebar({
 
   return (
     <aside
-      className="sticky top-8 flex h-[calc(100vh-4rem)] w-64 flex-col overflow-hidden rounded-3xl border shadow-2xl shadow-slate-950/40"
+      className={`sticky top-8 flex h-[calc(100vh-4rem)] ${compact ? 'w-16' : 'w-64'} flex-col overflow-hidden rounded-3xl border shadow-2xl shadow-slate-950/40 transition-[width] duration-200`}
       style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border-subtle)' }}
     >
-      <header className="px-4 pb-3 pt-3">
-        <div className="flex items-center gap-3">
+      <header className={compact ? 'px-2 pb-3 pt-3' : 'px-4 pb-3 pt-3'}>
+        <div className={`flex items-center gap-3 ${compact ? 'justify-center' : ''}`}>
           <img
             src={dvpotroLogo}
             alt="DVPotro"
+            title={compact ? 'DVPotro · ITSON' : undefined}
             className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-lg shadow-black/30"
             draggable="false"
           />
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold leading-tight" style={{ color: 'var(--text-strong)' }}>
-              DVPotro
-            </p>
-            <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
-              ITSON
-            </p>
-          </div>
+          {!compact ? (
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold leading-tight" style={{ color: 'var(--text-strong)' }}>
+                DVPotro
+              </p>
+              <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                ITSON
+              </p>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -239,7 +249,13 @@ function Sidebar({
               key={item.id}
               type="button"
               onClick={() => onNavigate?.(item.target)}
-              className="mb-0.5 flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-[7px] text-left text-sm transition duration-150"
+              title={compact ? item.label : undefined}
+              aria-label={compact ? item.label : undefined}
+              className={`relative mb-0.5 flex w-full items-center rounded-lg transition duration-150 ${
+                compact
+                  ? 'justify-center px-0 py-2'
+                  : 'justify-between gap-3 px-3.5 py-[7px] text-left text-sm'
+              }`}
               style={
                 isActive
                   ? { background: 'var(--itson-blue, var(--accent))', color: '#fff', fontWeight: 600 }
@@ -258,16 +274,48 @@ function Sidebar({
                 }
               }}
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </span>
-              {badge}
+              {compact ? (
+                <>
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {badge ? (
+                    <span
+                      className="absolute right-2 top-1.5 h-2 w-2 rounded-full"
+                      style={{ background: '#006DB6' }}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  {badge}
+                </>
+              )}
             </button>
           );
         })}
       </nav>
 
+      {compact ? (
+        <div className="px-2 py-1">
+          <button
+            type="button"
+            className="flex w-full items-center justify-center rounded-lg border py-2"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: syncInfo.color }}
+            onClick={onSyncAll}
+            disabled={syncState.status === 'syncing'}
+            title={syncInfo.text}
+            aria-label="Sincronizar todo"
+          >
+            <SyncIcon className={`h-4 w-4 ${syncInfo.spin ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      ) : null}
+
+      {!compact ? (
+      <>
       <section
         className="mx-2.5 my-1 rounded-xl border px-3.5 py-2.5"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
@@ -374,25 +422,30 @@ function Sidebar({
           )}
         </div>
       </section>
+      </>
+      ) : null}
 
       <footer
-        className="mt-auto flex items-center gap-2.5 border-t px-3.5 py-2"
+        className={`mt-auto flex items-center border-t py-2 ${compact ? 'justify-center px-2' : 'gap-2.5 px-3.5'}`}
         style={{ borderColor: 'var(--border)' }}
       >
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
           style={{ background: 'linear-gradient(135deg, var(--itson-blue, var(--accent)), var(--itson-blue-light, var(--accent-hover, #1a7ec4)))' }}
+          title={compact ? `${profileName}${userId ? ` · ${userId}` : ''}` : undefined}
         >
           {initials}
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-strong)' }} title={profileName}>
-            {profileName}
-          </p>
-          <p className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }} title={userId}>
-            {userId || 'Sin ID configurado'}
-          </p>
-        </div>
+        {!compact ? (
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-strong)' }} title={profileName}>
+              {profileName}
+            </p>
+            <p className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }} title={userId}>
+              {userId || 'Sin ID configurado'}
+            </p>
+          </div>
+        ) : null}
       </footer>
     </aside>
   );

@@ -183,6 +183,43 @@ async function applyResourceBlocking(page) {
   });
 }
 
+async function snapshotContent(page) {
+  return page
+    .evaluate(() => {
+      const text = document.body?.innerText || '';
+      return `${text.length}:${text.slice(0, 400)}:${text.slice(-400)}`;
+    })
+    .catch(() => '');
+}
+
+// Waits for the page to re-render after an in-page action (select change,
+// scroll-triggered load). If `before` is given, first waits until content
+// differs from it (the action actually did something), then requires two
+// consecutive identical reads so extraction never runs on a half-rendered
+// page. Capped by maxMs so static pages don't stall the scrape.
+async function waitForContentSettled(page, { before = null, changeTimeoutMs = 1500, settleMs = 150, maxMs = 4000 } = {}) {
+  const deadline = Date.now() + maxMs;
+
+  if (before !== null) {
+    const changeDeadline = Math.min(Date.now() + changeTimeoutMs, deadline);
+
+    while (Date.now() < changeDeadline) {
+      const current = await snapshotContent(page);
+      if (current && current !== before) break;
+      await page.waitForTimeout(100);
+    }
+  }
+
+  let previous = await snapshotContent(page);
+
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(settleMs);
+    const current = await snapshotContent(page);
+    if (current === previous) return;
+    previous = current;
+  }
+}
+
 function unfoldICS(content) {
   return String(content || '').replace(/\r?\n[ \t]/g, '');
 }
@@ -384,6 +421,7 @@ async function getCalendarTypes(page) {
 
 async function selectCalendarType(page, calendarType = DEFAULT_TYPE) {
   const requestedType = normalizeCalendarType(calendarType);
+  const before = await snapshotContent(page);
   const selected = await page.evaluate(
     ({ requestedType: requested, defaultType }) => {
       const monthWords = [
@@ -440,13 +478,14 @@ async function selectCalendarType(page, calendarType = DEFAULT_TYPE) {
   );
 
   if (selected) {
-    await page.waitForTimeout(800);
+    await waitForContentSettled(page, { before, maxMs: 3000 });
   }
 
   return selected;
 }
 
 async function selectYear(page, year = CURRENT_YEAR) {
+  const before = await snapshotContent(page);
   const selected = await page.evaluate((targetYear) => {
     const selects = Array.from(document.querySelectorAll('select'));
     const candidates = selects.filter((select) =>
@@ -467,13 +506,14 @@ async function selectYear(page, year = CURRENT_YEAR) {
   }, year);
 
   if (selected) {
-    await page.waitForTimeout(800);
+    await waitForContentSettled(page, { before, maxMs: 3000 });
   }
 
   return selected;
 }
 
 async function selectMonth(page, monthName, monthIndex) {
+  const before = await snapshotContent(page);
   const selected = await page.evaluate(
     ({ monthName: targetMonth, monthIndex: targetIndex }) => {
       const normalize = (value) =>
@@ -506,7 +546,7 @@ async function selectMonth(page, monthName, monthIndex) {
   );
 
   if (selected) {
-    await page.waitForTimeout(900);
+    await waitForContentSettled(page, { before, maxMs: 3500 });
   }
 
   return selected;
@@ -638,7 +678,7 @@ async function scrapeCalendario(calendarType = DEFAULT_TYPE) {
     page.setDefaultTimeout(PAGE_TIMEOUT_MS);
     await applyResourceBlocking(page);
     await gotoWithRetry(page, CALENDAR_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1200);
+    await waitForContentSettled(page, { settleMs: 200, maxMs: 3000 });
 
     const calendarTypes = await getCalendarTypes(page);
     await selectCalendarType(page, requestedType);
@@ -649,9 +689,9 @@ async function scrapeCalendario(calendarType = DEFAULT_TYPE) {
     for (let index = 0; index < MONTHS.length; index += 1) {
       await selectMonth(page, MONTHS[index], index);
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
-      await page.waitForTimeout(350);
+      await waitForContentSettled(page, { maxMs: 1500 });
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
-      await page.waitForTimeout(500);
+      await waitForContentSettled(page, { maxMs: 1500 });
 
       const monthEvents = await extractVisibleListEvents(page);
       for (const event of monthEvents) {

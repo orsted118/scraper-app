@@ -10,6 +10,7 @@ const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const REPORT_MANAGER_URL = 'http://smartweb3.itson.edu.mx:9500/psp/ITSONPRD_1/EMPLOYEE/PSFT_HR/c/REPORT_MANAGER.CONTENT_LIST.GBL?Page=CDM_CONTLIST&Action=U&';
 const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 
 function normalizeWhitespace(value) {
   return (value || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
@@ -88,6 +89,19 @@ function buildCIAError(message) {
   return { error: message };
 }
 
+async function applyResourceBlocking(page) {
+  await page.route('**/*', (route) => {
+    const resourceType = route.request().resourceType();
+
+    if (BLOCKED_RESOURCE_TYPES.has(resourceType)) {
+      route.abort();
+      return;
+    }
+
+    route.continue();
+  });
+}
+
 async function waitForFrameText(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
 
@@ -105,10 +119,28 @@ async function waitForFrameText(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
       }
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
   }
 
   throw new Error(`No se encontró el contenido esperado: ${matcher}`);
+}
+
+async function waitForFrameWithSelector(page, selector, timeoutMs = PAGE_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      const count = await frame.locator(selector).count().catch(() => 0);
+
+      if (count > 0) {
+        return frame;
+      }
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`No se encontró el frame con el selector esperado: ${selector}`);
 }
 
 async function waitForFrameUrl(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
@@ -123,7 +155,7 @@ async function waitForFrameUrl(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
       }
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
   }
 
   throw new Error(`No se encontró el frame esperado: ${matcher}`);
@@ -196,7 +228,6 @@ async function openBoletaPage(page) {
 
 async function openReportManagerList(page) {
   await page.goto(REPORT_MANAGER_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2000);
   return waitForFrameText(page, /Lista Informes/i);
 }
 
@@ -474,6 +505,7 @@ async function scrapeCIAWithPlaywright() {
 
   try {
     const page = await browser.newPage();
+    await applyResourceBlocking(page);
     await loginToCIA(page, user, password);
 
     const boletaFrame = await openBoletaPage(page);
@@ -518,7 +550,7 @@ async function scrapeCIAWithPlaywright() {
       }
 
       reportFrame = null;
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1500);
     }
 
     if (!reportFrame) {
@@ -527,9 +559,8 @@ async function scrapeCIAWithPlaywright() {
 
     const detLink = reportFrame.locator('a[href*="CDM_WRK_INDEX_BTN"]').first();
     await detLink.click({ force: true });
-    await page.waitForTimeout(3000);
 
-    const detailFrame = await waitForFrameText(page, /Detalle Informe/i);
+    const detailFrame = await waitForFrameWithSelector(page, 'a[href*="/psreports/"][href$=".PDF"]');
     const pdfHref = await detailFrame
       .locator('a[href*="/psreports/"][href$=".PDF"]')
       .first()

@@ -13,7 +13,7 @@ const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const GLOBAL_TIMEOUT_MS = 4 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 const CIA_LOGIN_TIMEOUT_MS = 45_000;
-const CHUNK_SIZE = 2;
+const CHUNK_SIZE = 3;
 const LINK_TIMEOUT_MS = 45_000;
 const MAX_DEEP_RESOURCES = 12;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
@@ -870,7 +870,7 @@ async function switchScheduleView(frame, viewPatterns) {
         const selectId = await optionLocator.evaluate((option) => option.parentElement?.id || null).catch(() => null);
         if (selectId) {
           await frame.selectOption(`#${selectId}`, optionValue).catch(() => {});
-          await frame.page().waitForTimeout(1200);
+          await waitForPeopleSoftNav(frame.page(), 8_000);
           return true;
         }
       }
@@ -878,7 +878,7 @@ async function switchScheduleView(frame, viewPatterns) {
     }
 
     await frame.locator(selector).nth(target.index).click({ force: true }).catch(() => {});
-    await frame.page().waitForTimeout(1200);
+    await waitForPeopleSoftNav(frame.page(), 8_000);
     return true;
   }
 
@@ -894,7 +894,13 @@ async function loginToCIA(page, user, password) {
 
   await page.locator('#txtITSONET').fill(user).catch(() => {});
   await page.locator('#btnConexionTrayectorias').click().catch(() => {});
-  await page.waitForTimeout(1200);
+
+  // The ITSONET step lands either on an intermediate "Continuar" page or
+  // directly on the PeopleSoft login form; wait for whichever shows first.
+  await Promise.race([
+    page.getByRole('button', { name: /continuar/i }).first().waitFor({ state: 'visible', timeout: 8_000 }),
+    page.locator('#userid').waitFor({ state: 'visible', timeout: 8_000 }),
+  ]).catch(() => {});
 
   const continueButton = page.getByRole('button', { name: /continuar/i }).first();
   if (await continueButton.count().catch(() => 0)) {
@@ -907,7 +913,11 @@ async function loginToCIA(page, user, password) {
   await page.getByRole('button', { name: /iniciar sesi[oó]n/i }).click();
 
   await page.waitForLoadState('domcontentloaded', { timeout: CIA_LOGIN_TIMEOUT_MS }).catch(() => {});
-  await page.waitForTimeout(2500);
+  await page
+    .getByRole('link', { name: /autoservicio/i })
+    .last()
+    .waitFor({ state: 'visible', timeout: 15_000 })
+    .catch(() => {});
 
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
   if (!(await autoservicioLink.count().catch(() => 0))) {

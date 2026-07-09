@@ -8,7 +8,6 @@ import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Notificaciones from './pages/Notificaciones';
 import Ajustes from './pages/Ajustes';
-import ArchivosRecientes from './pages/ArchivosRecientes';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
 const pageRegistry = {
@@ -41,11 +40,6 @@ const pageRegistry = {
     title: 'Ajustes',
     description: 'Revisa el estado de la integración y la configuración local requerida.',
     component: Ajustes,
-  },
-  archivos: {
-    title: 'Archivos Recientes',
-    description: 'Consulta y abre las últimas descargas desde Electron.',
-    component: ArchivosRecientes,
   },
 };
 
@@ -184,7 +178,6 @@ function App() {
       calendario: 'calendario',
       notifications: 'notifications',
       notificaciones: 'notifications',
-      archivos: 'archivos',
     };
 
     const nextPage = pageAliases[pageId] || pageId;

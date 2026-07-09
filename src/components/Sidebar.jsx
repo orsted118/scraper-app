@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
-  FolderOpen,
   Info,
   Loader2,
   Settings,
@@ -19,7 +18,6 @@ const NAV_ITEMS = [
   { id: 'activities', label: 'Actividades', icon: BookOpen, target: 'activities' },
   { id: 'calendario', label: 'Calendario', icon: CalendarDays, target: 'calendario' },
   { id: 'horario', label: 'Horario', icon: Clock, target: 'horario' },
-  { id: 'archivos', label: 'Archivos', icon: FolderOpen, target: 'archivos' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];

@@ -147,11 +147,12 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold"
+      className="inline-flex items-center gap-2 border px-3 py-2 text-sm font-semibold"
       style={{
         background: meta.bg,
         borderColor: meta.border,
         color: meta.color,
+        borderRadius: 'var(--radius-badge, 0px)',
       }}
     >
       <Icon className="h-4 w-4" />
@@ -266,20 +267,24 @@ function GradeCard({ materia }) {
 
   return (
     <article
-      className="overflow-hidden rounded-2xl border border-l-4 p-5 shadow-2xl shadow-black/10"
+      className="overflow-hidden border border-l-4 p-5"
       style={{
-        background: 'linear-gradient(135deg, var(--bg-card), rgba(15, 23, 42, 0.28))',
-        borderColor: 'var(--border-subtle)',
+        background: 'var(--bg-card)',
+        borderTopColor: 'var(--border-subtle)',
+        borderRightColor: 'var(--border-subtle)',
+        borderBottomColor: 'var(--border-subtle)',
         borderLeftColor: meta.color,
+        borderRadius: 'var(--radius-card, 0px)',
+        boxShadow: 'var(--shadow-card, none)',
       }}
     >
       <div className="grid gap-5 xl:grid-cols-[440px_minmax(0,1fr)_220px] xl:items-center">
         <div className="flex min-w-0 items-center gap-5">
           <div
-            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl"
+            className="flex h-20 w-20 shrink-0 items-center justify-center"
             style={{
               background: `color-mix(in srgb, ${meta.color} 22%, transparent)`,
-              boxShadow: `0 18px 42px color-mix(in srgb, ${meta.color} 12%, transparent)`,
+              borderRadius: 'var(--radius-card, 0px)',
             }}
           >
             <Icon className="h-10 w-10" style={{ color: 'var(--text-strong)' }} />

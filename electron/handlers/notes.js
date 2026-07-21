@@ -55,7 +55,11 @@ function getSettingsPath() {
 function readJson(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (_error) {
+  } catch (error) {
+    // ENOENT = primer arranque (archivo aún no existe): no es un error.
+    if (error?.code !== 'ENOENT') {
+      console.error('[notes] Error leyendo datos:', error?.message || error);
+    }
     return fallback;
   }
 }

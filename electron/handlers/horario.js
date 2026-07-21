@@ -165,7 +165,8 @@ function readJSONFile(filePath) {
 
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (_error) {
+  } catch (error) {
+    console.error('[horario] Error leyendo caché:', error?.message || error);
     discardFile(filePath);
     return null;
   }

@@ -53,7 +53,8 @@ function readCIACache() {
     }
 
     return parsed;
-  } catch (_error) {
+  } catch (error) {
+    console.error('[cia] Error leyendo caché de calificaciones:', error?.message || error);
     discardCIACache(cachePath);
     return null;
   }

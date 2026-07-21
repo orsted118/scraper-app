@@ -7,18 +7,30 @@ import {
   Clock,
   Info,
   Loader2,
+  Music,
   Settings,
+  StickyNote,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import dvpotroLogo from '../assets/branding/dvpotro-logo-128.png';
 import { getNextClass } from '../utils/horario.js';
 import { useSidebar } from '../SidebarContext';
 
+// file:// necesita forward-slashes y triple slash antes de la unidad en Windows
+// (C:\... → file:///C:/...). Solo para <img src>, no involucra fetch/XHR.
+function toFileUrl(filePath) {
+  if (!filePath) return null;
+  const normalized = String(filePath).replace(/\\/g, '/');
+  return `file://${normalized.startsWith('/') ? '' : '/'}${normalized}`;
+}
+
 const NAV_ITEMS = [
   { id: 'activities', label: 'Actividades', icon: BookOpen, target: 'activities' },
   { id: 'calendario', label: 'Calendario', icon: CalendarDays, target: 'calendario' },
   { id: 'horario', label: 'Horario', icon: Clock, target: 'horario' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
+  { id: 'musica', label: 'Música', icon: Music, target: 'musica' },
+  { id: 'notas', label: 'Notas', icon: StickyNote, target: 'notas' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];
 
@@ -139,6 +151,8 @@ function Sidebar({
   syncState = { status: 'idle', lastSync: null },
 }) {
   const [nextClass, setNextClass] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [photoFailed, setPhotoFailed] = useState(false);
   // Sidebar compact is an independent visual preference (decoupled from any
   // background system): collapses the sidebar to an icon-only rail.
   const { sidebarCompact } = useSidebar();
@@ -156,7 +170,10 @@ function Sidebar({
   const userId = settingsData?.ciaUser || settingsData?.user || '';
   const hasRealStudentName = studentName && !/^ID\s+\w+/i.test(studentName);
   const profileName = hasRealStudentName ? formatDisplayName(studentName) : (userId || 'Estudiante ITSON');
-  const initials = getInitials(hasRealStudentName ? studentName : userId);
+  const initials = getInitials(profile?.fullName || (hasRealStudentName ? studentName : userId));
+  const photoUrl = !photoFailed ? toFileUrl(profile?.photoPath) : null;
+  const displayName = profile?.fullName || profileName;
+  const displayIdentifier = profile?.email || userId || 'Sin ID configurado';
 
   useEffect(() => {
     const updateNextClass = () => {
@@ -169,12 +186,46 @@ function Sidebar({
     return () => clearInterval(intervalId);
   }, [materiasHorario, diasConClases]);
 
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.scraperApp : null;
+    if (!api?.portalSistemas) return undefined;
+
+    let mounted = true;
+
+    api.portalSistemas
+      .getProfile()
+      .then((cached) => {
+        if (!mounted) return;
+
+        if (cached) {
+          setProfile(cached);
+          return;
+        }
+
+        // Primer arranque sin cache: iniciales quedan visibles mientras esto
+        // corre en background — no bloquea el render del Sidebar.
+        api.portalSistemas.refreshProfile().then((result) => {
+          if (mounted && result && !result.error) {
+            setProfile(result);
+          }
+        }).catch(() => {});
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const navItems = useMemo(() => NAV_ITEMS, []);
 
   const getBadge = (itemId) => {
     if (itemId === 'activities' && pendingCount > 0) {
       return (
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: '#006DB6' }}>
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold"
+          style={{ background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 'var(--radius-badge, 0px)' }}
+        >
           {pendingCount}
         </span>
       );
@@ -182,7 +233,10 @@ function Sidebar({
 
     if (itemId === 'calendario' && Number(calendarCount) > 0) {
       return (
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold"
+          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', borderRadius: 'var(--radius-badge, 0px)' }}
+        >
           {calendarCount}
         </span>
       );
@@ -190,10 +244,10 @@ function Sidebar({
 
     if (itemId === 'horario') {
       if (errorHorario) {
-        return <span className="h-2 w-2 rounded-full" style={{ background: '#ef4444' }} />;
+        return <span className="h-2 w-2" style={{ background: '#ef4444', borderRadius: 'var(--radius-badge, 0px)' }} />;
       }
       if (hasHorario) {
-        return <span className="h-2 w-2 rounded-full" style={{ background: '#10b981' }} />;
+        return <span className="h-2 w-2" style={{ background: '#10b981', borderRadius: 'var(--radius-badge, 0px)' }} />;
       }
     }
 
@@ -211,8 +265,13 @@ function Sidebar({
 
   return (
     <aside
-      className={`sticky top-8 flex h-[calc(100vh-4rem)] ${compact ? 'w-16' : 'w-64'} flex-col overflow-hidden rounded-3xl border shadow-2xl shadow-slate-950/40 transition-[width] duration-200`}
-      style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border-subtle)' }}
+      className={`sticky top-8 flex h-[calc(100vh-4rem)] ${compact ? 'w-16' : 'w-64'} flex-col overflow-hidden border transition-[width] duration-200`}
+      style={{
+        background: 'var(--bg-sidebar)',
+        borderColor: 'var(--border-subtle)',
+        borderRadius: 'var(--radius-card, 0px)',
+        boxShadow: 'var(--shadow-card, none)',
+      }}
     >
       <header className={compact ? 'px-2 pb-3 pt-3' : 'px-4 pb-3 pt-3'}>
         <div className={`flex items-center gap-3 ${compact ? 'justify-center' : ''}`}>
@@ -220,7 +279,8 @@ function Sidebar({
             src={dvpotroLogo}
             alt="DVPotro"
             title={compact ? 'DVPotro · ITSON' : undefined}
-            className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-lg shadow-black/30"
+            className="h-9 w-9 shrink-0 object-contain"
+            style={{ borderRadius: 'var(--radius-button, 0px)' }}
             draggable="false"
           />
           {!compact ? (
@@ -249,15 +309,15 @@ function Sidebar({
               onClick={() => onNavigate?.(item.target)}
               title={compact ? item.label : undefined}
               aria-label={compact ? item.label : undefined}
-              className={`relative mb-0.5 flex w-full items-center rounded-lg transition duration-150 ${
+              className={`relative mb-0.5 flex w-full items-center transition duration-150 ${
                 compact
                   ? 'justify-center px-0 py-2'
                   : 'justify-between gap-3 px-3.5 py-[7px] text-left text-sm'
               }`}
               style={
                 isActive
-                  ? { background: 'var(--itson-blue, var(--accent))', color: '#fff', fontWeight: 600 }
-                  : { background: 'transparent', color: 'var(--text-muted)', fontWeight: 500 }
+                  ? { background: 'var(--itson-blue, var(--accent))', color: 'var(--on-accent)', fontWeight: 600, borderRadius: 'var(--radius-button, 0px)' }
+                  : { background: 'transparent', color: 'var(--text-muted)', fontWeight: 500, borderRadius: 'var(--radius-button, 0px)' }
               }
               onMouseEnter={(event) => {
                 if (!isActive) {
@@ -277,8 +337,8 @@ function Sidebar({
                   <Icon className="h-5 w-5 shrink-0" />
                   {badge ? (
                     <span
-                      className="absolute right-2 top-1.5 h-2 w-2 rounded-full"
-                      style={{ background: '#006DB6' }}
+                      className="absolute right-2 top-1.5 h-2 w-2"
+                      style={{ background: '#006DB6', borderRadius: 'var(--radius-badge, 0px)' }}
                     />
                   ) : null}
                 </>
@@ -300,8 +360,8 @@ function Sidebar({
         <div className="px-2 py-1">
           <button
             type="button"
-            className="flex w-full items-center justify-center rounded-lg border py-2"
-            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: syncInfo.color }}
+            className="flex w-full items-center justify-center border py-2"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: syncInfo.color, borderRadius: 'var(--radius-button, 0px)' }}
             onClick={onSyncAll}
             disabled={syncState.status === 'syncing'}
             title={syncInfo.text}
@@ -315,8 +375,8 @@ function Sidebar({
       {!compact ? (
       <>
       <section
-        className="mx-2.5 my-1 rounded-xl border px-3.5 py-2.5"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        className="mx-2.5 my-1 border px-3.5 py-2.5"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.07em]" style={{ color: 'var(--itson-blue, var(--accent))' }}>
           Sincronización
@@ -365,8 +425,8 @@ function Sidebar({
       </section>
 
       <section
-        className="mx-2.5 my-1 rounded-xl border px-3.5 py-2.5"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        className="mx-2.5 my-1 border px-3.5 py-2.5"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.07em]" style={{ color: 'var(--text-muted)' }}>
           HOY · {formatDayShort(new Date())}
@@ -405,8 +465,8 @@ function Sidebar({
                 <span className="truncate">{nextClass.hora}</span>
                 {nextClass.esHoy && nextClass.minutosRestantes <= 30 ? (
                   <span
-                    className="shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold"
-                    style={{ background: 'var(--retrasada-bg)', borderColor: 'var(--retrasada-border)', color: 'var(--retrasada-text)' }}
+                    className="shrink-0 border px-1.5 py-0.5 text-[10px] font-semibold"
+                    style={{ background: 'var(--retrasada-bg)', borderColor: 'var(--retrasada-border)', color: 'var(--retrasada-text)', borderRadius: 'var(--radius-badge, 0px)' }}
                   >
                     {getClassStatus(nextClass)}
                   </span>
@@ -428,20 +488,42 @@ function Sidebar({
         style={{ borderColor: 'var(--border)' }}
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-          style={{ background: 'linear-gradient(135deg, var(--itson-blue, var(--accent)), var(--itson-blue-light, var(--accent-hover, #1a7ec4)))' }}
-          title={compact ? `${profileName}${userId ? ` · ${userId}` : ''}` : undefined}
+          className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden text-xs font-bold"
+          style={{
+            background: 'linear-gradient(135deg, var(--itson-blue, var(--accent)), var(--itson-blue-light, var(--accent-hover, #1a7ec4)))',
+            color: 'var(--on-accent)',
+            borderRadius: 'var(--radius-badge, 0px)',
+          }}
+          title={compact ? `${displayName}${displayIdentifier ? ` · ${displayIdentifier}` : ''}` : undefined}
         >
-          {initials}
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt=""
+              onError={() => setPhotoFailed(true)}
+              className="h-full w-full object-cover"
+              draggable="false"
+            />
+          ) : (
+            initials
+          )}
         </div>
         {!compact ? (
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-strong)' }} title={profileName}>
-              {profileName}
+            <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-strong)' }} title={displayName}>
+              {displayName}
             </p>
-            <p className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }} title={userId}>
-              {userId || 'Sin ID configurado'}
+            <p className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }} title={displayIdentifier}>
+              {displayIdentifier}
             </p>
+            {profile?.studentId ? (
+              <p
+                className="truncate text-[10px]"
+                style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+              >
+                {profile.studentId}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </footer>

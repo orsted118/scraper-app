@@ -184,7 +184,18 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
   });
 
   const events = Array.isArray(calendarData?.events) ? calendarData.events : [];
-  const todayStart = startOfDay(new Date());
+  // State (no derivado por render): identidad estable para los memos de abajo,
+  // y un timer lo avanza al cruzar medianoche con la app abierta.
+  const [todayStart, setTodayStart] = useState(() => startOfDay(new Date()));
+
+  useEffect(() => {
+    const now = new Date();
+    const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
+    const timer = setTimeout(() => {
+      setTodayStart(startOfDay(new Date()));
+    }, msToMidnight + 100);
+    return () => clearTimeout(timer);
+  }, [todayStart]);
 
   const calendarTypes = useMemo(() => {
     const remoteTypes = Array.isArray(calendarData?.calendarTypes) ? calendarData.calendarTypes : [];
@@ -226,12 +237,11 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
 
   const past = useMemo(
     () => enriched.filter((item) => startOfDay(item.end) < todayStart),
-    // todayStart cambia solo con el día; recalcular por render es barato y correcto.
-    [enriched], // eslint-disable-line react-hooks/exhaustive-deps
+    [enriched, todayStart],
   );
   const future = useMemo(
     () => enriched.filter((item) => startOfDay(item.end) >= todayStart),
-    [enriched], // eslint-disable-line react-hooks/exhaustive-deps
+    [enriched, todayStart],
   );
 
   const nextEvent = useMemo(() => {
@@ -245,7 +255,7 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
       days: Math.max(0, rawDays),
       enCurso: rawDays < 0,
     };
-  }, [future]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [future, todayStart]);
 
   const monthKey = (date) => `${date.getFullYear()}-${date.getMonth()}`;
 

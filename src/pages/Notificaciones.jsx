@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   Bell,
   BookOpen,
   CalendarDays,

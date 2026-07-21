@@ -1,3 +1,6 @@
+// Toasts NATIVOS del OS (avisos efímeros de urgencias y clases próximas).
+// NO confundir con notification-center.js, que es el motor de la bandeja
+// in-app — la coexistencia de ambos es intencional.
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SPANISH_MONTHS = {

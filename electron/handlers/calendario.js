@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const electron = require('electron');
 const { chromium } = require('playwright');
+const notificationCenter = require('./notification-center');
 
 const app = electron?.app;
 
@@ -736,20 +737,26 @@ async function run(options = {}) {
   try {
     const result = await scrapeCalendario(calendarType);
     const cachedPayload = writeCalendarioCache(result, calendarType);
+    notificationCenter.processSync('calendario', {
+      events: cachedPayload.events,
+      calendarType,
+    });
     return {
       ...cachedPayload,
       fromCache: false,
     };
   } catch (error) {
     if (error?.message === 'NO_INTERNET') {
+      notificationCenter.processSyncError('calendario', 'NO_INTERNET');
       return { error: 'Sin conexión a internet. Verifica tu red e intenta de nuevo.' };
     }
 
-    return {
-      error: error?.message
-        ? `Falló la extracción del calendario escolar: ${error.message}`
-        : 'Falló la extracción del calendario escolar por un error no identificado.',
-    };
+    const fallbackError = error?.message
+      ? `Falló la extracción del calendario escolar: ${error.message}`
+      : 'Falló la extracción del calendario escolar por un error no identificado.';
+    notificationCenter.processSyncError('calendario', fallbackError);
+
+    return { error: fallbackError };
   }
 }
 

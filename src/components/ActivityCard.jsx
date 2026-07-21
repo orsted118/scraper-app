@@ -17,7 +17,10 @@ import {
   Table2,
   Users,
 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
+
+const EASE = [0.23, 1, 0.32, 1];
 
 function getFileIcon(fileName = '') {
   const lowerName = fileName.toLowerCase();
@@ -149,10 +152,7 @@ function getTimeContext(estado, fechaLimite) {
 function getCardTheme(estado, modalidad) {
   if (estado === 'cerrada') {
     return {
-      accentColor: 'var(--closed-text)',
       dateColor: 'var(--closed-text)',
-      iconBg: 'var(--closed-bg)',
-      iconText: 'var(--closed-text)',
       pillStyle: {
         background: 'var(--closed-bg)',
         borderColor: 'var(--closed-border)',
@@ -164,10 +164,7 @@ function getCardTheme(estado, modalidad) {
 
   if (estado === 'retrasada') {
     return {
-      accentColor: 'var(--retrasada-text)',
       dateColor: 'var(--retrasada-text)',
-      iconBg: 'var(--retrasada-bg)',
-      iconText: 'var(--retrasada-text)',
       pillStyle: {
         background: 'var(--retrasada-bg)',
         borderColor: 'var(--retrasada-border)',
@@ -179,10 +176,7 @@ function getCardTheme(estado, modalidad) {
 
   if (modalidad === 'equipo') {
     return {
-      accentColor: 'var(--error-text)',
       dateColor: 'var(--error-text)',
-      iconBg: 'var(--error-bg)',
-      iconText: 'var(--error-text)',
       pillStyle: {
         background: 'var(--error-bg)',
         borderColor: 'var(--error-border)',
@@ -193,13 +187,24 @@ function getCardTheme(estado, modalidad) {
   }
 
   return {
-    accentColor: 'var(--success-text)',
     dateColor: 'var(--success-text)',
-    iconBg: 'var(--success-bg)',
-    iconText: 'var(--success-text)',
     pillStyle: null,
     pillLabel: '',
   };
+}
+
+// El borde izquierdo comunica el estado: retrasada es la única voz de alarma
+// (accent), pendiente lleva un tick de tinta y cerrada queda plana.
+function getCardEdge(estado) {
+  if (estado === 'retrasada') {
+    return { width: '3px', color: 'var(--retrasada-text)' };
+  }
+
+  if (estado === 'pendiente') {
+    return { width: '2px', color: 'color-mix(in srgb, var(--text-strong) 40%, transparent)' };
+  }
+
+  return { width: 'var(--border-width-card, 1px)', color: 'var(--border-subtle)' };
 }
 
 function getTimeContextClass(level) {
@@ -265,6 +270,7 @@ function ActivityCard({
   profesor,
   estado,
 }) {
+  const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [showAllFiles, setShowAllFiles] = useState(false);
@@ -273,6 +279,7 @@ function ActivityCard({
   const [downloadError, setDownloadError] = useState('');
 
   const theme = getCardTheme(estado, modalidad);
+  const edge = getCardEdge(estado);
   const timeContext = getTimeContext(estado, fechaLimite);
   const deadlineDate = parseDate(fechaLimite);
   const publicationDate = parseDate(fechaPublicacion);
@@ -339,109 +346,133 @@ function ActivityCard({
   };
 
   return (
-    <article
-      className="overflow-hidden rounded-[28px] border border-l-4 shadow-[0_0_0_1px_rgba(15,23,42,0.5)]"
+    <motion.article
+      whileHover={reduced ? undefined : { y: -1 }}
+      className="overflow-hidden border"
       style={{
+        borderWidth: 'var(--border-width-card, 1px)',
         borderColor: 'var(--border-subtle)',
-        borderLeftColor: theme.accentColor,
+        borderLeftWidth: edge.width,
+        borderLeftColor: edge.color,
         background: 'var(--bg-secondary)',
+        borderRadius: 'var(--radius-card, 0px)',
+        boxShadow: 'var(--shadow-card, none)',
+      }}
+      onMouseEnter={(event) => {
+        event.currentTarget.style.borderColor = 'var(--border-normal)';
+        event.currentTarget.style.borderLeftColor = edge.color;
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.borderColor = 'var(--border-subtle)';
+        event.currentTarget.style.borderLeftColor = edge.color;
       }}
     >
       <div className="p-4">
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
-          <div className="flex gap-3">
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10"
-              style={{ background: theme.iconBg, color: theme.iconText }}
-            >
-              <CalendarX className="h-5 w-5" />
+          <div className="min-w-0 flex-1">
+            {topBadgeVisible ? (
+              <span
+                className="inline-flex border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
+                style={{ ...theme.pillStyle, borderRadius: 'var(--radius-badge, 0px)' }}
+              >
+                {theme.pillLabel}
+              </span>
+            ) : null}
+
+            <div className={`${topBadgeVisible ? 'mt-2' : ''} overflow-hidden`}>
+              <h3
+                title={nombre}
+                className="truncate text-base font-bold sm:text-lg"
+                style={{
+                  color: 'var(--text-strong)',
+                  fontFamily: 'var(--font-display, sans-serif)',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {nombre}
+              </h3>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {topBadgeVisible ? (
+            <p className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span
+                title={materia || 'Materia no disponible'}
+                className="min-w-0 max-w-full line-clamp-1 overflow-hidden"
+              >
+                {materia || 'Materia no disponible'}
+              </span>
+
+              {profesor ? (
+                <>
                   <span
-                    className="inline-flex rounded-2xl border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
-                    style={theme.pillStyle || undefined}
-                  >
-                    {theme.pillLabel}
+                    aria-hidden="true"
+                    className="shrink-0"
+                    style={{ borderLeft: '1px solid var(--border-normal)', height: '0.9em', margin: '0 0.5em' }}
+                  />
+                  <span title={profesor} className="min-w-0 truncate">
+                    {profesor}
                   </span>
-                ) : null}
-              </div>
+                </>
+              ) : null}
+            </p>
 
-              <div className="mt-2 max-w-[55%] overflow-hidden">
-                <h3
-                  title={nombre}
-                  className="truncate text-base font-bold tracking-tight sm:text-lg"
-                  style={{ color: 'var(--text-strong)' }}
-                >
-                  {nombre}
-                </h3>
-              </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className="inline-flex items-center gap-2 border px-2 py-0.5 text-xs"
+                style={{
+                  borderColor: 'var(--border-normal)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-normal)',
+                  borderRadius: 'var(--radius-badge, 0px)',
+                }}
+              >
+                <Users className="h-3 w-3" style={{ color: 'var(--text-muted)' }} />
+                {modalidad === 'equipo' ? 'En equipo' : 'Individual'}
+              </span>
 
-              <p className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-400">
+              {fechaPublicacion ? (
                 <span
-                  title={materia || 'Materia no disponible'}
-                  className="min-w-0 max-w-full line-clamp-1 overflow-hidden"
-                >
-                  {materia || 'Materia no disponible'}
-                </span>
-
-                {profesor ? (
-                  <>
-                    <span className="text-slate-600">|</span>
-                    <span
-                      title={profesor}
-                      className="min-w-0 truncate text-slate-400"
-                    >
-                      {profesor}
-                    </span>
-                  </>
-                ) : null}
-              </p>
-
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span
-                  className="inline-flex items-center gap-2 rounded-lg border px-2 py-0.5 text-xs"
+                  className="inline-flex items-center gap-2 border px-2 py-0.5 text-xs"
                   style={{
                     borderColor: 'var(--border-normal)',
                     background: 'var(--bg-tertiary)',
                     color: 'var(--text-normal)',
+                    borderRadius: 'var(--radius-badge, 0px)',
                   }}
                 >
-                  <Users className="h-3 w-3 text-slate-400" />
-                  {modalidad === 'equipo' ? 'En equipo' : 'Individual'}
+                  <Calendar className="h-3 w-3" style={{ color: 'var(--text-muted)' }} />
+                  Publicado: {publicationDate ? formatShortDate(publicationDate) : fechaPublicacion}
                 </span>
-
-                {fechaPublicacion ? (
-                  <span
-                    className="inline-flex items-center gap-2 rounded-lg border px-2 py-0.5 text-xs"
-                    style={{
-                      borderColor: 'var(--border-normal)',
-                      background: 'var(--bg-tertiary)',
-                      color: 'var(--text-normal)',
-                    }}
-                  >
-                    <Calendar className="h-3 w-3 text-slate-400" />
-                    Publicado: {publicationDate ? formatShortDate(publicationDate) : fechaPublicacion}
-                  </span>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </div>
 
           <div className="lg:border-l lg:pl-6" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="flex items-start justify-between gap-3 lg:flex-col lg:items-end">
               <div className="min-w-0 text-right">
-                <p className="text-xs text-slate-400">Fecha límite</p>
+                <p className="text-[10px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                  Fecha límite
+                </p>
                 <p
-                  className="mt-1 text-2xl font-semibold tracking-tight sm:text-[2.1rem]"
-                  style={{ color: theme.dateColor }}
+                  className="mt-1 text-xl font-semibold sm:text-2xl"
+                  style={{
+                    color: theme.dateColor,
+                    fontFamily: 'var(--font-mono, monospace)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
                 >
                   {resolvedDeadline}
                 </p>
                 {resolvedDeadlineTime ? (
-                  <p className="mt-1 text-xs text-slate-400 sm:text-sm">{resolvedDeadlineTime}</p>
+                  <p
+                    className="mt-1 text-xs sm:text-sm"
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono, monospace)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {resolvedDeadlineTime}
+                  </p>
                 ) : null}
               </div>
 
@@ -449,40 +480,33 @@ function ActivityCard({
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
                 aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
-                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition"
+                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center border"
                 style={{
                   borderColor: 'var(--border-subtle)',
                   background: 'var(--bg-secondary)',
                   color: 'var(--text-normal)',
+                  borderRadius: 'var(--radius-badge, 0px)',
                 }}
                 onMouseEnter={(event) => {
                   event.currentTarget.style.borderColor = 'var(--border-normal)';
                   event.currentTarget.style.color = 'var(--text-strong)';
-                }}
-                onFocus={(event) => {
-                  event.currentTarget.style.color = 'var(--text-strong)';
-                  event.currentTarget.style.borderColor = 'var(--border-normal)';
-                }}
-                onBlur={(event) => {
-                  event.currentTarget.style.color = 'var(--text-normal)';
-                  event.currentTarget.style.borderColor = 'var(--border-subtle)';
                 }}
                 onMouseLeave={(event) => {
                   event.currentTarget.style.borderColor = 'var(--border-subtle)';
                   event.currentTarget.style.color = 'var(--text-normal)';
                 }}
               >
-                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
             </div>
 
             {timeContext.label ? (
               <div className="mt-3 flex justify-end">
                 <span
-                  className={`inline-flex items-center gap-2 rounded-2xl border px-2.5 py-1 text-xs font-medium ${getTimeContextClass(
+                  className={`inline-flex items-center gap-2 border px-2.5 py-1 text-xs font-medium ${getTimeContextClass(
                     timeContext.level,
                   )}`}
-                  style={getTimeContextStyle(timeContext.level)}
+                  style={{ ...getTimeContextStyle(timeContext.level), borderRadius: 'var(--radius-badge, 0px)' }}
                 >
                   {TimeBadgeIcon ? <TimeBadgeIcon className="h-3.5 w-3.5" /> : null}
                   {timeContext.label}
@@ -492,166 +516,203 @@ function ActivityCard({
           </div>
         </div>
 
-        {expanded ? (
-          <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border-subtle)' }}>
-            <div className="space-y-3">
-              {instructionsText ? (
-                <section
-                  className="rounded-2xl border px-3 py-2"
-                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
-                >
-                  <div className="flex items-center gap-2" style={{ color: 'var(--text-normal)' }}>
-                    <AlignLeft className="h-4 w-4 text-slate-500" />
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                      Instrucciones
-                    </h4>
-                  </div>
-
-                  <p
-                    className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed sm:text-sm ${instructionsClampClass}`}
-                    style={{ color: 'var(--text-normal)' }}
-                  >
-                    {instructionsText}
-                  </p>
-
-                  {instructionsText.length > 140 ? (
-                    <button
-                      type="button"
-                      onClick={() => setInstructionsExpanded((value) => !value)}
-                      className="mt-2 text-sm font-medium text-itson-blue transition hover:text-itson-blue-light"
+        <AnimatePresence initial={false}>
+          {expanded ? (
+            <motion.div
+              key="details"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: reduced ? 0 : 0.24, ease: EASE }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div className="space-y-3">
+                  {instructionsText ? (
+                    <section
+                      className="border px-3 py-2"
+                      style={{
+                        borderColor: 'var(--border-subtle)',
+                        background: 'var(--bg-card)',
+                        borderRadius: 'var(--radius-card, 0px)',
+                      }}
                     >
-                      {instructionsExpanded ? 'Ver menos' : 'Ver más'}
-                    </button>
-                  ) : null}
-                </section>
-              ) : null}
+                      <div className="flex items-center gap-2" style={{ color: 'var(--text-normal)' }}>
+                        <AlignLeft className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--text-muted)' }}>
+                          Instrucciones
+                        </h4>
+                      </div>
 
-              {archivos.length > 0 ? (
-                <section>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <Paperclip className="h-4 w-4" />
-                      <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">Archivos adjuntos</h4>
-                    </div>
+                      <p
+                        className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed sm:text-sm ${instructionsClampClass}`}
+                        style={{ color: 'var(--text-normal)' }}
+                      >
+                        {instructionsText}
+                      </p>
 
-                    <span className="text-xs text-slate-500">
-                      {archivos.length} archivo{archivos.length === 1 ? '' : 's'}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 grid gap-2 lg:grid-cols-3">
-                    {visibleFiles.map((archivo) => {
-                      const fileMeta = getFileIcon(archivo.name);
-                      const FileIcon = fileMeta.icon;
-                      const isDownloading = downloadingKey === archivo.url;
-
-                      return (
-                        <div
-                          key={`${archivo.url}-${archivo.name}`}
-                          className="flex items-center gap-3 rounded-2xl border px-3 py-2"
-                          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+                      {instructionsText.length > 140 ? (
+                        <button
+                          type="button"
+                          onClick={() => setInstructionsExpanded((value) => !value)}
+                          className="link-accent mt-2 text-sm font-medium"
                         >
-                          <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
-                            style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
-                          >
-                            <FileIcon className={`h-4 w-4 ${fileMeta.color}`} />
-                          </div>
+                          {instructionsExpanded ? 'Ver menos' : 'Ver más'}
+                        </button>
+                      ) : null}
+                    </section>
+                  ) : null}
 
-                          <div className="min-w-0 flex-1">
-                            <p
-                              title={archivo.name}
-                              className="max-w-[60%] truncate text-xs font-medium md:max-w-[120px]"
-                              style={{ color: 'var(--text-strong)' }}
+                  {archivos.length > 0 ? (
+                    <section>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                          <Paperclip className="h-4 w-4" />
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">Archivos adjuntos</h4>
+                        </div>
+
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {archivos.length} archivo{archivos.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 lg:grid-cols-3">
+                        {visibleFiles.map((archivo) => {
+                          const fileMeta = getFileIcon(archivo.name);
+                          const FileIcon = fileMeta.icon;
+                          const isDownloading = downloadingKey === archivo.url;
+
+                          return (
+                            <div
+                              key={`${archivo.url}-${archivo.name}`}
+                              className="flex items-center gap-3 border px-3 py-2"
+                              style={{
+                                borderColor: 'var(--border-subtle)',
+                                background: 'var(--bg-card)',
+                                borderRadius: 'var(--radius-card, 0px)',
+                              }}
                             >
-                              {archivo.name}
-                            </p>
-                            <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                              {fileMeta.label}
-                            </p>
-                          </div>
+                              <div
+                                className="flex h-9 w-9 shrink-0 items-center justify-center border"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                              >
+                                <FileIcon className={`h-4 w-4 ${fileMeta.color}`} />
+                              </div>
 
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  title={archivo.name}
+                                  className="max-w-[60%] truncate text-xs font-medium md:max-w-[120px]"
+                                  style={{ color: 'var(--text-strong)' }}
+                                >
+                                  {archivo.name}
+                                </p>
+                                <p className="mt-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                                  {fileMeta.label}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownload(archivo)}
+                                disabled={isDownloading}
+                                className="hov-accent inline-flex h-8 w-8 shrink-0 items-center justify-center border disabled:cursor-not-allowed disabled:opacity-70"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  color: 'var(--text-normal)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                                aria-label={`Descargar ${archivo.name}`}
+                              >
+                                {isDownloading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {archivos.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllFiles((value) => !value)}
+                          className="link-accent mt-2 inline-flex text-xs"
+                        >
+                          {showAllFiles ? 'Ver menos' : `+${extraFilesCount} más`}
+                        </button>
+                      ) : null}
+
+                      {archivos.length > 1 ? (
+                        <div className="mt-3 flex justify-end">
                           <button
                             type="button"
-                            onClick={() => handleDownload(archivo)}
-                            disabled={isDownloading}
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition hover:border-itson-blue/50 hover:bg-itson-blue/10 hover:text-itson-blue disabled:cursor-not-allowed disabled:opacity-70"
-                            style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
-                            aria-label={`Descargar ${archivo.name}`}
-                            onMouseEnter={(event) => {
-                              event.currentTarget.style.color = 'var(--text-strong)';
-                            }}
-                            onMouseLeave={(event) => {
-                              event.currentTarget.style.color = 'var(--text-normal)';
+                            onClick={handleDownloadAll}
+                            disabled={downloadingAll}
+                            className="btn-outline-accent inline-flex items-center gap-2 border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70"
+                            style={{
+                              borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)',
+                              color: 'var(--accent)',
+                              borderRadius: 'var(--radius-button, 0px)',
                             }}
                           >
-                            {isDownloading ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            {downloadingAll ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Download className="h-3.5 w-3.5" />
+                              <Download className="h-4 w-4" />
                             )}
+                            {downloadingAll ? 'Descargando...' : 'Descargar todos'}
                           </button>
                         </div>
-                      );
-                    })}
-
-                  </div>
-
-                  {archivos.length > 3 ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllFiles((value) => !value)}
-                      className="mt-2 inline-flex text-xs text-itson-blue transition hover:text-itson-blue-light"
-                    >
-                      {showAllFiles ? 'Ver menos' : `+${extraFilesCount} más`}
-                    </button>
+                      ) : null}
+                    </section>
                   ) : null}
 
-                  {archivos.length > 1 ? (
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleDownloadAll}
-                        disabled={downloadingAll}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-itson-blue/50 px-4 py-2 text-sm font-semibold text-itson-blue transition hover:bg-itson-blue/10 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {downloadingAll ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                        {downloadingAll ? 'Descargando...' : 'Descargar todos'}
-                      </button>
+                  {downloadError ? (
+                    <div
+                      className="flex items-start gap-3 border px-3 py-3 text-sm"
+                      style={{
+                        background: 'var(--error-bg)',
+                        borderColor: 'var(--error-border)',
+                        color: 'var(--error-text)',
+                        borderRadius: 'var(--radius-card, 0px)',
+                      }}
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <p>{downloadError}</p>
                     </div>
                   ) : null}
-                </section>
-              ) : null}
 
-              {downloadError ? (
-                <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-100">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-                  <p>{downloadError}</p>
+                  <footer
+                    className="flex flex-col gap-3 border-t pt-3 text-xs sm:flex-row sm:items-center sm:justify-between"
+                    style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {estado === 'cerrada' ? (
+                        <span>Cerrada el: {footerClosed}</span>
+                      ) : footerPublication ? (
+                        <span>Publicado: {footerPublication}</span>
+                      ) : null}
+                    </div>
+                  </footer>
                 </div>
-              ) : null}
-
-              <footer
-                className="flex flex-col gap-3 border-t pt-3 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between"
-                style={{ borderColor: 'var(--border-subtle)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  {estado === 'cerrada' ? (
-                    <span>Cerrada el: {footerClosed}</span>
-                  ) : footerPublication ? (
-                    <span>Publicado: {footerPublication}</span>
-                  ) : null}
-                </div>
-              </footer>
-            </div>
-          </div>
-        ) : null}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
-    </article>
+    </motion.article>
   );
 }
 

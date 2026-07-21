@@ -155,7 +155,8 @@ function readActivitiesCache() {
     }
 
     return parsed;
-  } catch (_error) {
+  } catch (error) {
+    console.error('[scraper] Error leyendo caché de actividades:', error?.message || error);
     discardActivitiesCache(cachePath);
     return null;
   }

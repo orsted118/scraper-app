@@ -33,7 +33,11 @@ function getPhotoPath() {
 function readProfileCache() {
   try {
     return JSON.parse(fs.readFileSync(getProfilePath(), 'utf8'));
-  } catch (_error) {
+  } catch (error) {
+    // ENOENT = primer arranque (archivo aún no existe): no es un error.
+    if (error?.code !== 'ENOENT') {
+      console.error('[portal-sistemas] Error leyendo caché de perfil:', error?.message || error);
+    }
     return null;
   }
 }

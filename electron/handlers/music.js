@@ -24,7 +24,11 @@ function getStatePath() {
 function readJson(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (_error) {
+  } catch (error) {
+    // ENOENT = primer arranque (archivo aún no existe): no es un error.
+    if (error?.code !== 'ENOENT') {
+      console.error('[music] Error leyendo librería/estado:', error?.message || error);
+    }
     return null;
   }
 }

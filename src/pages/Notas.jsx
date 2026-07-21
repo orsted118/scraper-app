@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import NoteEditorModal, { NOTE_COLORS, noteColorHex, buildNoteImageUrl } from '../components/NoteEditorModal';
+import NoteEditorModal, { buildNoteImageUrl } from '../components/NoteEditorModal';
+import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
 import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
 

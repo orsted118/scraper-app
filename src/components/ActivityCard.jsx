@@ -348,23 +348,18 @@ function ActivityCard({
   return (
     <motion.article
       whileHover={reduced ? undefined : { y: -1 }}
-      className="overflow-hidden border"
+      className="card-hover-border overflow-hidden border"
       style={{
         borderWidth: 'var(--border-width-card, 1px)',
-        borderColor: 'var(--border-subtle)',
+        borderTopColor: 'var(--border-subtle)',
+        borderRightColor: 'var(--border-subtle)',
+        borderBottomColor: 'var(--border-subtle)',
         borderLeftWidth: edge.width,
         borderLeftColor: edge.color,
+        '--edge-color': edge.color,
         background: 'var(--bg-secondary)',
         borderRadius: 'var(--radius-card, 0px)',
         boxShadow: 'var(--shadow-card, none)',
-      }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.borderColor = 'var(--border-normal)';
-        event.currentTarget.style.borderLeftColor = edge.color;
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.borderColor = 'var(--border-subtle)';
-        event.currentTarget.style.borderLeftColor = edge.color;
       }}
     >
       <div className="p-4">
@@ -480,20 +475,12 @@ function ActivityCard({
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
                 aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
-                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center border"
+                className="chev-hover mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center border"
                 style={{
                   borderColor: 'var(--border-subtle)',
                   background: 'var(--bg-secondary)',
                   color: 'var(--text-normal)',
                   borderRadius: 'var(--radius-badge, 0px)',
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.borderColor = 'var(--border-normal)';
-                  event.currentTarget.style.color = 'var(--text-strong)';
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.borderColor = 'var(--border-subtle)';
-                  event.currentTarget.style.color = 'var(--text-normal)';
                 }}
               >
                 {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

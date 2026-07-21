@@ -310,6 +310,8 @@ function Sidebar({
               title={compact ? item.label : undefined}
               aria-label={compact ? item.label : undefined}
               className={`relative mb-0.5 flex w-full items-center transition duration-150 ${
+                isActive ? '' : 'nav-item-hover'
+              } ${
                 compact
                   ? 'justify-center px-0 py-2'
                   : 'justify-between gap-3 px-3.5 py-[7px] text-left text-sm'
@@ -319,18 +321,6 @@ function Sidebar({
                   ? { background: 'var(--itson-blue, var(--accent))', color: 'var(--on-accent)', fontWeight: 600, borderRadius: 'var(--radius-button, 0px)' }
                   : { background: 'transparent', color: 'var(--text-muted)', fontWeight: 500, borderRadius: 'var(--radius-button, 0px)' }
               }
-              onMouseEnter={(event) => {
-                if (!isActive) {
-                  event.currentTarget.style.background = 'var(--bg-hover, var(--bg-tertiary))';
-                  event.currentTarget.style.color = 'var(--text-strong)';
-                }
-              }}
-              onMouseLeave={(event) => {
-                if (!isActive) {
-                  event.currentTarget.style.background = 'transparent';
-                  event.currentTarget.style.color = 'var(--text-muted)';
-                }
-              }}
             >
               {compact ? (
                 <>
@@ -338,7 +328,7 @@ function Sidebar({
                   {badge ? (
                     <span
                       className="absolute right-2 top-1.5 h-2 w-2"
-                      style={{ background: '#006DB6', borderRadius: 'var(--radius-badge, 0px)' }}
+                      style={{ background: 'var(--accent)', borderRadius: 'var(--radius-badge, 0px)' }}
                     />
                   ) : null}
                 </>
@@ -416,7 +406,11 @@ function Sidebar({
             </span>
           ) : (
             LETTERS.map((char, index) => (
-              <span key={`${char}-${index}`} className="sync-letter">
+              <span
+                key={`${char}-${index}`}
+                className="sync-letter"
+                style={{ transitionDelay: `${(index + 1) * 0.04}s` }}
+              >
                 {char}
               </span>
             ))

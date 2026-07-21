@@ -77,7 +77,6 @@ Node **20+**, npm **10+**.
 - **Design system con tokens `var(--*)`** para structural (radius, fonts, shadow, border-width) y color (theme-dependent). Ver "Diseño visual" abajo. Usar SIEMPRE tokens — cero hardcoded, cero `rounded-*`/`shadow-*`/`font-mono` de Tailwind.
 - Tailwind 3 utility-first **solo para layout** (flex, grid, spacing, sizing, positioning). NO para radius/shadow/font/color.
 - Structural tokens definidos en `:root` de `src/index.css`. Color tokens seteados por `ThemeContext.jsx` por tema.
-- `src/design-backups/` es referencia visual **PRE-Swiss-Noir** — no importar, es snapshot histórico.
 
 ### Reports (`reports/`)
 - `npm run report` genera diff por archivo del cambio actual. Correr **antes** de commits grandes para tener historial de cambios visuales/estructurales.

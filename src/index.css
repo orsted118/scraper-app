@@ -56,9 +56,6 @@
   --text-normal: rgb(203, 213, 225);
   --gradient-from: rgba(0, 109, 182, 0.10);
   --gradient-to: rgba(0, 90, 148, 0.10);
-  --pending-bg: rgba(234, 179, 8, 0.15);
-  --pending-border: rgba(234, 179, 8, 0.35);
-  --pending-text: #fde047;
   --retrasada-bg: rgba(249, 115, 22, 0.15);
   --retrasada-border: rgba(249, 115, 22, 0.35);
   --retrasada-text: #fb923c;

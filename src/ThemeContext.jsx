@@ -54,9 +54,6 @@ export function ThemeProvider({ children }) {
     root.style.setProperty('--text-normal', theme.textNormal);
     root.style.setProperty('--gradient-from', theme.gradientFrom);
     root.style.setProperty('--gradient-to', theme.gradientTo);
-    root.style.setProperty('--pending-bg', theme.pendingBg);
-    root.style.setProperty('--pending-border', theme.pendingBorder);
-    root.style.setProperty('--pending-text', theme.pendingText);
     root.style.setProperty('--retrasada-bg', theme.retrasadaBg);
     root.style.setProperty('--retrasada-border', theme.retrasadaBorder);
     root.style.setProperty('--retrasada-text', theme.retrasadaText);

@@ -2554,25 +2554,6 @@ async function scrapeHorario(controller = {}) {
   }
 }
 
-async function diagnosticarCIA(page) {
-  await gotoWithRetry(page, CIA_ENTRY_URL, {
-    waitUntil: 'domcontentloaded',
-    timeout: CIA_LOGIN_TIMEOUT_MS,
-  });
-
-  const frames = page.frames();
-  console.log(
-    'Frames encontrados:',
-    frames.map((frame) => ({ url: frame.url(), name: frame.name() })),
-  );
-
-  for (const frame of frames) {
-    const html = await frame.content().catch(() => '');
-    if (html.length > 100) {
-      console.log(`Frame ${frame.url()}:`, html.substring(0, 500));
-    }
-  }
-}
 
 let activeHorarioController = null;
 
@@ -2663,6 +2644,5 @@ module.exports = {
   registerHorarioHandlers,
   saveManualLink,
   scrapeHorario,
-  diagnosticarCIA,
   writeHorarioCache,
 };

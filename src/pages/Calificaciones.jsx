@@ -27,8 +27,7 @@ function formatGrade(value) {
     return '—';
   }
 
-  const numericValue = Number(value);
-  return Number.isInteger(numericValue) ? numericValue.toFixed(1) : numericValue.toFixed(1);
+  return Number(value).toFixed(1);
 }
 
 function getMateriaStatus(materia) {

@@ -94,11 +94,11 @@ function StatCard({ icon: Icon, label, value, tone = 'default' }) {
 
   return (
     <article
-      className="rounded-2xl border p-5"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+      className="border p-5"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
     >
       <div className="flex items-center gap-3">
-        <span className="rounded-2xl p-3" style={toneStyles[tone] || toneStyles.default}>
+        <span className="p-3" style={{ ...(toneStyles[tone] || toneStyles.default), borderRadius: 'var(--radius-badge, 0px)' }}>
           <Icon className="h-5 w-5" />
         </span>
         <div>
@@ -142,13 +142,21 @@ function Calificaciones({
   return (
     <div className="space-y-6">
       {friendlyCIAError ? (
-        <div className="flex items-start justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-100">
+        <div
+          className="flex items-start justify-between gap-4 border px-4 py-4 text-sm"
+          style={{
+            borderColor: 'var(--error-border)',
+            background: 'var(--error-bg)',
+            color: 'var(--error-text)',
+            borderRadius: 'var(--radius-card, 0px)',
+          }}
+        >
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.5} />
             <div className="space-y-1">
               <p>{friendlyCIAError}</p>
               {credentialError ? (
-                <p className="text-xs text-red-200/80">
+                <p className="text-xs" style={{ opacity: 0.85 }}>
                   Revisa tus credenciales CIA desde Ajustes.
                 </p>
               ) : null}
@@ -158,7 +166,12 @@ function Calificaciones({
             <button
               type="button"
               onClick={() => onNavigate('ajustes')}
-              className="rounded-xl border border-red-300/30 px-4 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
+              className="border px-4 py-2 text-xs font-semibold transition"
+              style={{
+                borderColor: 'var(--error-border)',
+                color: 'var(--error-text)',
+                borderRadius: 'var(--radius-button, 0px)',
+              }}
             >
               Ir a Ajustes
             </button>
@@ -167,20 +180,28 @@ function Calificaciones({
       ) : null}
 
       <section
-        className="rounded-2xl border p-6"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}
+        className="border p-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
       >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-itson-blue/30 bg-itson-blue/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-itson-blue-light">
-              <GraduationCap className="h-3.5 w-3.5" />
+            <div
+              className="inline-flex items-center gap-2 border px-3 py-1 text-xs uppercase tracking-[0.25em]"
+              style={{
+                borderColor: 'var(--accent)',
+                color: 'var(--accent)',
+                borderRadius: 'var(--radius-badge, 0px)',
+                fontFamily: 'var(--font-mono, monospace)',
+              }}
+            >
+              <GraduationCap className="h-3.5 w-3.5" strokeWidth={1.5} />
               CIA ITSON
             </div>
             <div>
               <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
                 Calificaciones
               </h3>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+              <p className="mt-3 max-w-2xl text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
                 Consulta el registro académico del semestre actual desde el CIA con caché local,
                 sincronización manual y acceso directo a tu información institucional.
               </p>
@@ -192,14 +213,16 @@ function Calificaciones({
               type="button"
               onClick={onSyncCIA}
               disabled={loadingCIA}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-slate-50 transition disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ background: 'var(--accent)' }}
+              className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshCw className={`h-4 w-4 ${loadingCIA ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${loadingCIA ? 'animate-spin' : ''}`} strokeWidth={1.5} />
               {loadingCIA ? 'Sincronizando...' : 'Sincronizar'}
             </button>
 
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+            <p
+              className="text-xs uppercase tracking-[0.25em]"
+              style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+            >
               {formatLastSync(lastSyncCIA)}
             </p>
           </div>
@@ -223,7 +246,7 @@ function Calificaciones({
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="animate-pulse rounded-2xl border p-6"
+              className="animate-pulse border p-6"
               style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
             >
               <div className="h-5 w-64 rounded" style={{ background: 'var(--bg-tertiary)' }} />
@@ -240,10 +263,10 @@ function Calificaciones({
         </div>
       ) : (
         <div
-          className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center"
-          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
+          className="flex min-h-48 flex-col items-center justify-center border border-dashed px-6 py-10 text-center"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
         >
-          <BookOpen className="h-8 w-8 text-slate-600" />
+          <BookOpen className="h-8 w-8" style={{ color: 'var(--text-muted)' }} strokeWidth={1.5} />
           <p className="mt-4 max-w-md text-sm leading-6" style={{ color: 'var(--text-normal)' }}>
             Las calificaciones finales estarán disponibles al cierre del semestre.
             Cuando CIA las publique, esta sección se activará automáticamente.

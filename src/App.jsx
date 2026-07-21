@@ -7,6 +7,8 @@ import Horario from './pages/Horario';
 import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Notificaciones from './pages/Notificaciones';
+import Musica from './pages/Musica';
+import Notas from './pages/Notas';
 import Ajustes from './pages/Ajustes';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
@@ -36,6 +38,16 @@ const pageRegistry = {
     description: 'Revisa las calificaciones del CIA ITSON con credenciales separadas.',
     component: Calificaciones,
   },
+  musica: {
+    title: 'Música',
+    description: 'Reproduce tu música local mientras estudias.',
+    component: Musica,
+  },
+  notas: {
+    title: 'Notas',
+    description: 'Captura ideas, listas y pendientes al estilo Keep.',
+    component: Notas,
+  },
   settings: {
     title: 'Ajustes',
     description: 'Revisa el estado de la integración y la configuración local requerida.',
@@ -48,6 +60,8 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function App() {
   const [activePage, setActivePage] = useState('activities');
+  // Deep-link a una nota puntual (desde app://notas?note={id} de un recordatorio).
+  const [notasDeepLink, setNotasDeepLink] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const [activities, setActivities] = useState([]);
@@ -178,9 +192,20 @@ function App() {
       calendario: 'calendario',
       notifications: 'notifications',
       notificaciones: 'notifications',
+      musica: 'musica',
+      notas: 'notas',
     };
 
-    const nextPage = pageAliases[pageId] || pageId;
+    // actionUrl puede traer query (ej. 'notas?note=abc' desde un recordatorio):
+    // resolver la página por su base y pasar el noteId al deep-link de Notas.
+    const [base, qs] = String(pageId).split('?');
+    const nextPage = pageAliases[base] || base;
+
+    if (nextPage === 'notas') {
+      const noteId = new URLSearchParams(qs || '').get('note');
+      // objeto nuevo cada vez: fuerza el efecto aunque sea el mismo noteId.
+      setNotasDeepLink(noteId ? { noteId, ts: Date.now() } : null);
+    }
 
     if (nextPage === 'calificaciones' && !hasFinales) {
       setActivePage('activities');
@@ -778,27 +803,49 @@ function App() {
           syncState={syncState}
         />
         {!settingsReady ? (
-          <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
+          <main
+            className="flex-1 border p-8"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
+          >
             <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
-              <div className="rounded-3xl border border-slate-800 bg-slate-950/70 px-8 py-10 text-center">
+              <div
+                className="border px-8 py-10 text-center"
+                style={{
+                  background: 'var(--bg-card)',
+                  borderColor: 'var(--border)',
+                  borderRadius: 'var(--radius-card, 0px)',
+                  boxShadow: 'var(--shadow-card, none)',
+                }}
+              >
                 <img
                   src={dvpotroLogo}
                   alt="DVPotro"
                   className="mx-auto h-14 w-14 object-contain"
                   draggable="false"
                 />
-                <p className="mt-5 text-sm uppercase tracking-[0.25em] text-slate-500">DVPotro</p>
-                <p className="mt-3 text-lg font-semibold text-white">
+                <p
+                  className="mt-5 text-sm uppercase tracking-[0.25em]"
+                  style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+                >
+                  DVPotro
+                </p>
+                <p
+                  className="mt-3 text-lg font-semibold"
+                  style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)' }}
+                >
                   Cargando configuración inicial...
                 </p>
-                <p className="mt-2 text-sm text-slate-400">
+                <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
                   Verificando credenciales locales antes de mostrar el contenido.
                 </p>
               </div>
             </div>
           </main>
         ) : showOnboarding && activePage === 'activities' ? (
-          <main className="flex-1 rounded-3xl border border-slate-800 bg-slate-900/70 p-8">
+          <main
+            className="flex-1 border p-8"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
+          >
             <Onboarding onNavigate={handleNavigate} />
           </main>
         ) : (
@@ -825,6 +872,7 @@ function App() {
               onSyncHorario={loadHorario}
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
               onNavigate={handleNavigate}
+              deepLink={activePage === 'notas' ? notasDeepLink : null}
               progress={progress}
             />
           </TaskPanel>

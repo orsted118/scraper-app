@@ -27,6 +27,7 @@ function getSettings() {
     hasCIAPassword: Boolean(process.env.CIA_PASS),
     notifMinutesBefore: Number(process.env.NOTIF_MINUTES_BEFORE) || 10,
     studentName: process.env.STUDENT_NAME || '',
+    appVersion: app.getVersion(),
   };
 }
 
@@ -121,15 +122,107 @@ async function saveStudentName(name) {
   }
 }
 
+const CREDENTIAL_ENV_KEYS = ['IVIRTUAL_USER', 'IVIRTUAL_PASS', 'CIA_USER', 'CIA_PASS'];
+
+function clearCredentials() {
+  try {
+    const envLines = readEnvLines().filter(
+      (line) =>
+        line.trim().length > 0 &&
+        !CREDENTIAL_ENV_KEYS.some((key) => line.startsWith(`${key}=`)),
+    );
+
+    fs.writeFileSync(getEnvFilePath(), envLines.length ? `${envLines.join('\n')}\n` : '', 'utf8');
+
+    for (const key of CREDENTIAL_ENV_KEYS) {
+      delete process.env[key];
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error?.message || 'No fue posible borrar las credenciales.',
+    };
+  }
+}
+
+// Un test en vuelo por portal: el botón queda disabled en la UI, pero el lock
+// protege contra dobles invocaciones desde cualquier origen.
+const testsInFlight = new Set();
+
+// Prueba login real contra el portal SIN persistir nada. El password nunca se
+// loggea ni se incluye en mensajes de error; si viene vacío se usa el guardado.
+async function testConnection({ portal, user, password } = {}) {
+  const normalizedPortal = portal === 'cia' ? 'cia' : 'ivirtual';
+  const normalizedUser = typeof user === 'string' ? user.trim() : '';
+  const savedPassword =
+    normalizedPortal === 'cia' ? process.env.CIA_PASS : process.env.IVIRTUAL_PASS;
+  const normalizedPassword =
+    (typeof password === 'string' && password.trim()) || savedPassword?.trim() || '';
+
+  if (!normalizedUser) {
+    return { ok: false, error: 'Falta el usuario.' };
+  }
+
+  if (!normalizedPassword) {
+    return { ok: false, error: 'No hay contraseña para probar: escribe una o guárdala primero.' };
+  }
+
+  if (testsInFlight.has(normalizedPortal)) {
+    return { ok: false, error: 'Ya hay una prueba en curso para este portal.' };
+  }
+
+  testsInFlight.add(normalizedPortal);
+  let browser = null;
+
+  try {
+    const { chromium } = require('playwright');
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+
+    if (normalizedPortal === 'cia') {
+      // Require perezoso: evita cargar el scraper completo al iniciar la app.
+      const { loginToCIA } = require('./cia');
+      await loginToCIA(page, normalizedUser, normalizedPassword);
+      return { ok: true };
+    }
+
+    const { loginToIVirtual } = require('./scraper');
+    const loginResult = await loginToIVirtual(page, normalizedUser, normalizedPassword);
+
+    if (loginResult?.error) {
+      return { ok: false, error: 'iVirtual rechazó las credenciales.' };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    const message = String(error?.message || '');
+    const friendly = message.includes('Credenciales')
+      ? 'El CIA rechazó las credenciales.'
+      : 'No fue posible conectar con el portal. Verifica tu conexión e intenta de nuevo.';
+    return { ok: false, error: friendly };
+  } finally {
+    testsInFlight.delete(normalizedPortal);
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+  }
+}
+
 function registerSettingsHandlers() {
   ipcMain.handle('settings:get', async () => getSettings());
   ipcMain.handle('settings:save', async (_event, payload) => saveSettings(payload || {}));
+  ipcMain.handle('settings:test-connection', async (_event, payload) => testConnection(payload || {}));
+  ipcMain.handle('settings:clear-credentials', async () => clearCredentials());
 }
 
 module.exports = {
+  clearCredentials,
   getEnvFilePath,
   getSettings,
   registerSettingsHandlers,
   saveStudentName,
   saveSettings,
+  testConnection,
 };

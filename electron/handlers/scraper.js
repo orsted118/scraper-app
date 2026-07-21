@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { app, ipcMain, session } = require('electron');
 const { chromium } = require('playwright');
+const notificationCenter = require('./notification-center');
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
@@ -859,7 +860,15 @@ async function getActivitiesWithCache(event) {
       clearTimeout(timeoutId);
     });
 
-    return await Promise.race([scrapePromise, timeoutPromise]);
+    const result = await Promise.race([scrapePromise, timeoutPromise]);
+
+    if (result?.error) {
+      notificationCenter.processSyncError('actividades', result.error);
+    } else if (!result?.fromCache && Array.isArray(result?.activities)) {
+      notificationCenter.processSync('actividades', result.activities);
+    }
+
+    return result;
   } finally {
     activeScrapeController = null;
   }
@@ -875,6 +884,7 @@ module.exports = {
   classifyAssignment,
   getActivitiesCachePath,
   getActivitiesWithCache,
+  loginToIVirtual,
   registerScraperHandlers,
   readActivitiesCache,
   scrapeIVirtualActivities,

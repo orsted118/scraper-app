@@ -3,5 +3,6 @@ dist/
 .env
 release/
 .local-data/
+scratch/
 
 src/design-backups/

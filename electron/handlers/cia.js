@@ -5,6 +5,7 @@ const app = electron?.app;
 const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
 const pdfjsLib = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
+const notificationCenter = require('./notification-center');
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const REPORT_MANAGER_URL = 'http://smartweb3.itson.edu.mx:9500/psp/ITSONPRD_1/EMPLOYEE/PSFT_HR/c/REPORT_MANAGER.CONTENT_LIST.GBL?Page=CDM_CONTLIST&Action=U&';
@@ -603,11 +604,13 @@ async function getCalificacionesWithCache() {
     const response = await scrapeCIAWithPlaywright();
 
     if (response?.error) {
+      notificationCenter.processSyncError('calificaciones', response.error);
       return response;
     }
 
     if (Array.isArray(response.materias)) {
       writeCIACache(response.materias);
+      notificationCenter.processSync('calificaciones', response.materias);
     }
 
     return {
@@ -621,12 +624,16 @@ async function getCalificacionesWithCache() {
       message.includes('Credenciales CIA inválidas o no configuradas') ||
       /timeout|login/i.test(message)
     ) {
+      notificationCenter.processSyncError('calificaciones', 'CIA_NO_CREDENTIALS');
       return { error: 'Credenciales CIA inválidas o no configuradas.' };
     }
 
-    return {
-      error: message ? `Falló la extracción del CIA: ${message}` : 'Falló la extracción del CIA por un error no identificado.',
-    };
+    const fallbackError = message
+      ? `Falló la extracción del CIA: ${message}`
+      : 'Falló la extracción del CIA por un error no identificado.';
+    notificationCenter.processSyncError('calificaciones', fallbackError);
+
+    return { error: fallbackError };
   }
 }
 

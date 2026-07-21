@@ -281,6 +281,7 @@ function Horario({
   const reduced = useReducedMotion();
   const [pendingLinks, setPendingLinks] = useState({});
   const [savingLinks, setSavingLinks] = useState({});
+  const [linkErrors, setLinkErrors] = useState({});
   const [selectedKey, setSelectedKey] = useState('');
   const [nowTick, setNowTick] = useState(() => Date.now());
   const panelRef = useRef(null);
@@ -377,6 +378,7 @@ function Horario({
     }
 
     setSavingLinks((previous) => ({ ...previous, [numeroClase]: true }));
+    setLinkErrors((previous) => ({ ...previous, [numeroClase]: '' }));
 
     try {
       const result = await api.saveHorarioLink(numeroClase, link);
@@ -387,6 +389,8 @@ function Horario({
           await onSyncHorario();
         }
       }
+    } catch (_error) {
+      setLinkErrors((previous) => ({ ...previous, [numeroClase]: 'No se pudo guardar el link.' }));
     } finally {
       setSavingLinks((previous) => ({ ...previous, [numeroClase]: false }));
     }
@@ -445,6 +449,14 @@ function Horario({
         >
           {isSaving ? '...' : 'Guardar'}
         </button>
+        {linkErrors[materia.numeroClase] ? (
+          <span
+            className="self-center text-xs"
+            style={{ color: 'var(--error-text)', fontFamily: 'var(--font-mono, monospace)' }}
+          >
+            {linkErrors[materia.numeroClase]}
+          </span>
+        ) : null}
       </div>
     );
   };

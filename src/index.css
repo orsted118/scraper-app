@@ -228,6 +228,23 @@ a:focus-visible {
   .btn-outline-accent:hover:not(:disabled) {
     background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
+
+  /* Reemplazo de hovers imperativos (onMouseEnter que escribian style.*):
+     !important porque el estado base viene por style inline. */
+  .nav-item-hover:hover {
+    background: var(--bg-hover, var(--bg-tertiary)) !important;
+    color: var(--text-strong) !important;
+  }
+
+  .card-hover-border:hover {
+    border-color: var(--border-normal) !important;
+    border-left-color: var(--edge-color) !important;
+  }
+
+  .chev-hover:hover {
+    border-color: var(--border-normal) !important;
+    color: var(--text-strong) !important;
+  }
 }
 
 .line-clamp-3 {
@@ -301,26 +318,11 @@ a:focus-visible {
 }
 
 .sync-all-btn:hover:not(:disabled) .sync-letter {
+  transition: all 0.2s ease;
   transform: translateY(0);
   opacity: 1;
 }
 
-.sync-all-btn:hover .sync-letter:nth-child(1)  { transition: all 0.2s ease; transition-delay: 0.04s; }
-.sync-all-btn:hover .sync-letter:nth-child(2)  { transition: all 0.2s ease; transition-delay: 0.08s; }
-.sync-all-btn:hover .sync-letter:nth-child(3)  { transition: all 0.2s ease; transition-delay: 0.12s; }
-.sync-all-btn:hover .sync-letter:nth-child(4)  { transition: all 0.2s ease; transition-delay: 0.16s; }
-.sync-all-btn:hover .sync-letter:nth-child(5)  { transition: all 0.2s ease; transition-delay: 0.20s; }
-.sync-all-btn:hover .sync-letter:nth-child(6)  { transition: all 0.2s ease; transition-delay: 0.24s; }
-.sync-all-btn:hover .sync-letter:nth-child(7)  { transition: all 0.2s ease; transition-delay: 0.28s; }
-.sync-all-btn:hover .sync-letter:nth-child(8)  { transition: all 0.2s ease; transition-delay: 0.32s; }
-.sync-all-btn:hover .sync-letter:nth-child(9)  { transition: all 0.2s ease; transition-delay: 0.36s; }
-.sync-all-btn:hover .sync-letter:nth-child(10) { transition: all 0.2s ease; transition-delay: 0.40s; }
-.sync-all-btn:hover .sync-letter:nth-child(11) { transition: all 0.2s ease; transition-delay: 0.44s; }
-.sync-all-btn:hover .sync-letter:nth-child(12) { transition: all 0.2s ease; transition-delay: 0.48s; }
-.sync-all-btn:hover .sync-letter:nth-child(13) { transition: all 0.2s ease; transition-delay: 0.52s; }
-.sync-all-btn:hover .sync-letter:nth-child(14) { transition: all 0.2s ease; transition-delay: 0.56s; }
-.sync-all-btn:hover .sync-letter:nth-child(15) { transition: all 0.2s ease; transition-delay: 0.60s; }
-.sync-all-btn:hover .sync-letter:nth-child(16) { transition: all 0.2s ease; transition-delay: 0.64s; }
 
 .sync-all-btn:disabled {
   cursor: not-allowed;

@@ -17,6 +17,12 @@ const PAGE_TIMEOUT_MS = 20_000;
 const CIA_LOGIN_TIMEOUT_MS = 45_000;
 const CHUNK_SIZE = 3;
 const LINK_TIMEOUT_MS = 45_000;
+// Timeouts de espera por rol (antes valores mágicos inline):
+const PSOFT_SETTLE_SHORT_MS = 8_000; // asentamiento rápido de PeopleSoft + campos de login
+const PSOFT_SETTLE_MS = 10_000; // asentamiento estándar post-navegación
+const SELECTOR_TIMEOUT_MS = 12_000; // waits de selectores (frames PeopleSoft y Moodle)
+const NAV_SETTLE_TIMEOUT_MS = 15_000; // navegación completa + elementos lentos
+const FRAME_TIMEOUT_MS = 25_000; // aparición del content frame de PeopleSoft
 const MAX_DEEP_RESOURCES = 12;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
 
@@ -660,7 +666,7 @@ function extractCourseFromContext(value) {
   };
 }
 
-async function waitForPeopleSoftNav(page, timeout = 15_000) {
+async function waitForPeopleSoftNav(page, timeout = NAV_SETTLE_TIMEOUT_MS) {
   const deadline = Date.now() + timeout;
 
   while (Date.now() < deadline) {
@@ -814,7 +820,7 @@ async function switchScheduleView(frame, viewPatterns) {
       .catch(() => false);
 
     if (changed) {
-      await waitForPeopleSoftNav(frame.page(), 10_000);
+      await waitForPeopleSoftNav(frame.page(), PSOFT_SETTLE_MS);
       return true;
     }
   }
@@ -863,7 +869,7 @@ async function switchScheduleView(frame, viewPatterns) {
         const selectId = await optionLocator.evaluate((option) => option.parentElement?.id || null).catch(() => null);
         if (selectId) {
           await frame.selectOption(`#${selectId}`, optionValue).catch(() => {});
-          await waitForPeopleSoftNav(frame.page(), 8_000);
+          await waitForPeopleSoftNav(frame.page(), PSOFT_SETTLE_SHORT_MS);
           return true;
         }
       }
@@ -871,7 +877,7 @@ async function switchScheduleView(frame, viewPatterns) {
     }
 
     await frame.locator(selector).nth(target.index).click({ force: true }).catch(() => {});
-    await waitForPeopleSoftNav(frame.page(), 8_000);
+    await waitForPeopleSoftNav(frame.page(), PSOFT_SETTLE_SHORT_MS);
     return true;
   }
 
@@ -879,7 +885,6 @@ async function switchScheduleView(frame, viewPatterns) {
 }
 
 async function loginToCIA(page, user, password) {
-  console.log('Iniciando inicio de sesión en portal CIA');
   await gotoWithRetry(page, CIA_ENTRY_URL, {
     timeout: CIA_LOGIN_TIMEOUT_MS,
     waitUntil: 'domcontentloaded',
@@ -891,8 +896,8 @@ async function loginToCIA(page, user, password) {
   // The ITSONET step lands either on an intermediate "Continuar" page or
   // directly on the PeopleSoft login form; wait for whichever shows first.
   await Promise.race([
-    page.getByRole('button', { name: /continuar/i }).first().waitFor({ state: 'visible', timeout: 8_000 }),
-    page.locator('#userid').waitFor({ state: 'visible', timeout: 8_000 }),
+    page.getByRole('button', { name: /continuar/i }).first().waitFor({ state: 'visible', timeout: PSOFT_SETTLE_SHORT_MS }),
+    page.locator('#userid').waitFor({ state: 'visible', timeout: PSOFT_SETTLE_SHORT_MS }),
   ]).catch(() => {});
 
   const continueButton = page.getByRole('button', { name: /continuar/i }).first();
@@ -909,7 +914,7 @@ async function loginToCIA(page, user, password) {
   await page
     .getByRole('link', { name: /autoservicio/i })
     .last()
-    .waitFor({ state: 'visible', timeout: 15_000 })
+    .waitFor({ state: 'visible', timeout: NAV_SETTLE_TIMEOUT_MS })
     .catch(() => {});
 
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
@@ -918,7 +923,6 @@ async function loginToCIA(page, user, password) {
     return buildHorarioError('Credenciales CIA inválidas o no configuradas.');
   }
 
-  console.log('Inicio de sesión en portal CIA exitoso');
   return null;
 }
 
@@ -977,17 +981,17 @@ async function persistStudentNameFromCIA(page) {
   }
 }
 
-async function getTargetContentFrame(page, timeout = 25_000) {
+async function getTargetContentFrame(page, timeout = FRAME_TIMEOUT_MS) {
   return waitForFrame(page, async (frame) => frame.name() === 'TargetContent', timeout);
 }
 
 async function clickHorarioEntry(page) {
-  const targetFrame = await getTargetContentFrame(page, 25_000);
+  const targetFrame = await getTargetContentFrame(page, FRAME_TIMEOUT_MS);
   const targetLink = targetFrame.locator('a', { hasText: /mi horario de clases|class schedule|horario de clases/i }).first();
 
   if (await targetLink.count().catch(() => 0)) {
     await targetLink.click({ force: true }).catch(() => {});
-    await waitForPeopleSoftNav(page, 10_000);
+    await waitForPeopleSoftNav(page, PSOFT_SETTLE_MS);
   }
 
   const alreadyOpened = page.frames().some(
@@ -1001,24 +1005,23 @@ async function clickHorarioEntry(page) {
   const navFrame = await waitForFrame(
     page,
     async (frame) => frame.name() === 'NAV',
-    25_000,
+    FRAME_TIMEOUT_MS,
   );
 
   const centerLink = navFrame.locator('a', { hasText: /centro de alumnado|student center/i }).first();
   if (await centerLink.count().catch(() => 0)) {
     await centerLink.click({ force: true }).catch(() => {});
-    await waitForPeopleSoftNav(page, 10_000);
+    await waitForPeopleSoftNav(page, PSOFT_SETTLE_MS);
   }
 
   const scheduleLink = navFrame.locator('a', { hasText: /mi horario de clases|class schedule|horario de clases/i }).first();
   if (await scheduleLink.count().catch(() => 0)) {
     await scheduleLink.click({ force: true }).catch(() => {});
-    await waitForPeopleSoftNav(page, 10_000);
+    await waitForPeopleSoftNav(page, PSOFT_SETTLE_MS);
   }
 }
 
 async function openHorarioPage(page) {
-  console.log('Iniciando navegación a la página de horario...');
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
   await autoservicioLink.click().catch(() => {});
   await waitForPeopleSoftNav(page, 20_000);
@@ -1033,14 +1036,12 @@ async function openHorarioPage(page) {
         (await frameHasAnyText(frame, [/vista listado/i, /vista horario semanal/i, /class schedule/i]))),
     30_000,
   );
-  console.log('Frame de horario obtenido correctamente');
   return frame;
 }
 
 async function collectIdentifiersFromListView(scheduleFrame) {
-  console.log('Extrayendo identificadores de materias desde la vista listado...');
   await switchScheduleView(scheduleFrame, [/vista listado/i, /list view/i]);
-  await waitForPeopleSoftNav(scheduleFrame.page(), 12_000);
+  await waitForPeopleSoftNav(scheduleFrame.page(), SELECTOR_TIMEOUT_MS);
 
   const rawEntries = await scheduleFrame
     .evaluate(() => {
@@ -1121,7 +1122,6 @@ async function collectIdentifiersFromListView(scheduleFrame) {
     entries.filter((entry) => entry.numeroClase || entry.codigo || entry.nombre),
     (entry) => entry.numeroClase || `${entry.codigo}-${entry.seccion}-${entry.horaInicio || 'na'}`,
   );
-  console.log(`Identificadores extraídos: ${uniqueEntries.length} materias encontradas.`);
   return uniqueEntries;
 }
 
@@ -1288,14 +1288,13 @@ function deriveDaysFromSessions(materia) {
 async function collectWeeklySchedule(scheduleFrame, identifiers) {
   const normalizedIdentifiers = Array.isArray(identifiers) ? identifiers : [];
 
-  console.log('Extrayendo clases de la cuadrícula de horario semanal...');
   await switchScheduleView(scheduleFrame, [
     /vista horario semanal/i,
     /weekly schedule/i,
     /weekly calendar view/i,
     /semanal/i,
   ]);
-  await waitForPeopleSoftNav(scheduleFrame.page(), 12_000);
+  await waitForPeopleSoftNav(scheduleFrame.page(), SELECTOR_TIMEOUT_MS);
   const rawRows = await scheduleFrame
     .evaluate(() => {
       const table = document.querySelector('#STDNT_CLASS_TIM\\$scroll\\$0');
@@ -1701,7 +1700,6 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       Array.isArray(row.dias) &&
       row.dias.length > 0,
   );
-  console.log(`Extracción semanal consolidada. Total: ${result.length} materias estructuradas.`);
   return result;
 }
 
@@ -1714,7 +1712,6 @@ function chunkArray(items, chunkSize) {
 }
 
 async function loginToIVirtual(context, user, password) {
-  console.log('Iniciando inicio de sesión en iVirtual');
   const page = await context.newPage();
   page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
@@ -1743,7 +1740,6 @@ async function loginToIVirtual(context, user, password) {
     return { success: false, error: 'No fue posible iniciar sesión en iVirtual para buscar enlaces.' };
   }
 
-  console.log('Inicio de sesión en iVirtual exitoso');
   return { success: true, page };
 }
 
@@ -1992,7 +1988,7 @@ async function extractLinkFromPage(page, url, options = {}) {
   try {
     await gotoWithRetry(page, url, {
       waitUntil: 'domcontentloaded',
-      timeout: options.timeout || 12_000,
+      timeout: options.timeout || SELECTOR_TIMEOUT_MS,
     });
 
     const candidates = await collectVideoCandidatesFromPage(page, options.courseOrigin || '');
@@ -2070,7 +2066,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       }
 
       const link = await extractLinkFromPage(detailPage, resourceUrl, {
-        timeout: 12_000,
+        timeout: SELECTOR_TIMEOUT_MS,
         courseOrigin,
       });
 
@@ -2101,7 +2097,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       }
 
       const link = await extractLinkFromPage(detailPage, pageUrl, {
-        timeout: 12_000,
+        timeout: SELECTOR_TIMEOUT_MS,
         courseOrigin,
       });
 
@@ -2125,7 +2121,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       try {
         await gotoWithRetry(detailPage, forumUrl, {
           waitUntil: 'domcontentloaded',
-          timeout: 12_000,
+          timeout: SELECTOR_TIMEOUT_MS,
         });
 
         const firstDiscussion = await detailPage
@@ -2137,7 +2133,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
 
         if (firstDiscussion && consumeResourceBudget()) {
           const link = await extractLinkFromPage(detailPage, firstDiscussion, {
-            timeout: 12_000,
+            timeout: SELECTOR_TIMEOUT_MS,
             courseOrigin,
           });
 
@@ -2173,7 +2169,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       }
 
       const link = await extractLinkFromPage(detailPage, assignUrl, {
-        timeout: 12_000,
+        timeout: SELECTOR_TIMEOUT_MS,
         courseOrigin,
       });
 
@@ -2210,7 +2206,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       try {
         await gotoWithRetry(detailPage, bookUrl, {
           waitUntil: 'domcontentloaded',
-          timeout: 12_000,
+          timeout: SELECTOR_TIMEOUT_MS,
         });
 
         const linkInBook = await collectVideoCandidatesFromPage(detailPage, courseOrigin);
@@ -2230,7 +2226,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
 
         if (nextChapter && consumeResourceBudget()) {
           const link = await extractLinkFromPage(detailPage, nextChapter, {
-            timeout: 10_000,
+            timeout: PSOFT_SETTLE_MS,
             courseOrigin,
           });
 
@@ -2279,7 +2275,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       try {
         await gotoWithRetry(detailPage, shortUrl, {
           waitUntil: 'domcontentloaded',
-          timeout: 12_000,
+          timeout: SELECTOR_TIMEOUT_MS,
         });
 
         const finalUrl = detailPage.url();
@@ -2325,7 +2321,7 @@ async function findMeetLinkInCourse(page, courseUrl) {
       }
 
       const link = await extractLinkFromPage(detailPage, activityUrl, {
-        timeout: 12_000,
+        timeout: SELECTOR_TIMEOUT_MS,
         courseOrigin,
       });
 
@@ -2341,7 +2337,6 @@ async function findMeetLinkInCourse(page, courseUrl) {
 }
 
 async function findLinkForOnlineCourse(context, dashboardPage, materia, cachedCourses = null) {
-  console.log(`Buscando enlace de videollamada para ${materia.nombre} (${materia.codigo})...`);
   const courses = Array.isArray(cachedCourses) ? cachedCourses : await collectCourseLinks(dashboardPage);
   const match = pickBestCourseMatch(courses, materia);
 
@@ -2356,7 +2351,6 @@ async function findLinkForOnlineCourse(context, dashboardPage, materia, cachedCo
   try {
     const result = await findMeetLinkInCourse(page, match.url);
     if (result && result.link) {
-      console.log(`Enlace de videollamada encontrado en iVirtual: ${result.link} (Capa: ${result.layer})`);
     }
     return result;
   } finally {
@@ -2378,7 +2372,6 @@ async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {
     return materias;
   }
 
-  console.log(`Iniciando búsqueda de enlaces para ${onlineIndexes.length} materias en línea...`);
   const browser = await chromium.launch({ headless: true });
 
   try {
@@ -2393,7 +2386,7 @@ async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {
 
     const dashboardPage = loginResult.page;
     await dashboardPage
-      .waitForSelector('a[href*="/course/view.php?id="]', { timeout: 15_000 })
+      .waitForSelector('a[href*="/course/view.php?id="]', { timeout: NAV_SETTLE_TIMEOUT_MS })
       .catch(() => {});
     const courses = await collectCourseLinks(dashboardPage);
     const nextMaterias = [...materias];
@@ -2429,7 +2422,6 @@ async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {
     }
 
     await dashboardPage.close().catch(() => {});
-    console.log('Búsqueda de enlaces de videollamada en iVirtual completada');
     return nextMaterias;
   } finally {
     await browser.close();
@@ -2453,7 +2445,6 @@ function computeDaysWithClasses(materias) {
 }
 
 async function scrapeHorario(controller = {}) {
-  console.log('Iniciando proceso de extracción de horario...');
   const ciaUser = process.env.CIA_USER?.trim();
   const ciaPass = process.env.CIA_PASS?.trim();
 
@@ -2465,7 +2456,6 @@ async function scrapeHorario(controller = {}) {
   const ivirtualUser = process.env.IVIRTUAL_USER?.trim();
   const ivirtualPass = process.env.IVIRTUAL_PASS?.trim();
 
-  console.log('Lanzando instancia de Chromium...');
   const browser = await chromium.launch({ headless: true });
   controller.browser = browser;
 
@@ -2536,7 +2526,6 @@ async function scrapeHorario(controller = {}) {
       timestamp: Date.now(),
     };
 
-    console.log(`Horario extraído: ${payload.materias.length} clases encontradas.`);
     return applyManualLinks(payload);
   } catch (error) {
     console.error(`Error durante scraping de horario: ${error.message}`);
@@ -2576,7 +2565,6 @@ async function getHorarioWithCache() {
     };
   }
 
-  console.log('Iniciando extracción de horario en vivo...');
   const controller = { cancelled: false, browser: null };
   activeHorarioController = controller;
 

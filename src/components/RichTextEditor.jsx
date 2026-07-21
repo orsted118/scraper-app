@@ -1,7 +1,7 @@
 import { Bold, ImagePlus, Italic, Strikethrough, Type, Underline, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { sanitizeNoteHtml } from '../utils/sanitizeNoteHtml';
-import { NOTE_COLORS } from './NoteEditorModal';
+import { NOTE_COLORS } from '../utils/noteColors';
 
 const IMAGE_MIME = /^image\/(png|jpeg|webp|gif)$/;
 

@@ -5,6 +5,14 @@ import { NOTE_COLORS } from './NoteEditorModal';
 
 const IMAGE_MIME = /^image\/(png|jpeg|webp|gif)$/;
 
+// Escapa valores de atributo antes de armar HTML a mano — insertHTML no pasa por
+// el sanitizer DOM, así que un src/alt con <>&" rompería el markup o inyectaría.
+const escAttr = (s) => (s || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
 // Editor de texto enriquecido cero-dep: contentEditable + execCommand. Electron
 // es Chromium fijo, así que el "deprecated" de execCommand no muerde. El HTML se
 // sanitiza (allowlist DOM) al reportar cambios, al montar y al pegar.
@@ -56,7 +64,7 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
   // Inserta un <img> del adjunto en la posición del cursor guardada.
   const insertImage = (src, alt) => {
     restoreSelection();
-    document.execCommand('insertHTML', false, `<img src="${src}" alt="${(alt || '').replace(/"/g, '')}">`);
+    document.execCommand('insertHTML', false, `<img src="${escAttr(src)}" alt="${escAttr(alt)}">`);
     report();
   };
 

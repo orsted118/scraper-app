@@ -887,7 +887,7 @@ async function switchScheduleView(frame, viewPatterns) {
 }
 
 async function loginToCIA(page, user, password) {
-  console.log(`Iniciando inicio de sesión en portal CIA para el usuario: ${user}`);
+  console.log('Iniciando inicio de sesión en portal CIA');
   await gotoWithRetry(page, CIA_ENTRY_URL, {
     timeout: CIA_LOGIN_TIMEOUT_MS,
     waitUntil: 'domcontentloaded',
@@ -922,7 +922,7 @@ async function loginToCIA(page, user, password) {
 
   const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
   if (!(await autoservicioLink.count().catch(() => 0))) {
-    console.error(`Inicio de sesión fallido en CIA para el usuario: ${user}`);
+    console.error('Inicio de sesión fallido en CIA');
     return buildHorarioError('Credenciales CIA inválidas o no configuradas.');
   }
 
@@ -1722,7 +1722,7 @@ function chunkArray(items, chunkSize) {
 }
 
 async function loginToIVirtual(context, user, password) {
-  console.log(`Iniciando inicio de sesión en iVirtual para el usuario: ${user}`);
+  console.log('Iniciando inicio de sesión en iVirtual');
   const page = await context.newPage();
   page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
@@ -1747,7 +1747,7 @@ async function loginToIVirtual(context, user, password) {
 
   if (page.url().includes('/login/')) {
     await page.close().catch(() => {});
-    console.error(`Inicio de sesión fallido en iVirtual para el usuario: ${user}`);
+    console.error('Inicio de sesión fallido en iVirtual');
     return { success: false, error: 'No fue posible iniciar sesión en iVirtual para buscar enlaces.' };
   }
 

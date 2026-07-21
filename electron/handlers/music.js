@@ -168,6 +168,21 @@ function registerMusicProtocol() {
         process.platform === 'win32' && decoded.startsWith('/') ? decoded.slice(1) : decoded,
       );
 
+      // Solo archivos dentro de la carpeta de librería configurada — sin esto el
+      // protocolo es un primitivo de lectura arbitraria de audio del disco.
+      // Separador anexado para que C:\Music no matchee C:\MusicEvil\.
+      const libraryFolder = getLibrary()?.folderPath;
+      if (!libraryFolder) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const root = path.normalize(libraryFolder + path.sep);
+      const inLibrary = process.platform === 'win32'
+        ? filePath.toLowerCase().startsWith(root.toLowerCase())
+        : filePath.startsWith(root);
+      if (!inLibrary) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
       if (!AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()) || !fs.existsSync(filePath)) {
         return new Response('Not found', { status: 404 });
       }

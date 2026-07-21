@@ -5,8 +5,8 @@ import ColorPicker from '../components/ColorPicker';
 import { useSidebar } from '../SidebarContext';
 import { useTheme } from '../ThemeContext';
 import { DEFAULT_THEME, THEMES } from '../themes';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 const CONN_STATUS_KEY = 'dvpotro-conn-status';
 const FEEDBACK_TIMEOUT_MS = 4000;
 

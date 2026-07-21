@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 
 function getFileIcon(fileName = '') {
   const lowerName = fileName.toLowerCase();

@@ -17,8 +17,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 
 // Colores funcionales de nota (curated, fijos): NO son tokens de tema. Aparecen
 // solo como border-left 3px — señal de categoría, nunca fondo de card.

@@ -8,8 +8,9 @@ import {
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { formatLastSync } from '../utils/formatLastSync';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 const SLOT_PX = 40;
 const PX_PER_MIN = SLOT_PX / 30;
 const GUTTER_PX = 64;
@@ -53,34 +54,6 @@ function format12h(time24) {
   return `${hours}:${String(minutesRaw).padStart(2, '0')} ${period}`;
 }
 
-function formatLastSync(lastSyncAt) {
-  if (!lastSyncAt) {
-    return 'Última sync: aún no disponible.';
-  }
-
-  const syncDate = new Date(lastSyncAt);
-  const now = new Date();
-  const diffMs = Math.max(0, now.getTime() - syncDate.getTime());
-  const diffMinutes = Math.floor(diffMs / 60000);
-
-  if (diffMinutes < 60) {
-    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
-  }
-
-  const isToday = syncDate.toDateString() === now.toDateString();
-
-  if (isToday) {
-    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(syncDate)}`;
-  }
-
-  return `Última sync: ${new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(syncDate)}`;
-}
 
 function normDay(dayValue) {
   return String(dayValue || '')

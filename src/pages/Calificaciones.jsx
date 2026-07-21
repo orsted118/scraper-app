@@ -8,6 +8,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import GradeCard from '../components/GradeCard';
+import { formatLastSync } from '../utils/formatLastSync';
 
 const ciaFriendlyErrors = {
   CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
@@ -51,34 +52,6 @@ function getMateriaStatus(materia) {
   return 'reprobada';
 }
 
-function formatLastSync(lastSyncAt) {
-  if (!lastSyncAt) {
-    return 'Última sync: aún no disponible.';
-  }
-
-  const syncDate = new Date(lastSyncAt);
-  const now = new Date();
-  const diffMs = Math.max(0, now.getTime() - syncDate.getTime());
-  const diffMinutes = Math.floor(diffMs / 60000);
-
-  if (diffMinutes < 60) {
-    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
-  }
-
-  const isToday = syncDate.toDateString() === now.toDateString();
-
-  if (isToday) {
-    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(syncDate)}`;
-  }
-
-  return `Última sync: ${new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(syncDate)}`;
-}
 
 function getFriendlyCIAErrorMessage(errorCode, fallbackMessage = '') {
   return ciaFriendlyErrors[errorCode] || fallbackMessage;

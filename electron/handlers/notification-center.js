@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { SPANISH_MONTHS, parseDueDate } = require('../utils/dateParser');
 
 const MAX_NOTIFICATIONS = 500;
 const ERROR_DEDUPE_MS = 6 * 60 * 60 * 1000;
@@ -41,13 +42,6 @@ const FRIENDLY_SYNC_ERRORS = {
 };
 
 const CREDENTIAL_ERROR_CODES = new Set(Object.keys(FRIENDLY_SYNC_ERRORS));
-
-const SPANISH_MONTHS = {
-  enero: 'January', febrero: 'February', marzo: 'March',
-  abril: 'April', mayo: 'May', junio: 'June',
-  julio: 'July', agosto: 'August', septiembre: 'September',
-  octubre: 'October', noviembre: 'November', diciembre: 'December',
-};
 
 let reminderInterval = null;
 let noticesInterval = null;
@@ -517,21 +511,6 @@ function emitSyncAllSummary(parts = []) {
 // Recordatorios: leen los cachés existentes de disco (read-only, sin scraping
 // ni require de handlers — así no hay dependencias circulares).
 // ---------------------------------------------------------------------------
-
-function parseDueDate(value) {
-  if (!value || typeof value !== 'string') {
-    return null;
-  }
-
-  let normalized = value.replace(/\s+/g, ' ').trim();
-
-  for (const [es, en] of Object.entries(SPANISH_MONTHS)) {
-    normalized = normalized.replace(new RegExp(es, 'gi'), en);
-  }
-
-  const parsed = Date.parse(normalized);
-  return Number.isNaN(parsed) ? null : parsed;
-}
 
 function normalizeDay(value = '') {
   return String(value)

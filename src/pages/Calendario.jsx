@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { formatLastSync } from '../utils/formatLastSync';
+import { EASE } from '../utils/motion';
 import {
   AlertCircle,
   BedDouble,
@@ -14,7 +16,6 @@ import {
   UserPlus,
 } from 'lucide-react';
 
-const EASE = [0.23, 1, 0.32, 1];
 const DEFAULT_CALENDAR_TYPE = 'Profesional Asociado y Licenciatura';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -131,25 +132,6 @@ function formatShortRef(date) {
   return `${padDay(date)} ${MONTHS_SHORT[date.getMonth()]}`;
 }
 
-function formatLastSync(timestamp) {
-  if (!timestamp) {
-    return 'Última sync: aún no disponible.';
-  }
-
-  const syncDate = new Date(timestamp);
-  const now = new Date();
-  const diffMinutes = Math.floor(Math.max(0, now.getTime() - syncDate.getTime()) / 60000);
-
-  if (diffMinutes < 60) {
-    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
-  }
-
-  if (syncDate.toDateString() === now.toDateString()) {
-    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit' }).format(syncDate)}`;
-  }
-
-  return `Última sync: ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(syncDate)}`;
-}
 
 function getEventKey(event, index) {
   return `${event.titulo || 'evento'}-${event.inicio || ''}-${index}`;

@@ -620,12 +620,20 @@ async function getCalificacionesWithCache() {
   } catch (error) {
     const message = error?.message || '';
 
+    // Solo login/credenciales indica contraseña mala. Un timeout real de red
+    // (Report Manager lento) NO debe reportarse como "credenciales inválidas".
     if (
       message.includes('Credenciales CIA inválidas o no configuradas') ||
-      /timeout|login/i.test(message)
+      /login/i.test(message)
     ) {
       notificationCenter.processSyncError('calificaciones', 'CIA_NO_CREDENTIALS');
       return { error: 'Credenciales CIA inválidas o no configuradas.' };
+    }
+
+    if (/timeout|timed out/i.test(message)) {
+      const timeoutError = 'La conexión al CIA tardó demasiado. Intenta de nuevo.';
+      notificationCenter.processSyncError('calificaciones', timeoutError);
+      return { error: timeoutError };
     }
 
     const fallbackError = message

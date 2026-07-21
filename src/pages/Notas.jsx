@@ -23,8 +23,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NoteEditorModal, { NOTE_COLORS, noteColorHex, buildNoteImageUrl } from '../components/NoteEditorModal';
 import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const VIEWS = [

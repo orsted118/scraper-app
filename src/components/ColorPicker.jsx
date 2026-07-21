@@ -386,23 +386,24 @@ function GradientSlider({
           draggingRef.current = true;
           applyFromClientX(event.clientX);
         }}
-        className="relative h-2.5 w-full cursor-pointer rounded-full border transition hover:brightness-110"
+        className="relative h-2.5 w-full cursor-pointer r-badge border transition hover:brightness-110"
         style={{
           borderColor: 'var(--border-normal)',
           backgroundImage: gradient,
         }}
       >
         <span
-          className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full border-2 bg-slate-50 shadow-[0_0_0_3px_rgba(0,109,182,0.35)]"
+          className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 r-badge border-2"
           style={{
             left: `calc(${percent}% - 10px)`,
             borderColor: 'var(--accent)',
+            background: 'var(--text-strong)',
           }}
         />
       </button>
 
       <div
-        className="flex items-center rounded-xl border px-2 py-1.5"
+        className="flex items-center r-btn border px-2 py-1.5"
         style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
       >
         <input
@@ -440,7 +441,7 @@ function ModelInput({ label, values, units = [], onChange }) {
         {values.map((item, index) => (
           <div
             key={`${label}-${index}`}
-            className="flex items-center rounded-xl border px-2 py-1.5"
+            className="flex items-center r-btn border px-2 py-1.5"
             style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
           >
             <input
@@ -465,7 +466,7 @@ function ActionButton({ icon: Icon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-2xl border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-itson-blue/60"
+      className="r-card border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-[var(--accent)]"
       style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)', color: 'var(--text-normal)' }}
     >
       <div className="flex items-center gap-2">
@@ -816,11 +817,11 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
       <button
         type="button"
         onClick={openModal}
-        className="inline-flex min-w-[220px] items-center gap-3 rounded-2xl border px-3 py-2.5 transition hover:border-itson-blue/60 hover:shadow-[0_0_0_2px_rgba(0,109,182,0.15)]"
+        className="inline-flex min-w-[220px] items-center gap-3 r-card border px-3 py-2.5 transition hover:border-[var(--accent)]"
         style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}
       >
         <span
-          className="h-7 w-7 rounded-xl border"
+          className="h-7 w-7 r-btn border"
           style={{ borderColor: 'var(--border-subtle)', background: normalizeHex(value) }}
         />
         <span className="flex-1 text-left">
@@ -833,20 +834,19 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-[9998]" style={{ background: 'rgba(2, 6, 23, 0.2)' }}>
+        <div className="fixed inset-0 z-[9998]" style={{ background: 'rgba(0, 0, 0, 0.55)' }}>
           <div
-            className="fixed left-1/2 top-1/2 z-[9999] w-[min(720px,calc(100vw-2rem))] max-h-[580px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border"
+            className="fixed left-1/2 top-1/2 z-[9999] w-[min(720px,calc(100vw-2rem))] max-h-[580px] -translate-x-1/2 -translate-y-1/2 overflow-hidden border"
             style={{
-              border: '1px solid rgba(255, 255, 255, 0.10)',
-              borderRadius: '16px',
-              boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
-              background:
-                'radial-gradient(circle at top, rgba(0,109,182,0.15), transparent 42%), var(--bg-card)',
+              borderColor: 'var(--border)',
+              borderRadius: 'var(--radius-card, 0px)',
+              boxShadow: 'var(--shadow-card, none)',
+              background: 'var(--bg-card)',
             }}
           >
             <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)' }}>
               <div className="flex items-center gap-3">
-                <span className="rounded-2xl border p-1.5" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}>
+                <span className="r-card border p-1.5" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-secondary)' }}>
                   <Palette className="h-4 w-4" style={{ color: 'var(--accent)' }} />
                 </span>
                 <div>
@@ -862,7 +862,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="rounded-2xl border p-2.5 transition hover:border-itson-blue/60 hover:bg-white/5"
+                className="r-card border p-2.5 transition hover:border-[var(--accent)] row-hover"
                 style={{ borderColor: 'var(--border-normal)' }}
               >
                 <X className="h-5 w-5" style={{ color: 'var(--text-strong)' }} />
@@ -878,17 +878,19 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                       key={id}
                       type="button"
                       onClick={() => setActiveTab(id)}
-                      className="relative flex items-center gap-1.5 rounded-t-xl px-3 py-2 text-xs font-medium transition"
+                      className="relative flex items-center gap-1.5 r-btn px-3 py-2 text-xs font-medium transition"
                       style={{
                         color: active ? 'var(--accent)' : 'var(--text-muted)',
-                        background: active ? 'rgba(0,109,182,0.12)' : 'transparent',
+                        background: active
+                          ? 'color-mix(in srgb, var(--accent) 12%, transparent)'
+                          : 'transparent',
                       }}
                     >
                       <Icon className="h-4 w-4" />
                       {tabLabel}
                       {active ? (
                         <span
-                          className="absolute inset-x-2 bottom-0 h-0.5 rounded-full"
+                          className="absolute inset-x-2 bottom-0 h-0.5 r-badge"
                           style={{ background: 'var(--accent)' }}
                         />
                       ) : null}
@@ -901,11 +903,11 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
             <div className="max-h-[380px] overflow-y-auto p-4">
               {activeTab === 'selector' ? (
                 <div className="grid gap-3 lg:grid-cols-[1fr_300px]">
-                  <div className="space-y-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <div className="space-y-4 r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <div className="grid gap-3 lg:grid-cols-[1fr_32px]">
                       <div
                         ref={selectorWrapperRef}
-                        className="relative h-[260px] overflow-hidden rounded-2xl border"
+                        className="relative h-[260px] overflow-hidden r-card border"
                         style={{ borderColor: 'var(--border-normal)' }}
                         onMouseDown={(event) => {
                           selectionPointerRef.current = true;
@@ -914,7 +916,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                       >
                         <canvas ref={selectorCanvasRef} className="h-full w-full" />
                         <span
-                          className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_2px_rgba(15,23,42,0.9)]"
+                          className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 r-badge border-2 border-white shadow-[0_0_0_2px_rgba(15,23,42,0.9)]"
                           style={{
                             left: selectorPointer.left,
                             top: selectorPointer.top,
@@ -929,14 +931,14 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                           huePointerRef.current = true;
                           setHueFromPointer(event.clientY);
                         }}
-                        className="relative h-[260px] w-full rounded-2xl border"
+                        className="relative h-[260px] w-full r-card border"
                         style={{
                           borderColor: 'var(--border-normal)',
                           background: 'linear-gradient(180deg, #ff0033 0%, #ff00d6 16%, #4a00ff 33%, #008cff 50%, #00f5d4 66%, #84ff00 82%, #fffb00 92%, #ff4b00 100%)',
                         }}
                       >
                         <span
-                          className="pointer-events-none absolute left-1/2 h-3 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/20"
+                          className="pointer-events-none absolute left-1/2 h-3 w-9 -translate-x-1/2 -translate-y-1/2 r-badge border border-white/80 bg-white/20"
                           style={{ top: huePointerTop }}
                         />
                       </button>
@@ -947,7 +949,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                         <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                           HEX
                         </p>
-                        <div className="flex items-center rounded-2xl border px-3 py-2.5" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg)' }}>
+                        <div className="flex items-center r-card border px-3 py-2.5" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg)' }}>
                           <input
                             type="text"
                             value={hexInput}
@@ -965,7 +967,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                                 // Ignore clipboard failures.
                               }
                             }}
-                            className="rounded-xl p-1.5 transition hover:bg-white/10"
+                            className="r-btn p-1.5 transition row-hover"
                           >
                             <Copy className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
                           </button>
@@ -988,7 +990,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                                   next[index] = clamp(Number(event.target.value), 0, 255);
                                   setDraft((previous) => ({ ...rgbToHsv({ r: next[0], g: next[1], b: next[2] }), a: previous.a }));
                                 }}
-                                className="w-full rounded-xl border bg-transparent px-2 py-1.5 text-sm outline-none"
+                                className="w-full r-btn border bg-transparent px-2 py-1.5 text-sm outline-none"
                                 style={{ borderColor: 'var(--border-normal)', background: 'var(--bg)', color: 'var(--text-strong)' }}
                               />
                             </div>
@@ -1007,13 +1009,13 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                             key={recent}
                             type="button"
                             onClick={() => applyHexInput(recent)}
-                            className="h-10 w-10 rounded-full border transition hover:scale-105"
+                            className="h-10 w-10 r-badge border transition hover:scale-105"
                             style={{ background: recent, borderColor: recent === currentHex ? 'var(--accent)' : 'var(--border-normal)' }}
                           />
                         ))}
                         {recentColors.length < MAX_RECENT_COLORS ? (
                           <span
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-dashed"
+                            className="inline-flex h-10 w-10 items-center justify-center r-badge border border-dashed"
                             style={{ borderColor: 'var(--border-normal)', color: 'var(--text-muted)' }}
                           >
                             <Plus className="h-4 w-4" />
@@ -1024,25 +1026,25 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                    <div className="r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                       <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                         Vista previa
                       </p>
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Nuevo</p>
-                          <div className="h-24 rounded-2xl border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
+                          <div className="h-24 r-card border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
                           <p className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>{currentHex}</p>
                         </div>
                         <div className="space-y-2">
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Actual</p>
-                          <div className="h-24 rounded-2xl border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
+                          <div className="h-24 r-card border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
                           <p className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>{initialHexRef.current}</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                    <div className="r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                       <p className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>
                         Presets rápidos
                       </p>
@@ -1052,7 +1054,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                             key={preset}
                             type="button"
                             onClick={() => applyHexInput(preset)}
-                            className="h-10 rounded-xl border transition hover:scale-[1.03]"
+                            className="h-10 r-btn border transition hover:scale-[1.03]"
                             style={{
                               borderColor: preset === currentHex ? 'var(--accent)' : 'var(--border-normal)',
                               background: preset,
@@ -1067,7 +1069,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
 
               {activeTab === 'slider' ? (
                 <div className="grid gap-3 lg:grid-cols-[1fr_300px]">
-                  <div className="space-y-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <div className="space-y-4 r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <div className="flex items-center justify-between">
                       <p className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
                         Ajustar con deslizadores
@@ -1075,7 +1077,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                       <button
                         type="button"
                         onClick={() => setDraft(toHsvaFromHex(initialHexRef.current))}
-                        className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition hover:border-itson-blue/60"
+                        className="inline-flex items-center gap-2 r-btn border px-3 py-1.5 text-sm transition hover:border-[var(--accent)]"
                         style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
                       >
                         <RefreshCcw className="h-3.5 w-3.5" />
@@ -1134,7 +1136,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                             key={tone}
                             type="button"
                             onClick={() => applyHexInput(tone)}
-                            className="h-11 w-11 rounded-xl border transition hover:scale-[1.05]"
+                            className="h-11 w-11 r-btn border transition hover:scale-[1.05]"
                             style={{ background: tone, borderColor: tone === currentHex ? 'var(--accent)' : 'var(--border-normal)' }}
                           />
                         ))}
@@ -1143,21 +1145,21 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                    <div className="r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                       <p className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>Vista previa en vivo</p>
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div>
-                          <div className="h-20 rounded-xl border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
+                          <div className="h-20 r-btn border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
                           <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Nuevo color</p>
                         </div>
                         <div>
-                          <div className="h-20 rounded-xl border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
+                          <div className="h-20 r-btn border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
                           <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Color actual</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                    <div className="r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                       <p className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>Valores numéricos</p>
                       <div className="mt-3 space-y-2 text-sm" style={{ color: 'var(--text-muted)' }}>
                         <p>H: {Math.round(hsl.h)}°</p>
@@ -1172,7 +1174,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
 
               {activeTab === 'settings' ? (
                 <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
-                  <div className="space-y-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <div className="space-y-4 r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <h4 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
                       Ajustes del color
                     </h4>
@@ -1227,18 +1229,18 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                     </div>
                   </div>
 
-                  <div className="space-y-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <div className="space-y-4 r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <h4 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
                       Vista previa
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Nuevo color</p>
-                        <div className="mt-1 h-20 rounded-xl border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
+                        <div className="mt-1 h-20 r-btn border" style={{ borderColor: 'var(--border-normal)', background: currentHex }} />
                       </div>
                       <div>
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Color actual</p>
-                        <div className="mt-1 h-20 rounded-xl border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
+                        <div className="mt-1 h-20 r-btn border" style={{ borderColor: 'var(--border-normal)', background: initialHexRef.current }} />
                       </div>
                     </div>
 
@@ -1305,7 +1307,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
 
               {activeTab === 'palettes' ? (
                 <div className="grid gap-3 lg:grid-cols-[300px_1fr]">
-                  <aside className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <aside className="r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <div className="mb-3 flex items-center justify-between">
                       <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                         Mis paletas
@@ -1313,7 +1315,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                       <button
                         type="button"
                         onClick={handlePaletteCreate}
-                        className="rounded-xl border p-1.5 transition hover:border-itson-blue/60"
+                        className="r-btn border p-1.5 transition hover:border-[var(--accent)]"
                         style={{ borderColor: 'var(--border-normal)' }}
                       >
                         <Plus className="h-4 w-4" style={{ color: 'var(--accent)' }} />
@@ -1328,13 +1330,15 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                             key={palette.id}
                             type="button"
                             onClick={() => setSelectedPaletteId(palette.id)}
-                            className="w-full rounded-2xl border p-2 text-left transition hover:border-itson-blue/60"
+                            className="w-full r-card border p-2 text-left transition hover:border-[var(--accent)]"
                             style={{
                               borderColor: active ? 'var(--accent)' : 'var(--border-normal)',
-                              background: active ? 'rgba(0,109,182,0.14)' : 'transparent',
+                              background: active
+                                ? 'color-mix(in srgb, var(--accent) 14%, transparent)'
+                                : 'transparent',
                             }}
                           >
-                            <div className="mb-2 flex overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+                            <div className="mb-2 flex overflow-hidden r-btn border" style={{ borderColor: 'var(--border-subtle)' }}>
                               {palette.colors.slice(0, 6).map((swatch) => (
                                 <span key={`${palette.id}-${swatch}`} className="h-6 flex-1" style={{ background: swatch }} />
                               ))}
@@ -1349,7 +1353,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                     </div>
                   </aside>
 
-                  <section className="space-y-4 rounded-2xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                  <section className="space-y-4 r-card border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <h4 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
@@ -1364,7 +1368,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                         <button
                           type="button"
                           onClick={handlePaletteExport}
-                          className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition hover:border-itson-blue/60"
+                          className="inline-flex items-center gap-2 r-btn border px-3 py-1.5 text-sm transition hover:border-[var(--accent)]"
                           style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
                         >
                           <Copy className="h-4 w-4" />
@@ -1373,7 +1377,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                         <button
                           type="button"
                           onClick={handlePaletteDuplicate}
-                          className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition hover:border-itson-blue/60"
+                          className="inline-flex items-center gap-2 r-btn border px-3 py-1.5 text-sm transition hover:border-[var(--accent)]"
                           style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
                         >
                           <Sparkles className="h-4 w-4" />
@@ -1382,8 +1386,8 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                         <button
                           type="button"
                           onClick={handlePaletteDelete}
-                          className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition hover:border-red-500/60"
-                          style={{ borderColor: 'var(--border-normal)', color: '#f87171' }}
+                          className="inline-flex items-center gap-2 r-btn border px-3 py-1.5 text-sm transition hover:border-[var(--error-border)]"
+                          style={{ borderColor: 'var(--border-normal)', color: 'var(--error-text)' }}
                         >
                           <Trash2 className="h-4 w-4" />
                           Eliminar
@@ -1392,7 +1396,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <div className="flex flex-1 overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border-normal)' }}>
+                      <div className="flex flex-1 overflow-hidden r-card border" style={{ borderColor: 'var(--border-normal)' }}>
                         {(selectedPalette?.colors || []).map((swatch) => (
                           <button
                             key={`${selectedPalette?.id}-${swatch}`}
@@ -1419,14 +1423,14 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                           );
                           persistPalettes(updated);
                         }}
-                        className="h-24 w-16 rounded-2xl border border-dashed transition hover:border-itson-blue/60"
+                        className="h-24 w-16 r-card border border-dashed transition hover:border-[var(--accent)]"
                         style={{ borderColor: 'var(--border-normal)', color: 'var(--text-muted)' }}
                       >
                         <Plus className="mx-auto h-5 w-5" />
                       </button>
                     </div>
 
-                    <div className="grid gap-3 rounded-2xl border p-3 md:grid-cols-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg)' }}>
+                    <div className="grid gap-3 r-card border p-3 md:grid-cols-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg)' }}>
                       <div>
                         <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Colores recientes</p>
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1435,7 +1439,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                               key={`recent-${recent}`}
                               type="button"
                               onClick={() => applyHexInput(recent)}
-                              className="h-10 w-10 rounded-xl border transition hover:scale-[1.05]"
+                              className="h-10 w-10 r-btn border transition hover:scale-[1.05]"
                               style={{ background: recent, borderColor: 'var(--border-normal)' }}
                             />
                           ))}
@@ -1456,7 +1460,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                                   return [...previous, palette];
                                 });
                               }}
-                              className="overflow-hidden rounded-xl border transition hover:border-itson-blue/60"
+                              className="overflow-hidden r-btn border transition hover:border-[var(--accent)]"
                               style={{ borderColor: 'var(--border-normal)' }}
                             >
                               <span className="flex h-10 w-[120px]">
@@ -1482,7 +1486,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="rounded-2xl border px-5 py-2.5 text-sm font-medium transition hover:border-itson-blue/60"
+                  className="r-card border px-5 py-2.5 text-sm font-medium transition hover:border-[var(--accent)]"
                   style={{ borderColor: 'var(--border-normal)', color: 'var(--text-normal)' }}
                 >
                   Cancelar
@@ -1490,7 +1494,7 @@ function ColorPicker({ label = 'Color', value = '#006DB6', onChange }) {
                 <button
                   type="button"
                   onClick={handleAccept}
-                  className="rounded-2xl px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="r-card px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
                   style={{ background: 'var(--accent)' }}
                 >
                   Aceptar

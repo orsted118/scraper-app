@@ -4,6 +4,7 @@ const electron = require('electron');
 const app = electron?.app;
 const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
+const notificationCenter = require('./notification-center');
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const IVIRTUAL_LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
@@ -2650,12 +2651,14 @@ async function getHorarioWithCache() {
     const result = await Promise.race([scrapePromise, timeoutPromise]);
 
     if (result?.error) {
+      notificationCenter.processSyncError('horario', result.error);
       return result;
     }
 
     const cachedPayload = writeHorarioCache(result);
     const cachedWithManualLinks = applyManualLinks(cachedPayload);
     updateCachedHorarioMaterias(cachedWithManualLinks);
+    notificationCenter.processSync('horario', cachedWithManualLinks.materias);
 
     return {
       ...cachedWithManualLinks,

@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
-import { NOTE_COLORS } from '../utils/noteColors';
+import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
 
 
 

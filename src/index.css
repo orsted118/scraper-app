@@ -2,7 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/inter-var.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/inter-tight-var.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('./assets/fonts/jetbrains-mono-var.woff2') format('woff2');
+}
+
 :root {
+  /* Tokens structural del sistema de diseño: invariantes entre temas.
+     Los temas solo cambian color — la estructura es una sola. */
+  --font-display: 'Inter Tight', 'Helvetica Neue', Inter, sans-serif;
+  --font-body: Inter, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', Consolas, monospace;
+  --radius-card: 0px;
+  --radius-button: 0px;
+  --radius-badge: 0px;
+  --shadow-card: none;
+  --border-width-card: 1px;
+
   color-scheme: dark;
   --bg: #020617;
   --bg-card: rgba(2, 6, 23, 0.6);
@@ -40,7 +75,7 @@
 
 body {
   margin: 0;
-  font-family: Inter, 'Segoe UI', sans-serif;
+  font-family: var(--font-body, Inter, 'Segoe UI', sans-serif);
   background:
     radial-gradient(circle at top left, var(--gradient-from), transparent 32%),
     radial-gradient(circle at top right, var(--gradient-to), transparent 24%),
@@ -57,10 +92,145 @@ input,
 select,
 a {
   transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease,
-    color 0.2s ease,
-    opacity 0.2s ease;
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease,
+    opacity 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  border-radius: var(--radius-button, 0px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-outline {
+  border: 1px solid var(--border-normal);
+  background: transparent;
+  color: var(--text-normal);
+  border-radius: var(--radius-button, 0px);
+}
+
+.btn-outline:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.field {
+  border: 1px solid var(--border-normal);
+  background: var(--bg-secondary);
+  color: var(--text-strong);
+  border-radius: var(--radius-button, 0px);
+  outline: none;
+}
+
+.field:focus,
+.field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Foco de teclado visible en controles sin estilo propio. Los .field ya resuelven
+   el suyo arriba con border + ring, así que quedan fuera para no duplicar anillo. */
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.link-accent {
+  color: var(--accent);
+}
+
+/* Radius por semántica del sistema — para componentes que migran de
+   Tailwind rounded-* sin reescribir su markup. */
+.r-card {
+  border-radius: var(--radius-card, 0px);
+}
+
+.r-btn {
+  border-radius: var(--radius-button, 0px);
+}
+
+.r-badge {
+  border-radius: var(--radius-badge, 0px);
+}
+
+/* Placeholder del editor rich text (contentEditable no soporta ::placeholder). */
+.note-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Volume slider del reproductor: track hairline 1px + thumb cuadrado accent.
+   Nada de pill decorativo — sigue el lenguaje del sistema. */
+.music-volume-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.music-volume-slider::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--border-normal);
+}
+
+.music-volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 8px;
+  height: 8px;
+  margin-top: -3.5px;
+  background: var(--accent);
+  border-radius: var(--radius-badge, 0px);
+}
+
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+  }
+
+  .btn-outline:hover:not(:disabled) {
+    border-color: var(--text-strong);
+    color: var(--text-strong);
+    transform: translateY(-1px);
+  }
+
+  .field:hover:not(:focus):not(:focus-within) {
+    border-color: var(--text-muted);
+  }
+
+  .link-accent:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .row-hover:hover {
+    background: color-mix(in srgb, var(--text-strong) 4%, transparent);
+  }
+
+  .tab-hover:hover {
+    color: var(--text-strong) !important;
+  }
+
+  .hov-accent:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent) !important;
+    color: var(--accent) !important;
+  }
+
+  .btn-outline-accent:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
 }
 
 .line-clamp-3 {
@@ -68,26 +238,6 @@ a {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-}
-
-.view-container {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.view-container.exiting {
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.compact-row-details {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.18s ease;
-}
-
-.compact-row-details.expanded {
-  max-height: 200px;
 }
 
 .sync-all-btn {
@@ -104,7 +254,7 @@ a {
   border: 0;
   box-shadow: color-mix(in srgb, var(--accent) 45%, black) 0 5px 0 0;
   background-color: var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-button, 0px);
   overflow: hidden;
   cursor: pointer;
   transition: 31ms cubic-bezier(.5, .7, .4, 1);

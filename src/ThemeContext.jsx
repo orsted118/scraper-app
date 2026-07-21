@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { THEMES, DEFAULT_THEME } from './themes';
+import { THEMES, DEFAULT_THEME, pickOnAccent } from './themes';
 
 const ThemeContext = createContext(null);
 
@@ -43,6 +43,7 @@ export function ThemeProvider({ children }) {
     root.style.setProperty('--accent', theme.accent);
     root.style.setProperty('--accent-hover', theme.accentHover);
     root.style.setProperty('--accent-dark', theme.accentDark);
+    root.style.setProperty('--on-accent', theme.onAccent || pickOnAccent(theme.accent));
     root.style.setProperty('--text', theme.text);
     root.style.setProperty('--text-muted', theme.textMuted);
     root.style.setProperty('--bg-secondary', theme.bgSecondary);
@@ -68,6 +69,9 @@ export function ThemeProvider({ children }) {
     root.style.setProperty('--error-bg', theme.errorBg);
     root.style.setProperty('--error-border', theme.errorBorder);
     root.style.setProperty('--error-text', theme.errorText);
+    // Los tokens structural (--font-*, --radius-*, --shadow-card,
+    // --border-width-card) viven en el :root de index.css: son invariantes
+    // del sistema, los temas solo cambian color.
 
     try {
       localStorage.setItem('scraperapp-theme', themeId);

@@ -71,10 +71,13 @@ function Musica() {
       return;
     }
 
-    const folderPath = await api.music.pickFolder();
-    if (!folderPath) return;
-
-    await runScan(folderPath);
+    try {
+      const folderPath = await api.music.pickFolder();
+      if (!folderPath) return;
+      await runScan(folderPath);
+    } catch (_error) {
+      setScanError('Error al seleccionar carpeta.');
+    }
   };
 
   const handleRefresh = async () => {

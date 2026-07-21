@@ -444,48 +444,60 @@ function Notas({ deepLink } = {}) {
         reminder: draft.reminder,
       };
 
-      if (draft.__isNew) {
-        if (createdIdRef.current) {
-          await api.notes.update(createdIdRef.current, patchFields);
+      try {
+        if (draft.__isNew) {
+          if (createdIdRef.current) {
+            await api.notes.update(createdIdRef.current, patchFields);
+          } else {
+            if (isEmpty) return;
+            const { __isNew, ...payload } = draft;
+            const created = await api.notes.create(payload);
+            createdIdRef.current = created?.id || null;
+          }
         } else {
-          if (isEmpty) return;
-          const { __isNew, ...payload } = draft;
-          const created = await api.notes.create(payload);
-          createdIdRef.current = created?.id || null;
+          await api.notes.update(draft.id, patchFields);
         }
-      } else {
-        await api.notes.update(draft.id, patchFields);
+        await refresh();
+      } catch (_error) {
+        showToast('Error al guardar nota');
       }
-      await refresh();
     },
-    [api, refresh],
+    [api, refresh, showToast],
   );
 
   const handleAction = useCallback(
     async (action, note) => {
       if (!api?.notes) return;
 
-      if (action === 'togglePin') await api.notes.update(note.id, { pinned: !note.pinned });
-      if (action === 'archive') await api.notes.archive(note.id);
-      if (action === 'unarchive') await api.notes.unarchive(note.id);
-      if (action === 'trash') await api.notes.trash(note.id);
-      if (action === 'restore') await api.notes.restore(note.id);
-      if (action === 'permanentDelete') await api.notes.permanentDelete(note.id);
-      if (action === 'duplicate') {
-        await api.notes.duplicate(note.id);
-        showToast('Nota duplicada');
+      try {
+        if (action === 'togglePin') await api.notes.update(note.id, { pinned: !note.pinned });
+        if (action === 'archive') await api.notes.archive(note.id);
+        if (action === 'unarchive') await api.notes.unarchive(note.id);
+        if (action === 'trash') await api.notes.trash(note.id);
+        if (action === 'restore') await api.notes.restore(note.id);
+        if (action === 'permanentDelete') await api.notes.permanentDelete(note.id);
+        if (action === 'duplicate') {
+          await api.notes.duplicate(note.id);
+          showToast('Nota duplicada');
+        }
+        await refresh();
+      } catch (_error) {
+        showToast('Error al realizar acción');
       }
-      await refresh();
     },
     [api, refresh, showToast],
   );
 
   const handleRemoveLabel = useCallback(
     async (note, label) => {
-      await api?.notes?.update(note.id, { labels: note.labels.filter((l) => l !== label) });
-      await refresh();
+      try {
+        await api?.notes?.update(note.id, { labels: note.labels.filter((l) => l !== label) });
+        await refresh();
+      } catch (_error) {
+        showToast('Error al quitar etiqueta');
+      }
     },
-    [api, refresh],
+    [api, refresh, showToast],
   );
 
   const handleExport = useCallback(
@@ -552,8 +564,12 @@ function Notas({ deepLink } = {}) {
   );
 
   const handleEmptyTrash = async () => {
-    await api?.notes?.emptyTrash?.();
-    await refresh();
+    try {
+      await api?.notes?.emptyTrash?.();
+      await refresh();
+    } catch (_error) {
+      showToast('Error al vaciar papelera');
+    }
   };
 
   const handleCreateLabel = useCallback(
@@ -576,19 +592,30 @@ function Notas({ deepLink } = {}) {
 
   const submitRename = async () => {
     const to = renameValue.trim();
-    if (to && to !== renamingLabel) {
-      await api?.notes?.labelsRename?.(renamingLabel, to);
+    try {
+      if (to && to !== renamingLabel) {
+        await api?.notes?.labelsRename?.(renamingLabel, to);
+      }
+      setRenamingLabel(null);
+      setRenameValue('');
+      await refresh();
+    } catch (_error) {
+      setRenamingLabel(null);
+      setRenameValue('');
+      showToast('Error al renombrar etiqueta');
     }
-    setRenamingLabel(null);
-    setRenameValue('');
-    await refresh();
   };
 
   const confirmDeleteLabel = async () => {
-    await api?.notes?.labelsDelete?.(deletingLabel);
-    if (labelFilters.includes(deletingLabel)) setLabelFilters((prev) => prev.filter((l) => l !== deletingLabel));
-    setDeletingLabel(null);
-    await refresh();
+    try {
+      await api?.notes?.labelsDelete?.(deletingLabel);
+      if (labelFilters.includes(deletingLabel)) setLabelFilters((prev) => prev.filter((l) => l !== deletingLabel));
+      setDeletingLabel(null);
+      await refresh();
+    } catch (_error) {
+      setDeletingLabel(null);
+      showToast('Error al eliminar etiqueta');
+    }
   };
 
   const handleQuickNoteSubmit = async () => {
@@ -596,19 +623,27 @@ function Notas({ deepLink } = {}) {
     const payload = quickNote.type === 'checklist'
       ? { type: 'checklist', color: quickNote.color, pinned: quickNote.pinned, items: quickNote.text.split('\n').filter(Boolean).map((t) => ({ text: t, done: false })) }
       : { type: 'text', color: quickNote.color, pinned: quickNote.pinned, body: quickNote.text };
-    await api?.notes?.create(payload);
-    setQuickNote({ text: '', type: 'text', color: 'neutral', pinned: false });
-    await refresh();
+    try {
+      await api?.notes?.create(payload);
+      setQuickNote({ text: '', type: 'text', color: 'neutral', pinned: false });
+      await refresh();
+    } catch (_error) {
+      showToast('Error al crear nota rápida');
+    }
   };
 
   // Bulk operations sobre la selección.
   const runBulk = async (action, payload) => {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
-    await api?.notes?.bulkAction?.(ids, action, payload);
-    clearSelection();
-    setOpenMenu(null);
-    await refresh();
+    try {
+      await api?.notes?.bulkAction?.(ids, action, payload);
+      clearSelection();
+      setOpenMenu(null);
+      await refresh();
+    } catch (_error) {
+      showToast('Error en acción masiva');
+    }
   };
 
   const closeEditor = () => setEditing(null);

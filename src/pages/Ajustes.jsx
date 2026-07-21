@@ -644,6 +644,7 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
       await api?.notifications?.setSettings?.({ [key]: next });
     } catch (_error) {
       setter(current);
+      showSyncFeedback('error', 'No se pudo cambiar la configuración.');
     }
   };
 

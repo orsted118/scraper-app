@@ -462,6 +462,40 @@ function Notificaciones({ onNavigate }) {
     );
   };
 
+  // error→loading→empty→data: sin este early return la bandeja flashea
+  // "Sin notificaciones" mientras el IPC todavía no respondió.
+  if (!loaded) {
+    return (
+      <div className="space-y-6">
+        <div
+          className="animate-pulse border p-6"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-card)',
+            borderRadius: 'var(--radius-card, 0px)',
+          }}
+        >
+          <div className="h-3 w-36 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+          <div className="mt-4 h-7 w-3/5 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+        </div>
+        <div className="space-y-0">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="animate-pulse border-l py-4 pl-4"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              <div className="flex items-center gap-4">
+                <div className="h-3 w-24 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+                <div className="h-4 w-1/2 rounded" style={{ background: 'var(--bg-tertiary)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (loaded && items.length === 0) {
     return (
       <div className="space-y-6">

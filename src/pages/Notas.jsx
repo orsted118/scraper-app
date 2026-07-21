@@ -385,7 +385,7 @@ function Notas({ deepLink } = {}) {
     // deepLink es un objeto nuevo por navegación (incluye ts).
   }, [deepLink]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleFlat = useMemo(() => notes, [notes]);
+  const visibleFlat = notes;
 
   const handleCardClick = (event, note) => {
     const index = visibleFlat.findIndex((n) => n.id === note.id);

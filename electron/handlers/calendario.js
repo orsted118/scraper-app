@@ -27,21 +27,6 @@ const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 
-const SPANISH_MONTHS = {
-  enero: 0,
-  febrero: 1,
-  marzo: 2,
-  abril: 3,
-  mayo: 4,
-  junio: 5,
-  julio: 6,
-  agosto: 7,
-  septiembre: 8,
-  setiembre: 8,
-  octubre: 9,
-  noviembre: 10,
-  diciembre: 11,
-};
 
 function getUserDataPath() {
   if (app && typeof app.getPath === 'function') {
@@ -273,19 +258,6 @@ function parseDDMMYYYY(str) {
   return date.toISOString();
 }
 
-function parseModalDate(str) {
-  if (!str) return null;
-  const match = String(str).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
-  if (!match) return null;
-
-  return new Date(
-    Number(match[3]),
-    Number(match[1]) - 1,
-    Number(match[2]),
-    Number(match[4]),
-    Number(match[5]),
-  ).toISOString();
-}
 
 function parseICS(content) {
   const events = [];
@@ -315,44 +287,6 @@ function parseICS(content) {
   return events.sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
 }
 
-function parseDateText(text) {
-  const normalized = String(text || '').trim();
-
-  if (!normalized) {
-    return null;
-  }
-
-  const nativeDate = new Date(normalized);
-  if (!Number.isNaN(nativeDate.getTime())) {
-    return nativeDate.toISOString();
-  }
-
-  const spanishMatch = normalized
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .match(/\b(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})\b/);
-
-  if (spanishMatch) {
-    const day = Number(spanishMatch[1]);
-    const month = SPANISH_MONTHS[spanishMatch[2]];
-    const year = Number(spanishMatch[3]);
-
-    if (Number.isFinite(day) && Number.isInteger(month) && Number.isFinite(year)) {
-      return new Date(year, month, day).toISOString();
-    }
-  }
-
-  const numericMatch = normalized.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
-  if (numericMatch) {
-    const day = Number(numericMatch[1]);
-    const month = Number(numericMatch[2]) - 1;
-    const year = Number(numericMatch[3].length === 2 ? `20${numericMatch[3]}` : numericMatch[3]);
-    return new Date(year, month, day).toISOString();
-  }
-
-  return null;
-}
 
 function normalizeEvent(event) {
   return {
@@ -763,10 +697,8 @@ async function run(options = {}) {
 module.exports = {
   clearCache,
   getCalendarioCachePath,
-  parseDateText,
   parseDDMMYYYY,
   parseICS,
   parseICSDate,
-  parseModalDate,
   run,
 };

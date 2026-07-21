@@ -5,6 +5,7 @@ const app = electron?.app;
 const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
 const notificationCenter = require('./notification-center');
+const { isTimeoutError, withTimeout } = require('../utils/withTimeout');
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const IVIRTUAL_LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
@@ -69,15 +70,6 @@ function normalizeForCompare(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-}
-
-function isTimeoutError(error) {
-  return Boolean(
-    error &&
-      (error.name === 'TimeoutError' ||
-        /timeout/i.test(error.message || '') ||
-        /timed out/i.test(error.message || '')),
-  );
 }
 
 function isNetworkError(error) {
@@ -2370,25 +2362,6 @@ async function findLinkForOnlineCourse(context, dashboardPage, materia, cachedCo
   } finally {
     await page.close().catch(() => {});
   }
-}
-
-async function withTimeout(taskFactory, timeoutMs) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), timeoutMs);
-
-    Promise.resolve()
-      .then(taskFactory)
-      .then(
-        (result) => {
-          clearTimeout(timer);
-          resolve(result || null);
-        },
-        () => {
-          clearTimeout(timer);
-          resolve(null);
-        },
-      );
-  });
 }
 
 async function enrichMeetLinks(materias, ivirtualUser, ivirtualPass) {

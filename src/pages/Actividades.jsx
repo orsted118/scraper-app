@@ -17,8 +17,9 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import ActivityCard from '../components/ActivityCard';
+import { formatLastSync } from '../utils/formatLastSync';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 
 const tabs = [
   { id: 'pendiente', label: 'Pendientes' },
@@ -45,34 +46,6 @@ const STATUS_ORDER = {
   cerrada: 2,
 };
 
-function formatLastSync(lastSyncAt) {
-  if (!lastSyncAt) {
-    return 'Última sync: aún no disponible.';
-  }
-
-  const syncDate = new Date(lastSyncAt);
-  const now = new Date();
-  const diffMs = Math.max(0, now.getTime() - syncDate.getTime());
-  const diffMinutes = Math.floor(diffMs / 60000);
-
-  if (diffMinutes < 60) {
-    return `Última sync: hace ${Math.max(1, diffMinutes)} minuto${diffMinutes === 1 ? '' : 's'}`;
-  }
-
-  const isToday = syncDate.toDateString() === now.toDateString();
-
-  if (isToday) {
-    return `Última sync: hoy ${new Intl.DateTimeFormat('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(syncDate)}`;
-  }
-
-  return `Última sync: ${new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(syncDate)}`;
-}
 
 function parseSort(fechaLimite) {
   if (!fechaLimite || fechaLimite === 'Sin fecha visible') {

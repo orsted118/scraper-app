@@ -3,8 +3,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import BottomPlayerBar from '../components/BottomPlayerBar';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 
 function formatDuration(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) return '—:——';

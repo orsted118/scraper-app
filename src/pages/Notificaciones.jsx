@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
+import { EASE } from '../utils/motion';
 
-const EASE = [0.23, 1, 0.32, 1];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SOURCE_META = {

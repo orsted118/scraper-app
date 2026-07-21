@@ -3,6 +3,8 @@ const path = require('path');
 const { app, ipcMain, session } = require('electron');
 const { chromium } = require('playwright');
 const notificationCenter = require('./notification-center');
+const { SPANISH_MONTHS, parseDueDate } = require('../utils/dateParser');
+const { isTimeoutError, withTimeout } = require('../utils/withTimeout');
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
@@ -48,18 +50,18 @@ async function processInChunks(items, chunkSize, asyncFn) {
   return results;
 }
 
-function isTimeoutError(error) {
-  return Boolean(
-    error &&
-      (error.name === 'TimeoutError' ||
-        /timeout/i.test(error.message || '') ||
-        /timed out/i.test(error.message || '')),
-  );
-}
-
 function isNetworkError(error) {
+  const message = error?.message || '';
+
+  // ERR_ABORTED lo produce nuestro propio resource blocking — no es "sin
+  // internet" y clasificarlo así puede borrar caché válida (mismo carve-out
+  // que horario.js/calendario.js).
+  if (/ERR_ABORTED/i.test(message)) {
+    return false;
+  }
+
   return /net::|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_TIMED_OUT/i.test(
-    error?.message || '',
+    message,
   );
 }
 
@@ -121,62 +123,6 @@ async function createDetailPages(context, count) {
 
 async function closePages(pages = []) {
   await Promise.all(pages.map((page) => page.close().catch(() => {})));
-}
-
-function withTimeout(taskFactory, timeoutMs, onTimeout) {
-  return new Promise((resolve) => {
-    let settled = false;
-
-    const finish = (value) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-
-    const timer = setTimeout(async () => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-
-      if (onTimeout) {
-        await onTimeout().catch(() => {});
-      }
-
-      resolve(null);
-    }, timeoutMs);
-
-    Promise.resolve()
-      .then(taskFactory)
-      .then(
-        (result) => finish(result),
-        async (error) => {
-          if (settled) {
-            return;
-          }
-
-          settled = true;
-          clearTimeout(timer);
-
-          if (isTimeoutError(error)) {
-            if (onTimeout) {
-              await onTimeout().catch(() => {});
-            }
-
-            resolve(null);
-            return;
-          }
-
-          console.error('[withTimeout] Assignment detail error:', error?.message || error);
-          resolve(null);
-        },
-      );
-  });
 }
 
 function getActivitiesCachePath() {
@@ -250,28 +196,6 @@ function buildScrapeError(message) {
   return { error: message };
 }
 
-const SPANISH_MONTHS = {
-  enero: 'January', febrero: 'February', marzo: 'March',
-  abril: 'April', mayo: 'May', junio: 'June',
-  julio: 'July', agosto: 'August', septiembre: 'September',
-  octubre: 'October', noviembre: 'November', diciembre: 'December',
-};
-
-function parseDueDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  let normalized = value.replace(/\s+/g, ' ').trim();
-
-  for (const [es, en] of Object.entries(SPANISH_MONTHS)) {
-    normalized = normalized.replace(new RegExp(es, 'gi'), en);
-  }
-
-  const parsed = Date.parse(normalized);
-  return Number.isNaN(parsed) ? null : new Date(parsed);
-}
-
 function classifyAssignment({ dueDate, submission, submissionState }) {
   const lowerSubmission = normalizeWhitespace(submission).toLowerCase();
   const detailText = normalizeWhitespace(submissionState?.statusSummary || submissionState?.bodyText || '').toLowerCase();
@@ -298,7 +222,7 @@ function classifyAssignment({ dueDate, submission, submissionState }) {
 
   const parsedDueDate = parseDueDate(dueDate);
 
-  if (parsedDueDate && parsedDueDate.getTime() < Date.now()) {
+  if (parsedDueDate !== null && parsedDueDate < Date.now()) {
     return 'retrasada';
   }
 

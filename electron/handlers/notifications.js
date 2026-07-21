@@ -1,14 +1,8 @@
+const { SPANISH_MONTHS, parseDueDate } = require('../utils/dateParser');
 // Toasts NATIVOS del OS (avisos efímeros de urgencias y clases próximas).
 // NO confundir con notification-center.js, que es el motor de la bandeja
 // in-app — la coexistencia de ambos es intencional.
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const SPANISH_MONTHS = {
-  enero: 'January', febrero: 'February', marzo: 'March',
-  abril: 'April', mayo: 'May', junio: 'June',
-  julio: 'July', agosto: 'August', septiembre: 'September',
-  octubre: 'October', noviembre: 'November', diciembre: 'December',
-};
 
 const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -77,21 +71,6 @@ function getSessionsForToday(materias, now = new Date()) {
   });
 
   return todaySessions;
-}
-
-function parseDueDate(value) {
-  if (!value || typeof value !== 'string') {
-    return null;
-  }
-
-  let normalized = value.replace(/\s+/g, ' ').trim();
-
-  for (const [es, en] of Object.entries(SPANISH_MONTHS)) {
-    normalized = normalized.replace(new RegExp(es, 'gi'), en);
-  }
-
-  const parsed = Date.parse(normalized);
-  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function summarizeUrgentActivities(activities, now = Date.now()) {

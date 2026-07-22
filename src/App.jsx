@@ -10,6 +10,7 @@ import Notificaciones from './pages/Notificaciones';
 import Musica from './pages/Musica';
 import Notas from './pages/Notas';
 import Ajustes from './pages/Ajustes';
+import useAutoSync from './hooks/useAutoSync';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
 const pageRegistry = {
@@ -702,6 +703,15 @@ function App() {
     }
   };
 
+  const hasIVirtualCredentials =
+    Boolean(settingsData?.user?.trim()) && Boolean(settingsData?.hasPassword);
+
+  const { refresh: refreshAutoSyncSettings } = useAutoSync({
+    syncStatus: syncState.status,
+    hasCredentials: hasIVirtualCredentials,
+    onTrigger: handleSyncAll,
+  });
+
   useEffect(() => {
     refreshSettings();
   }, [api]);
@@ -868,6 +878,7 @@ function App() {
               loadingHorario={loadingHorario}
               loading={loading}
               onSettingsSaved={refreshSettings}
+              onAutoSyncChanged={refreshAutoSyncSettings}
               onSync={activePage === 'calendario' ? loadCalendar : handleSyncActivities}
               onSyncHorario={loadHorario}
               onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}

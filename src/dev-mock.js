@@ -206,7 +206,39 @@ function calEvent(titulo, inicio, fin, categoria, extra = {}) {
   return { titulo, inicio, fin: fin || undefined, categoria, ...extra };
 }
 
+// Los eventos del calendario se guardan sin zona horaria ('...T00:00:00') porque
+// la UI trata la medianoche local como "evento de día completo".
+function calStamp(date, hour = 0, minute = 0) {
+  const copy = new Date(date);
+  copy.setHours(hour, minute, 0, 0);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${copy.getFullYear()}-${pad(copy.getMonth() + 1)}-${pad(copy.getDate())}T${pad(hour)}:${pad(minute)}:00`;
+}
+
+const offsetDay = (offset) => new Date(Date.now() + offset * DAY_MS);
+const dayOfThisMonth = (day) => {
+  const date = new Date();
+  date.setDate(day);
+  return date;
+};
+
+// Fijos relativos a hoy: el set del semestre de abajo tiene fechas duras de 2026
+// y deja el mes en curso vacío, que es justo el que abre la vista Grid.
+const MOCK_CALENDAR_RELATIVE = [
+  calEvent('Asesoría de titulación', calStamp(dayOfThisMonth(5), 11, 0), null, 'Académico', {
+    descripcion: 'Sesión con el asesor asignado. Llevar avance del capítulo 3.',
+    ubicacion: 'Cubículo 12, edificio de Ingeniería',
+  }),
+  calEvent('Entrega de reporte de residencia', calStamp(dayOfThisMonth(18), 23, 59), null, 'Avisos'),
+  calEvent('Semana de evaluación docente', calStamp(offsetDay(-2)), calStamp(offsetDay(6)), 'Académico', {
+    descripcion: 'Rango que cruza semanas: caso de prueba de la barra multi-día del grid.',
+  }),
+  calEvent('Cierre del ciclo escolar 2027-1', calStamp(offsetDay(240)), null, 'Académico'),
+  calEvent('Reunión informativa de intercambio', calStamp(offsetDay(-45), 17, 0), null, 'General'),
+];
+
 const MOCK_CALENDAR_EVENTS = [
+  ...MOCK_CALENDAR_RELATIVE,
   calEvent('Exámenes finales de primavera', '2026-05-25T00:00:00', '2026-06-05T00:00:00', 'Examen'),
   calEvent('Entrega de calificaciones finales', '2026-06-12T00:00:00', null, 'Académico'),
   calEvent('Vacaciones de verano', '2026-06-29T00:00:00', '2026-07-08T00:00:00', 'Vacaciones'),

@@ -14,11 +14,19 @@ const NOTICES_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const STARTUP_DELAY_MS = 20 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const DEFAULT_AUTO_SYNC = {
+  enabled: true,
+  intervalMinutes: 15,
+};
+
+const AUTO_SYNC_INTERVALS = [15, 30, 60];
+
 const DEFAULT_SETTINGS = {
   noticesEnabled: true,
   remindersEnabled: true,
   // null = nunca hubo un sync exitoso: la UI muestra onboarding en vez de "Al día".
   lastSyncAt: null,
+  autoSync: DEFAULT_AUTO_SYNC,
 };
 
 const SOURCE_LABELS = {
@@ -133,6 +141,41 @@ function setSettings(patch = {}) {
 // lastSyncAt lo escriben únicamente los syncs exitosos.
 function touchLastSync() {
   writeJson(getSettingsPath(), { ...getSettings(), lastSyncAt: new Date().toISOString() });
+}
+
+// El spread de DEFAULT_SETTINGS solo cubre la ausencia total de la clave: un
+// autoSync parcial en disco necesita backfill campo por campo.
+function getAutoSyncSettings() {
+  const stored = getSettings();
+  const autoSync = stored.autoSync && typeof stored.autoSync === 'object' ? stored.autoSync : {};
+  const intervalMinutes = Number(autoSync.intervalMinutes);
+
+  return {
+    enabled: typeof autoSync.enabled === 'boolean' ? autoSync.enabled : DEFAULT_AUTO_SYNC.enabled,
+    intervalMinutes: AUTO_SYNC_INTERVALS.includes(intervalMinutes)
+      ? intervalMinutes
+      : DEFAULT_AUTO_SYNC.intervalMinutes,
+    lastSyncAt: stored.lastSyncAt || null,
+  };
+}
+
+function setAutoSyncSettings(patch = {}) {
+  const current = getAutoSyncSettings();
+  const next = { enabled: current.enabled, intervalMinutes: current.intervalMinutes };
+
+  if (typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled;
+  }
+
+  const intervalMinutes = Number(patch.intervalMinutes);
+
+  if (AUTO_SYNC_INTERVALS.includes(intervalMinutes)) {
+    next.intervalMinutes = intervalMinutes;
+  }
+
+  writeJson(getSettingsPath(), { ...getSettings(), autoSync: next });
+
+  return { ...next, lastSyncAt: current.lastSyncAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -799,7 +842,9 @@ module.exports = {
   checkReminders,
   emit,
   emitSyncAllSummary,
+  getAutoSyncSettings,
   getSettings,
+  setAutoSyncSettings,
   processSync,
   processSyncError,
   registerNotificationCenter,

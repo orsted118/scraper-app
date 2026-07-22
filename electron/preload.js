@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('scraperApp', {
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
   testConnection: (payload) => ipcRenderer.invoke('settings:test-connection', payload),
   clearCredentials: () => ipcRenderer.invoke('settings:clear-credentials'),
+  getAutoSyncSettings: () => ipcRenderer.invoke('settings:get-auto-sync'),
+  setAutoSyncSettings: (payload) => ipcRenderer.invoke('settings:set-auto-sync', payload),
+  onPowerResume: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('power:resume', listener);
+    return () => ipcRenderer.removeListener('power:resume', listener);
+  },
   checkNotifications: (activities) => ipcRenderer.invoke('notifications:check', activities),
   onProgress: (callback) => {
       ipcRenderer.removeAllListeners('scraper:progress');

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -57,6 +57,18 @@ function createMainWindow() {
   }
 
   mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+}
+
+// El renderer decide si sincroniza: main solo avisa que la máquina despertó.
+function registerPowerMonitor() {
+  const broadcastResume = (reason) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('power:resume', { reason });
+    }
+  };
+
+  powerMonitor.on('resume', () => broadcastResume('resume'));
+  powerMonitor.on('unlock-screen', () => broadcastResume('unlock-screen'));
 }
 
 app.whenReady().then(() => {
@@ -134,6 +146,7 @@ app.whenReady().then(() => {
           : { error: calendario.reason?.message },
     };
   });
+  registerPowerMonitor();
   createMainWindow();
 
   app.on('activate', () => {

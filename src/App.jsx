@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { EASE } from './utils/motion';
 import Sidebar from './components/Sidebar';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
@@ -59,6 +61,7 @@ const ACTIVITIES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function App() {
+  const reduced = useReducedMotion();
   const [activePage, setActivePage] = useState('activities');
   // Deep-link a una nota puntual (desde app://notas?note={id} de un recordatorio).
   const [notasDeepLink, setNotasDeepLink] = useState(null);
@@ -849,33 +852,45 @@ function App() {
             <Onboarding onNavigate={handleNavigate} />
           </main>
         ) : (
-          <TaskPanel title={pageConfig.title} description={pageConfig.description}>
-            <ActivePage
-              activities={activities}
-              calendarData={calendarData}
-              calificaciones={calificaciones}
-              horario={horario}
-              errorCIA={errorCIA}
-              errorCIACode={errorCIACode}
-              errorCode={errorCode}
-              error={error}
-              errorHorario={errorHorario}
-              lastSyncCIA={lastSyncCIA}
-              lastSyncAt={lastSyncAt}
-              lastSyncHorario={lastSyncHorario}
-              isSyncing={isCalendarSyncing}
-              loadingCIA={loadingCIA}
-              loadingHorario={loadingHorario}
-              loading={loading}
-              onSettingsSaved={refreshSettings}
-              onSync={activePage === 'calendario' ? loadCalendar : handleSyncActivities}
-              onSyncHorario={loadHorario}
-              onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
-              onNavigate={handleNavigate}
-              deepLink={activePage === 'notas' ? notasDeepLink : null}
-              progress={progress}
-            />
-          </TaskPanel>
+          // Solo el switch entre modulos del pageRegistry se anima: onboarding y
+          // el shell de carga son estados puntuales, no navegacion.
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activePage}
+              initial={reduced ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
+            >
+              <TaskPanel title={pageConfig.title} description={pageConfig.description}>
+                <ActivePage
+                  activities={activities}
+                  calendarData={calendarData}
+                  calificaciones={calificaciones}
+                  horario={horario}
+                  errorCIA={errorCIA}
+                  errorCIACode={errorCIACode}
+                  errorCode={errorCode}
+                  error={error}
+                  errorHorario={errorHorario}
+                  lastSyncCIA={lastSyncCIA}
+                  lastSyncAt={lastSyncAt}
+                  lastSyncHorario={lastSyncHorario}
+                  isSyncing={isCalendarSyncing}
+                  loadingCIA={loadingCIA}
+                  loadingHorario={loadingHorario}
+                  loading={loading}
+                  onSettingsSaved={refreshSettings}
+                  onSync={activePage === 'calendario' ? loadCalendar : handleSyncActivities}
+                  onSyncHorario={loadHorario}
+                  onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
+                  onNavigate={handleNavigate}
+                  deepLink={activePage === 'notas' ? notasDeepLink : null}
+                  progress={progress}
+                />
+              </TaskPanel>
+            </motion.div>
+          </AnimatePresence>
         )}
       </div>
     </div>

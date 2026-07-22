@@ -11,6 +11,7 @@ import {
   Settings,
   StickyNote,
 } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import dvpotroLogo from '../assets/branding/dvpotro-logo-128.png';
 import { getNextClass } from '../utils/horario.js';
@@ -156,6 +157,7 @@ function Sidebar({
   // Sidebar compact is an independent visual preference (decoupled from any
   // background system): collapses the sidebar to an icon-only rail.
   const { sidebarCompact } = useSidebar();
+  const reduced = useReducedMotion();
   const compact = sidebarCompact;
   const materiasHorario = Array.isArray(horarioData?.materias)
     ? horarioData.materias
@@ -318,28 +320,45 @@ function Sidebar({
               }`}
               style={
                 isActive
-                  ? { background: 'var(--itson-blue, var(--accent))', color: 'var(--on-accent)', fontWeight: 600, borderRadius: 'var(--radius-button, 0px)' }
+                  ? { color: 'var(--on-accent)', fontWeight: 600, borderRadius: 'var(--radius-button, 0px)' }
                   : { background: 'transparent', color: 'var(--text-muted)', fontWeight: 500, borderRadius: 'var(--radius-button, 0px)' }
               }
             >
+              {/* El fondo del item activo es una capa aparte con layoutId: framer
+                  la reposiciona entre botones en vez de repintarla de golpe. El
+                  contenido va sobre ella con z-index propio. */}
+              {isActive ? (
+                <motion.span
+                  layoutId="sidebar-active"
+                  className="absolute inset-0"
+                  style={{
+                    background: 'var(--itson-blue, var(--accent))',
+                    borderRadius: 'var(--radius-button, 0px)',
+                  }}
+                  transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 32 }}
+                />
+              ) : null}
+
               {compact ? (
                 <>
-                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className="relative z-[1] flex items-center">
+                    <Icon className="h-5 w-5 shrink-0" />
+                  </span>
                   {badge ? (
                     <span
-                      className="absolute right-2 top-1.5 h-2 w-2"
+                      className="absolute right-2 top-1.5 z-[1] h-2 w-2"
                       style={{ background: 'var(--accent)', borderRadius: 'var(--radius-badge, 0px)' }}
                     />
                   ) : null}
                 </>
               ) : (
-                <>
+                <span className="relative z-[1] flex w-full items-center justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-3">
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className="truncate">{item.label}</span>
                   </span>
                   {badge}
-                </>
+                </span>
               )}
             </button>
           );

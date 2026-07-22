@@ -31,6 +31,12 @@ const CUSTOM_THEME_DEFAULTS = {
   text: '#f1f5f9',
 };
 
+const AUTO_SYNC_INTERVAL_OPTIONS = [
+  { value: 15, label: '15 minutos' },
+  { value: 30, label: '30 minutos' },
+  { value: 60, label: '1 hora' },
+];
+
 const MINUTES_OPTIONS = [
   { value: 5, label: '5 minutos antes' },
   { value: 10, label: '10 minutos antes' },
@@ -484,7 +490,7 @@ function ThemeCard({ theme, active, customColors, reduced, onSelect }) {
   );
 }
 
-function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
+function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSaved }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const reduced = useReducedMotion();
   const { themeId, setThemeId, saveCustomTheme } = useTheme();
@@ -500,6 +506,8 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
   const [notifMinutesBefore, setNotifMinutesBefore] = useState(10);
   const [noticesEnabled, setNoticesEnabled] = useState(true);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [autoSyncInterval, setAutoSyncInterval] = useState(15);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingSection, setSavingSection] = useState('');
   const [pageError, setPageError] = useState('');
@@ -591,6 +599,55 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
       mounted = false;
     };
   }, [api]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    api
+      ?.getAutoSyncSettings?.()
+      .then((response) => {
+        if (!mounted || !response) return;
+        setAutoSyncEnabled(response.enabled !== false);
+        setAutoSyncInterval(Number(response.intervalMinutes) || 15);
+      })
+      .catch(() => {
+        // Sin bridge disponible (browser dev sin mock): quedan los defaults.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
+
+  const persistAutoSync = async (patch, revert) => {
+    if (!api?.setAutoSyncSettings) {
+      return;
+    }
+
+    try {
+      await api.setAutoSyncSettings(patch);
+      showSyncFeedback('ok', `Guardado · ${formatClock()}`);
+
+      if (typeof onAutoSyncChanged === 'function') {
+        await onAutoSyncChanged();
+      }
+    } catch (_error) {
+      revert();
+      showSyncFeedback('error', 'No se pudo guardar la auto-sincronización.');
+    }
+  };
+
+  const handleAutoSyncToggle = () => {
+    const previous = autoSyncEnabled;
+    setAutoSyncEnabled(!previous);
+    persistAutoSync({ enabled: !previous }, () => setAutoSyncEnabled(previous));
+  };
+
+  const handleAutoSyncInterval = (value) => {
+    const previous = autoSyncInterval;
+    setAutoSyncInterval(value);
+    persistAutoSync({ intervalMinutes: value }, () => setAutoSyncInterval(previous));
+  };
 
   const handleSave = async (section) => {
     if (!api) {
@@ -964,6 +1021,36 @@ function Ajustes({ error, lastSyncAt, loading, onSettingsSaved }) {
         eyebrow="Avisos"
         title="Sincronización y avisos"
       >
+        <SettingRow
+          title="Sincronizar automáticamente"
+          description={`Se sincroniza al abrir la app, al despertar la laptop, y cada ${autoSyncInterval} minutos.`}
+        >
+          <Switch
+            checked={autoSyncEnabled}
+            onChange={handleAutoSyncToggle}
+            label="Sincronizar automáticamente"
+          />
+        </SettingRow>
+        <SettingRow
+          title="Cada"
+          description="Frecuencia del sincronizado automático mientras la app esté abierta."
+        >
+          <div className="field">
+            <select
+              value={autoSyncInterval}
+              onChange={(event) => handleAutoSyncInterval(Number(event.target.value))}
+              disabled={!autoSyncEnabled}
+              className="bg-transparent px-3 py-2 text-sm outline-none disabled:cursor-not-allowed"
+              style={{ color: 'var(--text-strong)' }}
+            >
+              {AUTO_SYNC_INTERVAL_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </SettingRow>
         <SettingRow
           title="Noticias de ITSON"
           description="Becas, convocatorias y comunicados oficiales en la bandeja de notificaciones."

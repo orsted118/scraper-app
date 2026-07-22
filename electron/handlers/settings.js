@@ -215,6 +215,15 @@ function registerSettingsHandlers() {
   ipcMain.handle('settings:save', async (_event, payload) => saveSettings(payload || {}));
   ipcMain.handle('settings:test-connection', async (_event, payload) => testConnection(payload || {}));
   ipcMain.handle('settings:clear-credentials', async () => clearCredentials());
+
+  // La persistencia vive en notification-center: comparte notification-settings.json
+  // con lastSyncAt, que el auto-sync necesita para su rate limit.
+  const notificationCenter = require('./notification-center');
+
+  ipcMain.handle('settings:get-auto-sync', async () => notificationCenter.getAutoSyncSettings());
+  ipcMain.handle('settings:set-auto-sync', async (_event, payload) =>
+    notificationCenter.setAutoSyncSettings(payload || {}),
+  );
 }
 
 module.exports = {

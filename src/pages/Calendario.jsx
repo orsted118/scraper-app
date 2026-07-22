@@ -246,11 +246,7 @@ function Calendario({ calendarData = { events: [], calendarTypes: [] }, isSyncin
           </div>
 
           {view === 'grid' ? (
-            <GridView
-              events={events}
-              todayStart={todayStart}
-              onSeeAllInTimeline={() => handleViewChange('timeline')}
-            />
+            <GridView events={events} todayStart={todayStart} />
           ) : null}
 
           {view === 'contador' ? <ContadorView events={events} todayStart={todayStart} /> : null}

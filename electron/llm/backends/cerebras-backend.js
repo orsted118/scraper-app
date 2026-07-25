@@ -17,13 +17,20 @@ class CerebrasBackend extends OpenAICompatibleBackend {
   }
 
   classifyHttpError(status, bodyText) {
-    // El límite de tokens por minuto se recupera solo en el próximo minuto:
-    // 90s de castigo dejaría la mejor key fuera de juego sin necesidad.
-    if (status === 429 && /tokens?\s+per\s+minute/i.test(String(bodyText))) {
-      return transientError(`[cerebras] TPM alcanzado: ${String(bodyText).slice(0, 200)}`, 15);
+    const body = String(bodyText);
+
+    // Los límites por minuto (tokens o requests) se recuperan en la ventana
+    // siguiente. Castigarlos con los 90s del default saca al backend más rápido
+    // del pool y empuja la carga a GitHub, que tiene un tope duro de 50/día.
+    if (status === 429 && /tokens?\s+per\s+minute/i.test(body)) {
+      return transientError(`[cerebras] TPM alcanzado: ${body.slice(0, 200)}`, 15);
     }
 
-    return classifyError(this.providerName, status, bodyText);
+    if (status === 429 && /requests?\s+per\s+minute/i.test(body)) {
+      return transientError(`[cerebras] RPM alcanzado: ${body.slice(0, 200)}`, 30);
+    }
+
+    return classifyError(this.providerName, status, body);
   }
 }
 

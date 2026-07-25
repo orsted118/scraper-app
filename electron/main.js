@@ -52,7 +52,6 @@ function createMainWindow() {
 
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
-    mainWindow.webContents.openDevTools();
     return;
   }
 

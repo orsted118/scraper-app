@@ -275,7 +275,7 @@ function Sidebar({
         boxShadow: 'var(--shadow-card, none)',
       }}
     >
-      <header className={compact ? 'px-2 pb-3 pt-3' : 'px-4 pb-3 pt-3'}>
+      <header className={compact ? 'px-2 pb-2 pt-2' : 'px-4 pb-2 pt-2'}>
         <div className={`flex items-center gap-3 ${compact ? 'justify-center' : ''}`}>
           <img
             src={dvpotroLogo}
@@ -298,7 +298,7 @@ function Sidebar({
         </div>
       </header>
 
-      <nav className="px-2 pb-2">
+      <nav className="px-2 pb-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activePage === item.id || (item.id === 'activities' && activePage === 'activities');
@@ -311,12 +311,12 @@ function Sidebar({
               onClick={() => onNavigate?.(item.target)}
               title={compact ? item.label : undefined}
               aria-label={compact ? item.label : undefined}
-              className={`relative mb-0.5 flex w-full items-center transition duration-150 ${
+              className={`relative flex w-full items-center transition duration-150 ${
                 isActive ? '' : 'nav-item-hover'
               } ${
                 compact
-                  ? 'justify-center px-0 py-2'
-                  : 'justify-between gap-3 px-3.5 py-[7px] text-left text-sm'
+                  ? 'justify-center px-0 py-1.5'
+                  : 'justify-between gap-3 px-3.5 py-1.5 text-left text-sm'
               }`}
               style={
                 isActive
@@ -384,7 +384,7 @@ function Sidebar({
       {!compact ? (
       <>
       <section
-        className="mx-2.5 my-1 border px-3.5 py-2.5"
+        className="mx-2.5 my-0.5 border px-3.5 py-2"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.07em]" style={{ color: 'var(--itson-blue, var(--accent))' }}>
@@ -438,7 +438,7 @@ function Sidebar({
       </section>
 
       <section
-        className="mx-2.5 my-1 border px-3.5 py-2.5"
+        className="mx-2.5 my-0.5 border px-3.5 py-2"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-card, 0px)' }}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.07em]" style={{ color: 'var(--text-muted)' }}>

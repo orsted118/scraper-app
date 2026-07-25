@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "report": "node generate-report.js",
     "test:analyzer": "node scripts/test-activity-analyzer.cjs",
+    "start:demo": "node scripts/start-demo.cjs",
     "dist": "vite build && electron-builder",
     "dist:dir": "vite build && electron-builder --dir"
   },

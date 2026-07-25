@@ -88,11 +88,14 @@ app.whenReady().then(() => {
   // ejemplo: permite ejercitar el analizador contra el LLM real mientras los
   // portales están vacíos. Sin la variable, el scraper real sigue intacto.
   if (isDemoModeEnabled()) {
+    console.log('[demo] DVPOTRO_DEMO_ACTIVITIES=1 detectado — scraper:run pisado por 2 consignas de ejemplo (demo-1, demo-2).');
     ipcMain.removeHandler('scraper:run');
     ipcMain.handle('scraper:run', async () => {
-      console.log('[demo] sirviendo actividades de ejemplo en lugar de scrapear iVirtual');
+      console.log('[demo] sirviendo actividades de ejemplo en lugar de scrapear iVirtual.');
       return getDemoActivities();
     });
+  } else {
+    console.log('[demo] DVPOTRO_DEMO_ACTIVITIES no está seteado — scraper real activo. Usa `npm run start:demo` para probar el analizador sin scraper.');
   }
   registerPortalSistemasHandlers();
   registerMusicHandlers();

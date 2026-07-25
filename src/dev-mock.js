@@ -734,6 +734,71 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         return { ok: true, affected };
       },
     },
+    // Analizador sin LLM: deriva requisitos de la propia consigna con reglas
+    // simples. No busca imitar al modelo, solo darle datos a la UI en navegador.
+    analyzer: {
+      extractRequirements: async (activity) => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
+        const text = String(activity?.instrucciones || '');
+        const requirements = [];
+        const add = (type, description, criteria) =>
+          requirements.push({ id: `req-${requirements.length + 1}`, type, description, criteria });
+
+        const words = text.match(/(\d{3,4})\s*palabras/i);
+        if (words) add('length', `Extensión de ${words[1]} palabras`, 'Contar las palabras del documento');
+
+        const refs = text.match(/(\d+)\s*(?:referencias|fuentes)/i);
+        if (refs) add('content', `Incluir al menos ${refs[1]} referencias`, 'Revisar la sección de referencias');
+
+        if (/apa/i.test(text)) add('format', 'Usar formato APA', 'Verificar citas y bibliografía');
+        if (/pdf/i.test(text)) add('format', 'Entregar en formato PDF', 'Comprobar la extensión del archivo');
+        if (/equipo|grupal/i.test(`${text} ${activity?.modalidad || ''}`)) {
+          add('other', 'Trabajo en equipo', 'Verificar que figuren los integrantes');
+        }
+
+        if (requirements.length === 0) {
+          add('content', `Cumplir con lo pedido en "${activity?.nombre || 'la actividad'}"`, 'Revisar la consigna completa');
+        }
+
+        return { ok: true, requirements, fromCache: false, model: 'mock-rules' };
+      },
+      parseFile: async ({ filename }) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const extension = String(filename || '').slice(String(filename).lastIndexOf('.')).toLowerCase();
+
+        if (!['.pdf', '.docx'].includes(extension)) {
+          return { ok: false, error: `Formato no soportado en Fase 1: ${extension || 'sin extensión'}` };
+        }
+
+        return {
+          ok: true,
+          submission: {
+            text: 'Texto simulado de la entrega.',
+            pageCount: extension === '.pdf' ? 7 : null,
+            wordCount: 1487,
+            extension,
+            mime: extension === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            sizeBytes: 240000,
+          },
+        };
+      },
+      verifySubmission: async (requirements = []) => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        // Rota los cuatro estados para que la UI muestre todos los colores.
+        const cycle = ['yes', 'partial', 'no', 'unclear'];
+        return {
+          ok: true,
+          model: 'mock-rules',
+          results: requirements.map((requirement, index) => ({
+            requirementId: requirement.id,
+            met: cycle[index % cycle.length],
+            confidence: [0.94, 0.61, 0.88, 0.42][index % 4],
+            notes: `Resultado simulado para "${requirement.description}".`,
+          })),
+        };
+      },
+    },
     portalSistemas: {
       getProfile: async () => ({
         fullName: 'David Alvarez Aviles',

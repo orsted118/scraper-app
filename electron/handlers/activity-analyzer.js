@@ -12,6 +12,12 @@ const REQUIREMENTS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // Cap del texto que viaja al LLM. ~4 chars por token: 16k chars ≈ 4k tokens,
 // que es lo que tolera el modelo más chico del pool sin recortar la respuesta.
 const MAX_SUBMISSION_CHARS = 16000;
+// Las consignas de Moodle a veces arrastran rúbricas enteras; sin techo, la
+// petición de extracción se come el contexto y el modelo devuelve JSON cortado.
+const MAX_INSTRUCTIONS_CHARS = 8000;
+// Techo de requisitos: por encima de esto el checklist deja de ser accionable y
+// suele ser señal de que el modelo desglosó de más.
+const MAX_REQUIREMENTS = 20;
 
 const SUPPORTED_EXTENSIONS = {
   '.pdf': 'application/pdf',
@@ -87,10 +93,14 @@ function normalizeRequirements(raw) {
   const list = Array.isArray(raw?.requirements) ? raw.requirements : [];
 
   return list
-    .filter((item) => item && (item.description || item.criteria))
+    .filter((item) => item && String(item.description || '').trim())
+    .slice(0, MAX_REQUIREMENTS)
+    // Los ids se reasignan en vez de confiar en los del modelo: repetir "req-1"
+    // colapsaría filas distintas del checklist en una sola. La verificación ve
+    // estos ids, así que quedan consistentes de punta a punta.
     .map((item, index) => ({
-      id: String(item.id || `req-${index + 1}`),
-      description: String(item.description || '').trim(),
+      id: `req-${index + 1}`,
+      description: String(item.description).trim(),
       type: ['format', 'content', 'structure', 'length', 'other'].includes(item.type) ? item.type : 'other',
       criteria: String(item.criteria || '').trim(),
     }));
@@ -128,13 +138,16 @@ async function extractRequirements(activity) {
     throw new Error('La actividad no tiene título ni instrucciones para analizar.');
   }
 
+  const trimmedInstructions = instructions.slice(0, MAX_INSTRUCTIONS_CHARS);
+
   const userPrompt = [
     `Título: ${title || '(sin título)'}`,
     activity?.materia ? `Materia: ${activity.materia}` : null,
     activity?.modalidad ? `Modalidad: ${activity.modalidad}` : null,
     '',
     'Consigna:',
-    instructions || '(la actividad no trae instrucciones; deduce los requisitos del título)',
+    trimmedInstructions || '(la actividad no trae instrucciones; deduce los requisitos del título)',
+    instructions.length > MAX_INSTRUCTIONS_CHARS ? '\n(consigna recortada)' : null,
   ]
     .filter((line) => line !== null)
     .join('\n');

@@ -365,6 +365,11 @@ function Sidebar({
         })}
       </nav>
 
+      {/* Bloque scrollable del medio: si el contenido excede el alto del aside
+          (fullscreen con muchas materias, resoluciones chicas), scrollea aca
+          adentro y no empuja la tarjeta del estudiante fuera del viewport. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+
       {compact ? (
         <div className="px-2 py-1">
           <button
@@ -495,6 +500,8 @@ function Sidebar({
       </section>
       </>
       ) : null}
+
+      </div>
 
       <footer
         className={`mt-auto flex items-center border-t py-2 ${compact ? 'justify-center px-2' : 'gap-2.5 px-3.5'}`}

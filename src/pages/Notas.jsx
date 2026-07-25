@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NoteEditorModal, { buildNoteImageUrl } from '../components/NoteEditorModal';
 import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
@@ -139,6 +139,9 @@ function NoteCard({ note, view, selected, selectionActive, focused, onCardClick,
         background: 'var(--bg-card)',
         borderRadius: 'var(--radius-card, 0px)',
         breakInside: listMode ? undefined : 'avoid',
+        // El color y la selección cambian en el lugar (sin remontar la card):
+        // sin transición el salto de tinta se lee como parpadeo.
+        transition: 'background-color 200ms ease, border-color 200ms ease',
       }}
     >
       {/* Checkbox multi-select: visible en hover o cuando hay selección activa. */}
@@ -701,27 +704,50 @@ function Notas({ deepLink } = {}) {
     return map;
   }, [notes]);
 
+  // El margen entre cards baja al wrapper de motion: con [&>*]:mb-4 el selector
+  // seguiria pegandole al motion.div, pero conviene tenerlo explicito ahora que
+  // el hijo directo dejo de ser la NoteCard.
   const gridClass = viewMode === 'grid'
-    ? 'columns-1 gap-4 sm:columns-2 xl:columns-3 [&>*]:mb-4'
+    ? 'columns-1 gap-4 sm:columns-2 xl:columns-3'
     : 'flex flex-col gap-3';
 
   const renderCards = (list) => (
-    <div className={gridClass}>
-      {list.map((note) => (
-        <NoteCard
-          key={note.id}
-          note={note}
-          view={view}
-          selected={selectedIds.has(note.id)}
-          selectionActive={selectedIds.size > 0}
-          focused={visibleFlat[focusedIndex]?.id === note.id}
-          onCardClick={handleCardClick}
-          onOpen={openExisting}
-          onAction={handleAction}
-          onRemoveLabel={handleRemoveLabel}
-          listMode={viewMode === 'list'}
-        />
-      ))}
+    // La key por vista fuerza el remonte al saltar de activas a archivadas o
+    // papelera: el set entero vuelve a entrar en cascada y marca el cambio.
+    <div key={`${view}-${viewMode}`} className={gridClass}>
+      <AnimatePresence>
+        {list.map((note, index) => (
+          <motion.div
+            key={note.id}
+            // columns CSS posiciona por flow: framer no puede hacer FLIP real en
+            // un masonry, asi que el layout queda fuera y solo entra/sale.
+            layout={false}
+            initial={reduced ? false : { opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
+            transition={{
+              duration: reduced ? 0 : 0.18,
+              delay: reduced ? 0 : Math.min(index * 0.03, 0.3),
+              ease: EASE,
+            }}
+            className={viewMode === 'grid' ? 'mb-4' : ''}
+            style={{ breakInside: viewMode === 'grid' ? 'avoid' : undefined }}
+          >
+            <NoteCard
+              note={note}
+              view={view}
+              selected={selectedIds.has(note.id)}
+              selectionActive={selectedIds.size > 0}
+              focused={visibleFlat[focusedIndex]?.id === note.id}
+              onCardClick={handleCardClick}
+              onOpen={openExisting}
+              onAction={handleAction}
+              onRemoveLabel={handleRemoveLabel}
+              listMode={viewMode === 'list'}
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 

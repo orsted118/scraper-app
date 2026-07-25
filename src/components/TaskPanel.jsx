@@ -1,7 +1,9 @@
 function TaskPanel({ title, description, children }) {
   return (
     <main
-      className="flex-1 border p-8"
+      // min-w-0: como hijo flex, min-width auto le impide encoger bajo el ancho
+      // intrinseco del contenido (el masonry de Notas desbordaba el layout).
+      className="min-w-0 flex-1 border p-8"
       style={{
         background: 'var(--bg)',
         borderColor: 'var(--border-subtle)',

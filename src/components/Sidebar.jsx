@@ -368,7 +368,7 @@ function Sidebar({
       {/* Bloque scrollable del medio: si el contenido excede el alto del aside
           (fullscreen con muchas materias, resoluciones chicas), scrollea aca
           adentro y no empuja la tarjeta del estudiante fuera del viewport. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
 
       {compact ? (
         <div className="px-2 py-1">

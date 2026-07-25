@@ -354,3 +354,12 @@ a:focus-visible {
   to { transform: rotate(360deg); }
 }
 
+/* Scroll funcional (wheel/touch) sin barra visual. Chromium usa el pseudo, Firefox scrollbar-width. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+

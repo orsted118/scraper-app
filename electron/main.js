@@ -10,6 +10,7 @@ const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
 const notificationCenter = require('./handlers/notification-center');
 const { registerNoticesHandlers } = require('./handlers/notices');
+const { registerActivityAnalyzerHandlers } = require('./handlers/activity-analyzer');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
@@ -80,6 +81,7 @@ app.whenReady().then(() => {
   registerNotificationHandlers();
   notificationCenter.registerNotificationCenter();
   registerNoticesHandlers();
+  registerActivityAnalyzerHandlers();
   registerPortalSistemasHandlers();
   registerMusicHandlers();
   registerMusicProtocol();

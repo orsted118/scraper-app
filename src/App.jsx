@@ -857,6 +857,7 @@ function App() {
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activePage}
+              className="flex min-w-0 flex-1"
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}

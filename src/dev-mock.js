@@ -11,6 +11,55 @@ function iso(offsetDays, hour = 23, minute = 59) {
 }
 
 const MOCK_ACTIVITIES = [
+  // Las dos "demo-*" son consignas densas para ejercitar el analizador. Están
+  // replicadas en electron/handlers/demo-activities.js, que es la versión que ve
+  // Electron con DVPOTRO_DEMO_ACTIVITIES=1 (main es CJS, esto es ESM: no se
+  // puede compartir el módulo).
+  {
+    id: 'demo-1',
+    nombre: 'Reporte de práctica 6: análisis de complejidad algorítmica',
+    materia: 'Estructuras de Datos',
+    profesor: 'Dr. Peralta Villanueva',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    fechaLimite: iso(4, 23, 59),
+    fechaPublicacion: iso(-6),
+    instrucciones:
+      'Elabora un reporte que compare empíricamente el rendimiento de tres algoritmos de ordenamiento: quicksort, mergesort e ' +
+      'insertion sort. El reporte debe contener: portada con tu nombre completo y número de control; una introducción de máximo ' +
+      'una cuartilla explicando la notación Big-O; una tabla comparativa con los tiempos de ejecución medidos sobre arreglos de ' +
+      '1000, 10000 y 100000 elementos; al menos dos gráficas que muestren el crecimiento del tiempo respecto al tamaño de entrada; ' +
+      'el código fuente comentado en un anexo; y una conclusión que justifique cuál algoritmo conviene en cada escenario. ' +
+      'Extensión máxima de 12 páginas sin contar anexos. Entrega en PDF, letra Times New Roman 12, interlineado 1.5. ' +
+      'Cita al menos 4 fuentes en formato IEEE.',
+    archivos: [
+      { name: 'rubrica-practica-6.pdf', url: 'https://example.test/rubrica6.pdf' },
+      { name: 'datasets-prueba.zip', url: 'https://example.test/datasets.zip' },
+    ],
+  },
+  {
+    id: 'demo-2',
+    nombre: 'Entrega 2: prototipo funcional y documentación técnica',
+    materia: 'Ingeniería de Software II',
+    profesor: 'Mtra. Cárdenas Ibarra',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    fechaLimite: iso(9, 18, 0),
+    fechaPublicacion: iso(-3),
+    instrucciones:
+      'En equipos de 4 integrantes, entreguen el prototipo funcional del sistema propuesto en la Entrega 1. Deben subir un único ' +
+      'documento PDF que incluya: 1) el diagrama de casos de uso actualizado en UML; 2) el modelo entidad-relación de la base de ' +
+      'datos con al menos 6 entidades; 3) capturas de pantalla de las 3 funcionalidades principales ya implementadas; ' +
+      '4) el enlace público al repositorio de GitHub con historial de commits de todos los integrantes; 5) la matriz de ' +
+      'trazabilidad entre requisitos y módulos implementados; y 6) un apartado de pruebas con mínimo 10 casos de prueba ' +
+      'documentados en formato tabla (entrada esperada, salida obtenida, resultado). ' +
+      'El documento no debe exceder 25 páginas. Nombren el archivo Equipo{N}_Entrega2.pdf',
+    archivos: [
+      { name: 'plantilla-matriz-trazabilidad.docx', url: 'https://example.test/matriz.docx' },
+      { name: 'ejemplo-casos-prueba.pdf', url: 'https://example.test/casos.pdf' },
+      { name: 'lineamientos-entrega2.pdf', url: 'https://example.test/lineamientos2.pdf' },
+    ],
+  },
   {
     id: 'mock-1',
     nombre: 'Proyecto final: API REST con autenticación',

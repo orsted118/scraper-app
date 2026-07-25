@@ -11,6 +11,7 @@ const { registerNotificationHandlers, startClassNotifier } = require('./handlers
 const notificationCenter = require('./handlers/notification-center');
 const { registerNoticesHandlers } = require('./handlers/notices');
 const { registerActivityAnalyzerHandlers } = require('./handlers/activity-analyzer');
+const { getDemoActivities, isDemoModeEnabled } = require('./handlers/demo-activities');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
@@ -82,6 +83,17 @@ app.whenReady().then(() => {
   notificationCenter.registerNotificationCenter();
   registerNoticesHandlers();
   registerActivityAnalyzerHandlers();
+
+  // Con DVPOTRO_DEMO_ACTIVITIES=1 el scraper queda pisado por dos consignas de
+  // ejemplo: permite ejercitar el analizador contra el LLM real mientras los
+  // portales están vacíos. Sin la variable, el scraper real sigue intacto.
+  if (isDemoModeEnabled()) {
+    ipcMain.removeHandler('scraper:run');
+    ipcMain.handle('scraper:run', async () => {
+      console.log('[demo] sirviendo actividades de ejemplo en lugar de scrapear iVirtual');
+      return getDemoActivities();
+    });
+  }
   registerPortalSistemasHandlers();
   registerMusicHandlers();
   registerMusicProtocol();

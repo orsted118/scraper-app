@@ -164,11 +164,12 @@ function StatusBadge({ status }) {
 function GradeChip({ grade }) {
   return (
     <span
-      className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs"
+      className="inline-flex items-center gap-2 border px-3 py-1.5 text-xs"
       style={{
         background: 'var(--bg-secondary)',
         borderColor: 'var(--border-subtle)',
         color: 'var(--text-normal)',
+        borderRadius: 'var(--radius-badge, 0px)',
       }}
       title={grade?.nombre || getGradeLabel(grade)}
     >
@@ -199,11 +200,12 @@ function ComponentRow({ component, index }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span
-        className="inline-flex min-w-24 justify-center rounded-lg px-3 py-1.5 text-xs font-semibold"
+        className="inline-flex min-w-24 justify-center px-3 py-1.5 text-xs font-semibold"
         style={{
           background: isLab ? 'var(--success-bg)' : 'rgba(0, 109, 182, 0.16)',
           color: isLab ? 'var(--success-text)' : 'var(--accent-hover)',
           border: `1px solid ${isLab ? 'var(--success-border)' : 'rgba(0, 109, 182, 0.35)'}`,
+          borderRadius: 'var(--radius-badge, 0px)',
         }}
       >
         {label}

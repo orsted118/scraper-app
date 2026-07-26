@@ -641,8 +641,8 @@ function Horario({
               >
                 <div className="relative" style={{ borderTop: '1px solid var(--accent)' }}>
                   <span
-                    className="absolute -left-[2px] -top-[3px] h-[5px] w-[5px] rounded-full"
-                    style={{ background: 'var(--accent)' }}
+                    className="absolute -left-[2px] -top-[3px] h-[5px] w-[5px]"
+                    style={{ background: 'var(--accent)', borderRadius: 'var(--radius-dot)' }}
                   />
                 </div>
               </motion.div>

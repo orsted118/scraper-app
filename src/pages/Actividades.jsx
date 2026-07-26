@@ -562,7 +562,10 @@ function Actividades({
               onClick={() => setExpandedId((current) => (current === anchorId ? '' : anchorId))}
               className="row-hover grid min-h-[44px] w-full grid-cols-[auto_minmax(0,1fr)_minmax(120px,0.45fr)_minmax(120px,auto)] items-center gap-3 px-4 py-2 text-left"
             >
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: tone.dot }} />
+              <span
+                className="h-2.5 w-2.5"
+                style={{ background: tone.dot, borderRadius: 'var(--radius-dot)' }}
+              />
               <span className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
                 {activity.nombre}
               </span>
@@ -1066,8 +1069,8 @@ function Actividades({
               type="button"
               onClick={() => setSearchQuery('')}
               aria-label="Limpiar búsqueda"
-              className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center"
+              style={{ color: 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
               onMouseEnter={(event) => {
                 event.currentTarget.style.background = 'var(--bg-tertiary)';
                 event.currentTarget.style.color = 'var(--text-strong)';
@@ -1206,9 +1209,12 @@ function Actividades({
                 {progress?.total ? Math.round(((progress.current || 0) / progress.total) * 100) : 0}%
               </span>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
+            <div
+              className="mt-3 h-2 overflow-hidden"
+              style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-badge, 0px)' }}
+            >
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full transition-all"
                 style={{
                   background: 'var(--accent)',
                   width: `${progress?.total ? ((progress.current || 0) / progress.total) * 100 : 0}%`,

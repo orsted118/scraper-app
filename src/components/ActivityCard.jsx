@@ -8,46 +8,17 @@ import {
   ChevronUp,
   Clock,
   Download,
-  FileText,
-  FileType2,
-  ImageIcon,
   Loader2,
   Paperclip,
-  Presentation,
-  Table2,
   Users,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ActivityAnalyzer from '../pages/actividades/ActivityAnalyzer';
+import ActivityCardMenu from './ActivityCardMenu';
 import { useState } from 'react';
 import { EASE } from '../utils/motion';
+import { getFileIcon } from './file-icons';
 
-
-function getFileIcon(fileName = '') {
-  const lowerName = fileName.toLowerCase();
-
-  if (lowerName.endsWith('.pdf')) {
-    return { icon: FileText, color: 'text-red-400', label: 'PDF' };
-  }
-
-  if (/\.(doc|docx)$/.test(lowerName)) {
-    return { icon: FileType2, color: 'text-blue-400', label: 'Word' };
-  }
-
-  if (/\.(xls|xlsx|csv)$/.test(lowerName)) {
-    return { icon: Table2, color: 'text-emerald-400', label: 'Excel' };
-  }
-
-  if (/\.(ppt|pptx)$/.test(lowerName)) {
-    return { icon: Presentation, color: 'text-orange-400', label: 'PowerPoint' };
-  }
-
-  if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(lowerName)) {
-    return { icon: ImageIcon, color: 'text-purple-400', label: 'Imagen' };
-  }
-
-  return { icon: Paperclip, color: 'text-slate-400', label: 'Archivo' };
-}
 
 function parseDate(value) {
   if (!value || typeof value !== 'string') {
@@ -269,8 +240,10 @@ function ActivityCard({
   materia,
   modalidad = 'individual',
   nombre,
+  onHide,
   profesor,
   estado,
+  url,
 }) {
   const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
@@ -350,7 +323,9 @@ function ActivityCard({
   return (
     <motion.article
       whileHover={reduced ? undefined : { y: -1 }}
-      className="card-hover-border overflow-hidden border"
+      // Sin overflow-hidden: el popup del menú es absolute y quedaría recortado.
+      // El bloque expandible ya recorta su propia altura al animar.
+      className="card-hover-border border"
       style={{
         borderWidth: 'var(--border-width-card, 1px)',
         borderTopColor: 'var(--border-subtle)',
@@ -473,20 +448,24 @@ function ActivityCard({
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
-                className="chev-hover mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center border"
-                style={{
-                  borderColor: 'var(--border-subtle)',
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-normal)',
-                  borderRadius: 'var(--radius-badge, 0px)',
-                }}
-              >
-                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
+              <div className="mt-0.5 flex shrink-0 items-center gap-1">
+                <ActivityCardMenu url={url} onHide={onHide ? () => onHide(id) : undefined} />
+
+                <button
+                  type="button"
+                  onClick={() => setExpanded((value) => !value)}
+                  aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
+                  className="chev-hover inline-flex h-8 w-8 shrink-0 items-center justify-center border"
+                  style={{
+                    borderColor: 'var(--border-subtle)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-normal)',
+                    borderRadius: 'var(--radius-badge, 0px)',
+                  }}
+                >
+                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {timeContext.label ? (
@@ -570,8 +549,7 @@ function ActivityCard({
 
                       <div className="mt-2 grid gap-2 lg:grid-cols-3">
                         {visibleFiles.map((archivo) => {
-                          const fileMeta = getFileIcon(archivo.name);
-                          const FileIcon = fileMeta.icon;
+                          const { Icon: FileIcon, label: fileLabel } = getFileIcon(archivo.name);
                           const isDownloading = downloadingKey === archivo.url;
 
                           return (
@@ -592,7 +570,7 @@ function ActivityCard({
                                   borderRadius: 'var(--radius-badge, 0px)',
                                 }}
                               >
-                                <FileIcon className={`h-4 w-4 ${fileMeta.color}`} />
+                                <FileIcon className="h-5 w-5 shrink-0" />
                               </div>
 
                               <div className="min-w-0 flex-1">
@@ -604,7 +582,7 @@ function ActivityCard({
                                   {archivo.name}
                                 </p>
                                 <p className="mt-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
-                                  {fileMeta.label}
+                                  {fileLabel}
                                 </p>
                               </div>
 

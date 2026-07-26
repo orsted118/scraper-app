@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ActivityAnalyzer from '../pages/actividades/ActivityAnalyzer';
+import ActivityCardMenu from './ActivityCardMenu';
 import { useState } from 'react';
 import { EASE } from '../utils/motion';
 import { getFileIcon } from './file-icons';
@@ -239,8 +240,10 @@ function ActivityCard({
   materia,
   modalidad = 'individual',
   nombre,
+  onHide,
   profesor,
   estado,
+  url,
 }) {
   const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
@@ -320,7 +323,9 @@ function ActivityCard({
   return (
     <motion.article
       whileHover={reduced ? undefined : { y: -1 }}
-      className="card-hover-border overflow-hidden border"
+      // Sin overflow-hidden: el popup del menú es absolute y quedaría recortado.
+      // El bloque expandible ya recorta su propia altura al animar.
+      className="card-hover-border border"
       style={{
         borderWidth: 'var(--border-width-card, 1px)',
         borderTopColor: 'var(--border-subtle)',
@@ -443,20 +448,24 @@ function ActivityCard({
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
-                className="chev-hover mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center border"
-                style={{
-                  borderColor: 'var(--border-subtle)',
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-normal)',
-                  borderRadius: 'var(--radius-badge, 0px)',
-                }}
-              >
-                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
+              <div className="mt-0.5 flex shrink-0 items-center gap-1">
+                <ActivityCardMenu url={url} onHide={onHide ? () => onHide(id) : undefined} />
+
+                <button
+                  type="button"
+                  onClick={() => setExpanded((value) => !value)}
+                  aria-label={expanded ? 'Contraer actividad' : 'Expandir actividad'}
+                  className="chev-hover inline-flex h-8 w-8 shrink-0 items-center justify-center border"
+                  style={{
+                    borderColor: 'var(--border-subtle)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-normal)',
+                    borderRadius: 'var(--radius-badge, 0px)',
+                  }}
+                >
+                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {timeContext.label ? (

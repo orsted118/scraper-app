@@ -11,6 +11,7 @@ const { registerNotificationHandlers, startClassNotifier } = require('./handlers
 const notificationCenter = require('./handlers/notification-center');
 const { registerNoticesHandlers } = require('./handlers/notices');
 const { registerActivityAnalyzerHandlers } = require('./handlers/activity-analyzer');
+const { registerHiddenActivitiesHandlers } = require('./handlers/hidden-activities');
 const { getDemoActivities, isDemoModeEnabled } = require('./handlers/demo-activities');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
@@ -83,6 +84,7 @@ app.whenReady().then(() => {
   notificationCenter.registerNotificationCenter();
   registerNoticesHandlers();
   registerActivityAnalyzerHandlers();
+  registerHiddenActivitiesHandlers();
 
   // Con DVPOTRO_DEMO_ACTIVITIES=1 el scraper queda pisado por consignas de
   // ejemplo: permite ejercitar el analizador contra el LLM real mientras los

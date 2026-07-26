@@ -5,10 +5,12 @@ import {
   ChevronDown,
   ChevronUp,
   Columns3,
+  EyeOff,
   LayoutGrid,
   List,
   Paperclip,
   RefreshCw,
+  RotateCcw,
   Search,
   SearchX,
   Table2,
@@ -17,6 +19,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import ActivityCard from '../components/ActivityCard';
+import useHiddenActivities from '../hooks/useHiddenActivities';
 import { formatLastSync } from '../utils/formatLastSync';
 import { EASE } from '../utils/motion';
 
@@ -201,15 +204,27 @@ function Actividades({
   });
   const [expandedId, setExpandedId] = useState('');
   const [tableSort, setTableSort] = useState({ col: 'fecha', dir: 'asc' });
+  const [showHidden, setShowHidden] = useState(false);
+  const { hide, isHidden, unhide } = useHiddenActivities();
   const friendlyError = getFriendlyErrorMessage(error);
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  // Se filtra acá arriba y no por vista: contadores, tabs, kanban y la tarjeta
+  // destacada tienen que coincidir con lo que el usuario ve.
+  const visibleActivities = useMemo(
+    () => activities.filter((item) => !isHidden(item.id)),
+    [activities, isHidden],
+  );
+  const hiddenActivities = useMemo(
+    () => activities.filter((item) => isHidden(item.id)),
+    [activities, isHidden],
+  );
   const counts = {
-    pendiente: activities.filter((item) => item.estado === 'pendiente').length,
-    retrasada: activities.filter((item) => item.estado === 'retrasada').length,
-    cerrada: activities.filter((item) => item.estado === 'cerrada').length,
+    pendiente: visibleActivities.filter((item) => item.estado === 'pendiente').length,
+    retrasada: visibleActivities.filter((item) => item.estado === 'retrasada').length,
+    cerrada: visibleActivities.filter((item) => item.estado === 'cerrada').length,
   };
   const filteredActivities = useMemo(() => {
-    const tabActs = activities.filter((item) => item.estado === activeTab);
+    const tabActs = visibleActivities.filter((item) => item.estado === activeTab);
 
     if (!normalizedQuery) {
       return tabActs;
@@ -220,19 +235,19 @@ function Actividades({
         (field || '').toLowerCase().includes(normalizedQuery),
       ),
     );
-  }, [activities, activeTab, normalizedQuery]);
+  }, [visibleActivities, activeTab, normalizedQuery]);
   const kanbanActivities = useMemo(() => {
     if (!normalizedQuery) {
-      return activities;
+      return visibleActivities;
     }
 
-    return activities.filter((item) =>
+    return visibleActivities.filter((item) =>
       [item.nombre, item.materia].some((field) =>
         (field || '').toLowerCase().includes(normalizedQuery),
       ),
     );
-  }, [activities, normalizedQuery]);
-  const urgentInfo = useMemo(() => getUrgentActivity(activities), [activities]);
+  }, [visibleActivities, normalizedQuery]);
+  const urgentInfo = useMemo(() => getUrgentActivity(visibleActivities), [visibleActivities]);
   const sortedActivities = useMemo(() => {
     const items = [...filteredActivities];
 
@@ -442,10 +457,85 @@ function Actividades({
           layout={reduced ? false : true}
           variants={itemVariants}
         >
-          <ActivityCard {...activity} />
+          <ActivityCard {...activity} onHide={hide} />
         </motion.div>
       ))}
     </motion.div>
+  );
+
+  const renderHiddenPanel = () => (
+    <div
+      className="border"
+      style={{
+        borderColor: 'var(--border-subtle)',
+        background: 'var(--bg-card)',
+        borderRadius: 'var(--radius-card, 0px)',
+      }}
+    >
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-3"
+        style={{ borderBottom: showHidden ? '1px solid var(--border-subtle)' : 'none' }}
+      >
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <EyeOff className="h-4 w-4" />
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {hiddenActivities.length} actividad{hiddenActivities.length === 1 ? '' : 'es'} oculta
+            {hiddenActivities.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <button type="button" onClick={() => setShowHidden((value) => !value)} className="link-accent text-xs">
+          {showHidden ? 'Ocultar panel' : 'Ver ocultas'}
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {showHidden ? (
+          <motion.div
+            key="hidden-list"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: reduced ? 0 : 0.22, ease: EASE }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+              {hiddenActivities.map((activity) => (
+                <div
+                  key={getActivityAnchorId(activity)}
+                  className="flex items-center justify-between gap-4 border-b px-4 py-2 last:border-b-0"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm" style={{ color: 'var(--text-normal)' }}>
+                      {activity.nombre}
+                    </p>
+                    <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {activity.materia || 'Materia no disponible'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => unhide(activity.id)}
+                    className="hov-accent inline-flex shrink-0 items-center gap-2 border px-3 py-1.5 text-xs"
+                    style={{
+                      borderColor: 'var(--border-normal)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-normal)',
+                      borderRadius: 'var(--radius-button, 0px)',
+                    }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Restaurar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 
   const renderCompactView = () => (
@@ -1089,6 +1179,8 @@ function Actividades({
           })}
         </div>
       ) : null}
+
+      {!loading && hiddenActivities.length > 0 ? renderHiddenPanel() : null}
 
       {loading ? (
         <div className="space-y-4">

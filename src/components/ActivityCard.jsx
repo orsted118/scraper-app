@@ -488,7 +488,7 @@ function ActivityCard({
           {expanded ? (
             <motion.div
               key="details"
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduced ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: reduced ? 0 : 0.24, ease: EASE }}

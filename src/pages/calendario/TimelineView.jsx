@@ -215,7 +215,7 @@ function TimelineView({ events, todayStart }) {
           {isExpanded ? (
             <motion.div
               key="detalle"
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduced ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: reduced ? 0 : 0.22, ease: EASE }}
@@ -295,7 +295,7 @@ function TimelineView({ events, todayStart }) {
       <motion.div
         id="cal-hoy"
         className="flex scroll-mt-4 items-center gap-3 py-3"
-        initial={{ opacity: 0, scale: reduced ? 1 : 0.98 }}
+        initial={reduced ? false : { opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: reduced ? 0 : 0.25, ease: EASE }}
       >
@@ -446,7 +446,7 @@ function TimelineView({ events, todayStart }) {
   return (
     <motion.div
       className="space-y-6"
-      initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+      initial={reduced ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: EASE }}
     >
@@ -571,7 +571,7 @@ function TimelineView({ events, todayStart }) {
                 {pastExpanded ? (
                   <motion.div
                     key="pasados"
-                    initial={{ height: 0, opacity: 0 }}
+                    initial={reduced ? false : { height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: reduced ? 0 : 0.22, ease: EASE }}
@@ -591,7 +591,7 @@ function TimelineView({ events, todayStart }) {
               <motion.div
                 key={section[0]}
                 layout={reduced ? false : true}
-                initial={{ opacity: 0 }}
+                initial={reduced ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.14 } }}
                 transition={{ duration: 0.22, ease: EASE }}

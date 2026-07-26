@@ -615,7 +615,7 @@ function Notificaciones({ onNavigate }) {
 
       <motion.div
         className="space-y-6"
-        initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+        initial={reduced ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, ease: EASE }}
       >
@@ -713,7 +713,7 @@ function Notificaciones({ onNavigate }) {
                 <motion.section
                   key={group}
                   variants={groupVariants}
-                  initial="hidden"
+                  initial={reduced ? false : 'hidden'}
                   animate="visible"
                 >
                   <div className="flex items-baseline gap-3 pb-2">

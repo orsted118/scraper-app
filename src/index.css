@@ -35,8 +35,25 @@
   --radius-card: 0px;
   --radius-button: 0px;
   --radius-badge: 0px;
+  --radius-dot: 9999px;
   --shadow-card: none;
   --border-width-card: 1px;
+
+  /* Iconos de archivo: color de marca de cada formato. Son el único acento
+     saturado que se permite fuera de --accent, y solo dentro del icono.
+     --file-knockout es la superficie sobre la que se recorta el glifo. */
+  --file-word: #2B579A;
+  --file-excel: #217346;
+  --file-ppt: #B7472A;
+  --file-pdf: #B30B00;
+  --file-zip: #7A6E4E;
+  --file-image: #6B4E9E;
+  --file-code: #4B5563;
+  --file-text: #64748B;
+  --file-audio: #7A4E9E;
+  --file-video: #B7472A;
+  --file-generic: var(--text-muted);
+  --file-knockout: var(--bg-secondary);
 
   color-scheme: dark;
   --bg: #020617;

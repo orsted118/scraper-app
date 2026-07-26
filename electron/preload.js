@@ -50,6 +50,13 @@ contextBridge.exposeInMainWorld('scraperApp', {
   notices: {
     sync: () => ipcRenderer.invoke('notices:sync'),
   },
+  analyzer: {
+    extractRequirements: (activity) =>
+      ipcRenderer.invoke('activity-analyzer:extract-requirements', activity),
+    verifySubmission: (requirements, submissionData, activityId) =>
+      ipcRenderer.invoke('activity-analyzer:verify-submission', { requirements, submissionData, activityId }),
+    parseFile: (payload) => ipcRenderer.invoke('activity-analyzer:parse-file', payload),
+  },
   portalSistemas: {
     getProfile: () => ipcRenderer.invoke('portal-sistemas:get-profile'),
     refreshProfile: () => ipcRenderer.invoke('portal-sistemas:refresh-profile'),

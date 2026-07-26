@@ -220,6 +220,17 @@ a:focus-visible {
     color: var(--text-strong) !important;
   }
 
+  /* Drop-zone del analizador: el dashed ya comunica "acá va algo"; el hover solo
+     sube el acento al borde, sin relleno ni sombra. */
+  .drop-zone {
+    transition: border-color 160ms ease, background 160ms ease;
+  }
+
+  .drop-zone:hover:not(:disabled) {
+    border-color: var(--accent) !important;
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+  }
+
   .hov-accent:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--accent) 55%, transparent) !important;
     color: var(--accent) !important;

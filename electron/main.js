@@ -10,6 +10,8 @@ const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
 const notificationCenter = require('./handlers/notification-center');
 const { registerNoticesHandlers } = require('./handlers/notices');
+const { registerActivityAnalyzerHandlers } = require('./handlers/activity-analyzer');
+const { getDemoActivities, isDemoModeEnabled } = require('./handlers/demo-activities');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
@@ -80,6 +82,23 @@ app.whenReady().then(() => {
   registerNotificationHandlers();
   notificationCenter.registerNotificationCenter();
   registerNoticesHandlers();
+  registerActivityAnalyzerHandlers();
+
+  // Con DVPOTRO_DEMO_ACTIVITIES=1 el scraper queda pisado por consignas de
+  // ejemplo: permite ejercitar el analizador contra el LLM real mientras los
+  // portales están vacíos. Sin la variable, el scraper real sigue intacto.
+  if (isDemoModeEnabled()) {
+    const { activities: demoList } = getDemoActivities();
+    const ids = demoList.map((a) => a.id).join(', ');
+    console.log(`[demo] DVPOTRO_DEMO_ACTIVITIES=1 detectado — scraper:run pisado por ${demoList.length} consignas de ejemplo (${ids}).`);
+    ipcMain.removeHandler('scraper:run');
+    ipcMain.handle('scraper:run', async () => {
+      console.log('[demo] sirviendo actividades de ejemplo en lugar de scrapear iVirtual.');
+      return getDemoActivities();
+    });
+  } else {
+    console.log('[demo] DVPOTRO_DEMO_ACTIVITIES no está seteado — scraper real activo. Usa `npm run start:demo` para probar el analizador sin scraper.');
+  }
   registerPortalSistemasHandlers();
   registerMusicHandlers();
   registerMusicProtocol();

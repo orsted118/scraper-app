@@ -119,9 +119,12 @@ function ActivityCardMenu({ onHide, url }) {
         {open ? (
           <motion.div
             role="menu"
-            initial={{ opacity: 0, y: reduced ? 0 : -4 }}
+            // initial={false} y no duration:0 — con transición de duración cero
+            // framer no llega a aplicar el estado final y el menú queda en
+            // opacity 0. Con reduced motion el popup aparece sin animar.
+            initial={reduced ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: reduced ? 0 : -4 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
             transition={{ duration: reduced ? 0 : 0.15, ease: EASE }}
             className="absolute right-0 top-full z-20 mt-1 min-w-[200px] border py-1"
             style={{

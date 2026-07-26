@@ -200,7 +200,13 @@ const MOCK_ACTIVITIES = [
     instrucciones: '',
     archivos: [],
   },
-];
+// El scraper real trae url por actividad y el menú de la card la necesita para
+// "ver en el portal" y "copiar link". Se deriva del id en vez de repetirla en
+// cada entrada; una url explícita en la entrada pisa la derivada.
+].map((activity) => ({
+  url: `https://ivirtual.itson.mx/mod/assign/view.php?id=${activity.id}`,
+  ...activity,
+}));
 
 // import.meta.env.DEV es reemplazado por `false` en build: Vite elimina todo el bloque.
 const MOCK_HORARIO_MATERIAS = [

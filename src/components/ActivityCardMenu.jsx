@@ -3,12 +3,18 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { EASE } from '../utils/motion';
 
-const COPIED_FEEDBACK_MS = 1400;
+const COPY_FEEDBACK_MS = 1400;
+
+const COPY_LABELS = {
+  idle: 'Copiar link',
+  done: 'Link copiado',
+  error: 'No se pudo copiar',
+};
 
 function ActivityCardMenu({ onHide, url }) {
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState('idle');
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -37,16 +43,16 @@ function ActivityCardMenu({ onHide, url }) {
     };
   }, [open]);
 
-  // El feedback de "copiado" vive en el propio item: no hay sistema de toast
+  // El feedback de copiado vive en el propio item: no hay sistema de toast
   // global todavía y un banner suelto sería ruido para una acción trivial.
   useEffect(() => {
-    if (!copied) {
+    if (copyState === 'idle') {
       return undefined;
     }
 
-    const timer = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+    const timer = window.setTimeout(() => setCopyState('idle'), COPY_FEEDBACK_MS);
     return () => window.clearTimeout(timer);
-  }, [copied]);
+  }, [copyState]);
 
   const handleHide = () => {
     setOpen(false);
@@ -61,9 +67,11 @@ function ActivityCardMenu({ onHide, url }) {
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
+      setCopyState('done');
     } catch (_error) {
-      setCopied(false);
+      // El portapapeles puede estar bloqueado (ventana sin foco, permiso
+      // denegado). Fallar en silencio dejaría al usuario sin saber qué pasó.
+      setCopyState('error');
     }
   };
 
@@ -73,7 +81,7 @@ function ActivityCardMenu({ onHide, url }) {
     {
       key: 'copy',
       Icon: Link2,
-      label: copied ? 'Link copiado' : 'Copiar link',
+      label: COPY_LABELS[copyState],
       onClick: handleCopyLink,
       enabled: Boolean(url),
     },

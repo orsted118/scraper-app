@@ -11,10 +11,11 @@ function iso(offsetDays, hour = 23, minute = 59) {
 }
 
 const MOCK_ACTIVITIES = [
-  // Las dos "demo-*" son consignas densas para ejercitar el analizador. Están
-  // replicadas en electron/handlers/demo-activities.js, que es la versión que ve
-  // Electron con DVPOTRO_DEMO_ACTIVITIES=1 (main es CJS, esto es ESM: no se
-  // puede compartir el módulo).
+  // Las "demo-*" son consignas para ejercitar el analizador con distintos
+  // perfiles (densa, ejecutiva, minimalista, multimedia). Están replicadas en
+  // electron/handlers/demo-activities.js, que es la versión que ve Electron con
+  // DVPOTRO_DEMO_ACTIVITIES=1 (main es CJS, esto es ESM: no se puede compartir
+  // el módulo).
   {
     id: 'demo-1',
     nombre: 'Reporte de práctica 6: análisis de complejidad algorítmica',
@@ -58,6 +59,43 @@ const MOCK_ACTIVITIES = [
       { name: 'plantilla-matriz-trazabilidad.docx', url: 'https://example.test/matriz.docx' },
       { name: 'ejemplo-casos-prueba.pdf', url: 'https://example.test/casos.pdf' },
       { name: 'lineamientos-entrega2.pdf', url: 'https://example.test/lineamientos2.pdf' },
+    ],
+  },
+  {
+    // Perfil minimalista: consigna corta, restricciones puntuales. Verifica que
+    // el analizador saque requisitos con instrucciones escuetas.
+    id: 'demo-3',
+    nombre: 'Cuestionario unidad 4 — derivadas parciales',
+    materia: 'Cálculo Multivariable',
+    profesor: 'Mtra. Osuna Rangel',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    fechaLimite: iso(2, 22, 0),
+    fechaPublicacion: iso(-1),
+    instrucciones:
+      'Resuelve el cuestionario en línea entre el 25 y el 27 de julio. Tienes 60 minutos y un solo intento. ' +
+      'Se permite calculadora científica no programable; queda prohibido consultar formularios, apuntes o internet.',
+    archivos: [],
+  },
+  {
+    // Perfil multimedia: entrega no textual (audio + guion + fuentes). Verifica
+    // que el analizador distingue requisitos técnicos (kbps, ZIP) de contenido.
+    id: 'demo-4',
+    nombre: 'Podcast educativo: temas sociales contemporáneos',
+    materia: 'Comunicación Oral y Escrita',
+    profesor: 'Lic. Robles Munguía',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    fechaLimite: iso(14, 23, 59),
+    fechaPublicacion: iso(-2),
+    instrucciones:
+      'En parejas, produzcan un podcast educativo de entre 8 y 12 minutos sobre un tema social contemporáneo elegido por el equipo. ' +
+      'Deben entregar tres artefactos: 1) el archivo de audio en formato MP3 con calidad mínima de 128 kbps; ' +
+      '2) un guion escrito en PDF de máximo 3 páginas con las intervenciones marcadas por hablante; ' +
+      '3) una lista de fuentes consultadas con al menos 5 referencias, cada una con enlace verificable. ' +
+      'Suban un único archivo ZIP que contenga los tres artefactos, nombrando el audio principal como PodcastEquipo{N}.mp3.',
+    archivos: [
+      { name: 'guia-produccion-podcast.pdf', url: 'https://example.test/guia-podcast.pdf' },
     ],
   },
   {

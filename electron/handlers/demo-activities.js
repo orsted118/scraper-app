@@ -2,7 +2,7 @@
 // los portales están vacíos (vacaciones). Se sirven en lugar del scraper solo
 // si DVPOTRO_DEMO_ACTIVITIES=1; sin esa variable este módulo no se usa.
 //
-// Las mismas dos consignas están replicadas en src/dev-mock.js para el navegador.
+// Las mismas consignas están replicadas en src/dev-mock.js para el navegador.
 // Es fixture duplicada a propósito: main es CommonJS y el renderer es ESM
 // bundleado por Vite, así que no pueden compartir el módulo.
 
@@ -65,6 +65,49 @@ const DEMO_ACTIVITIES = [
     rawGrade: null,
     rawSubmission: null,
     url: 'https://ivirtual.itson.mx/mod/assign/view.php?id=demo2',
+  },
+  {
+    // Perfil minimalista: consigna corta, restricciones puntuales. Verifica que
+    // el analizador saque requisitos con instrucciones escuetas.
+    id: 'demo-3',
+    nombre: 'Cuestionario unidad 4 — derivadas parciales',
+    materia: 'Cálculo Multivariable',
+    profesor: 'Mtra. Osuna Rangel',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    fechaLimite: inDays(2, 22, 0),
+    fechaPublicacion: inDays(-1),
+    instrucciones:
+      'Resuelve el cuestionario en línea entre el 25 y el 27 de julio. Tienes 60 minutos y un solo intento. ' +
+      'Se permite calculadora científica no programable; queda prohibido consultar formularios, apuntes o internet.',
+    archivos: [],
+    rawGrade: null,
+    rawSubmission: null,
+    url: 'https://ivirtual.itson.mx/mod/quiz/view.php?id=demo3',
+  },
+  {
+    // Perfil multimedia: entrega no textual (audio + guion + fuentes). Verifica
+    // que el analizador distingue requisitos técnicos (kbps, ZIP) de contenido.
+    id: 'demo-4',
+    nombre: 'Podcast educativo: temas sociales contemporáneos',
+    materia: 'Comunicación Oral y Escrita',
+    profesor: 'Lic. Robles Munguía',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    fechaLimite: inDays(14, 23, 59),
+    fechaPublicacion: inDays(-2),
+    instrucciones:
+      'En parejas, produzcan un podcast educativo de entre 8 y 12 minutos sobre un tema social contemporáneo elegido por el equipo. ' +
+      'Deben entregar tres artefactos: 1) el archivo de audio en formato MP3 con calidad mínima de 128 kbps; ' +
+      '2) un guion escrito en PDF de máximo 3 páginas con las intervenciones marcadas por hablante; ' +
+      '3) una lista de fuentes consultadas con al menos 5 referencias, cada una con enlace verificable. ' +
+      'Suban un único archivo ZIP que contenga los tres artefactos, nombrando el audio principal como PodcastEquipo{N}.mp3.',
+    archivos: [
+      { name: 'guia-produccion-podcast.pdf', url: 'https://example.test/guia-podcast.pdf' },
+    ],
+    rawGrade: null,
+    rawSubmission: null,
+    url: 'https://ivirtual.itson.mx/mod/assign/view.php?id=demo4',
   },
 ];
 

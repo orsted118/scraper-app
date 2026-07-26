@@ -11,6 +11,93 @@ function iso(offsetDays, hour = 23, minute = 59) {
 }
 
 const MOCK_ACTIVITIES = [
+  // Las "demo-*" son consignas para ejercitar el analizador con distintos
+  // perfiles (densa, ejecutiva, minimalista, multimedia). Están replicadas en
+  // electron/handlers/demo-activities.js, que es la versión que ve Electron con
+  // DVPOTRO_DEMO_ACTIVITIES=1 (main es CJS, esto es ESM: no se puede compartir
+  // el módulo).
+  {
+    id: 'demo-1',
+    nombre: 'Reporte de práctica 6: análisis de complejidad algorítmica',
+    materia: 'Estructuras de Datos',
+    profesor: 'Dr. Peralta Villanueva',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    fechaLimite: iso(4, 23, 59),
+    fechaPublicacion: iso(-6),
+    instrucciones:
+      'Elabora un reporte que compare empíricamente el rendimiento de tres algoritmos de ordenamiento: quicksort, mergesort e ' +
+      'insertion sort. El reporte debe contener: portada con tu nombre completo y número de control; una introducción de máximo ' +
+      'una cuartilla explicando la notación Big-O; una tabla comparativa con los tiempos de ejecución medidos sobre arreglos de ' +
+      '1000, 10000 y 100000 elementos; al menos dos gráficas que muestren el crecimiento del tiempo respecto al tamaño de entrada; ' +
+      'el código fuente comentado en un anexo; y una conclusión que justifique cuál algoritmo conviene en cada escenario. ' +
+      'Extensión máxima de 12 páginas sin contar anexos. Entrega en PDF, letra Times New Roman 12, interlineado 1.5. ' +
+      'Cita al menos 4 fuentes en formato IEEE.',
+    archivos: [
+      { name: 'rubrica-practica-6.pdf', url: 'https://example.test/rubrica6.pdf' },
+      { name: 'datasets-prueba.zip', url: 'https://example.test/datasets.zip' },
+    ],
+  },
+  {
+    id: 'demo-2',
+    nombre: 'Entrega 2: prototipo funcional y documentación técnica',
+    materia: 'Ingeniería de Software II',
+    profesor: 'Mtra. Cárdenas Ibarra',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    fechaLimite: iso(9, 18, 0),
+    fechaPublicacion: iso(-3),
+    instrucciones:
+      'En equipos de 4 integrantes, entreguen el prototipo funcional del sistema propuesto en la Entrega 1. Deben subir un único ' +
+      'documento PDF que incluya: 1) el diagrama de casos de uso actualizado en UML; 2) el modelo entidad-relación de la base de ' +
+      'datos con al menos 6 entidades; 3) capturas de pantalla de las 3 funcionalidades principales ya implementadas; ' +
+      '4) el enlace público al repositorio de GitHub con historial de commits de todos los integrantes; 5) la matriz de ' +
+      'trazabilidad entre requisitos y módulos implementados; y 6) un apartado de pruebas con mínimo 10 casos de prueba ' +
+      'documentados en formato tabla (entrada esperada, salida obtenida, resultado). ' +
+      'El documento no debe exceder 25 páginas. Nombren el archivo Equipo{N}_Entrega2.pdf',
+    archivos: [
+      { name: 'plantilla-matriz-trazabilidad.docx', url: 'https://example.test/matriz.docx' },
+      { name: 'ejemplo-casos-prueba.pdf', url: 'https://example.test/casos.pdf' },
+      { name: 'lineamientos-entrega2.pdf', url: 'https://example.test/lineamientos2.pdf' },
+    ],
+  },
+  {
+    // Perfil minimalista: consigna corta, restricciones puntuales. Verifica que
+    // el analizador saque requisitos con instrucciones escuetas.
+    id: 'demo-3',
+    nombre: 'Cuestionario unidad 4 — derivadas parciales',
+    materia: 'Cálculo Multivariable',
+    profesor: 'Mtra. Osuna Rangel',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    fechaLimite: iso(2, 22, 0),
+    fechaPublicacion: iso(-1),
+    instrucciones:
+      'Resuelve el cuestionario en línea entre el 25 y el 27 de julio. Tienes 60 minutos y un solo intento. ' +
+      'Se permite calculadora científica no programable; queda prohibido consultar formularios, apuntes o internet.',
+    archivos: [],
+  },
+  {
+    // Perfil multimedia: entrega no textual (audio + guion + fuentes). Verifica
+    // que el analizador distingue requisitos técnicos (kbps, ZIP) de contenido.
+    id: 'demo-4',
+    nombre: 'Podcast educativo: temas sociales contemporáneos',
+    materia: 'Comunicación Oral y Escrita',
+    profesor: 'Lic. Robles Munguía',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    fechaLimite: iso(14, 23, 59),
+    fechaPublicacion: iso(-2),
+    instrucciones:
+      'En parejas, produzcan un podcast educativo de entre 8 y 12 minutos sobre un tema social contemporáneo elegido por el equipo. ' +
+      'Deben entregar tres artefactos: 1) el archivo de audio en formato MP3 con calidad mínima de 128 kbps; ' +
+      '2) un guion escrito en PDF de máximo 3 páginas con las intervenciones marcadas por hablante; ' +
+      '3) una lista de fuentes consultadas con al menos 5 referencias, cada una con enlace verificable. ' +
+      'Suban un único archivo ZIP que contenga los tres artefactos, nombrando el audio principal como PodcastEquipo{N}.mp3.',
+    archivos: [
+      { name: 'guia-produccion-podcast.pdf', url: 'https://example.test/guia-podcast.pdf' },
+    ],
+  },
   {
     id: 'mock-1',
     nombre: 'Proyecto final: API REST con autenticación',
@@ -732,6 +819,71 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
           note.updatedAt = now;
         });
         return { ok: true, affected };
+      },
+    },
+    // Analizador sin LLM: deriva requisitos de la propia consigna con reglas
+    // simples. No busca imitar al modelo, solo darle datos a la UI en navegador.
+    analyzer: {
+      extractRequirements: async (activity) => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
+        const text = String(activity?.instrucciones || '');
+        const requirements = [];
+        const add = (type, description, criteria) =>
+          requirements.push({ id: `req-${requirements.length + 1}`, type, description, criteria });
+
+        const words = text.match(/(\d{3,4})\s*palabras/i);
+        if (words) add('length', `Extensión de ${words[1]} palabras`, 'Contar las palabras del documento');
+
+        const refs = text.match(/(\d+)\s*(?:referencias|fuentes)/i);
+        if (refs) add('content', `Incluir al menos ${refs[1]} referencias`, 'Revisar la sección de referencias');
+
+        if (/apa/i.test(text)) add('format', 'Usar formato APA', 'Verificar citas y bibliografía');
+        if (/pdf/i.test(text)) add('format', 'Entregar en formato PDF', 'Comprobar la extensión del archivo');
+        if (/equipo|grupal/i.test(`${text} ${activity?.modalidad || ''}`)) {
+          add('other', 'Trabajo en equipo', 'Verificar que figuren los integrantes');
+        }
+
+        if (requirements.length === 0) {
+          add('content', `Cumplir con lo pedido en "${activity?.nombre || 'la actividad'}"`, 'Revisar la consigna completa');
+        }
+
+        return { ok: true, requirements, fromCache: false, model: 'mock-rules' };
+      },
+      parseFile: async ({ filename }) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const extension = String(filename || '').slice(String(filename).lastIndexOf('.')).toLowerCase();
+
+        if (!['.pdf', '.docx'].includes(extension)) {
+          return { ok: false, error: `Formato no soportado en Fase 1: ${extension || 'sin extensión'}` };
+        }
+
+        return {
+          ok: true,
+          submission: {
+            text: 'Texto simulado de la entrega.',
+            pageCount: extension === '.pdf' ? 7 : null,
+            wordCount: 1487,
+            extension,
+            mime: extension === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            sizeBytes: 240000,
+          },
+        };
+      },
+      verifySubmission: async (requirements = []) => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        // Rota los cuatro estados para que la UI muestre todos los colores.
+        const cycle = ['yes', 'partial', 'no', 'unclear'];
+        return {
+          ok: true,
+          model: 'mock-rules',
+          results: requirements.map((requirement, index) => ({
+            requirementId: requirement.id,
+            met: cycle[index % cycle.length],
+            confidence: [0.94, 0.61, 0.88, 0.42][index % 4],
+            notes: `Resultado simulado para "${requirement.description}".`,
+          })),
+        };
       },
     },
     portalSistemas: {

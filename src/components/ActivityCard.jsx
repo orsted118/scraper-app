@@ -18,6 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import ActivityAnalyzer from '../pages/actividades/ActivityAnalyzer';
 import { useState } from 'react';
 import { EASE } from '../utils/motion';
 
@@ -263,6 +264,7 @@ function ActivityCard({
   archivos = [],
   fechaLimite,
   fechaPublicacion,
+  id,
   instrucciones,
   materia,
   modalidad = 'individual',
@@ -693,6 +695,10 @@ function ActivityCard({
                       ) : null}
                     </div>
                   </footer>
+
+                  <ActivityAnalyzer
+                    activity={{ id, nombre, instrucciones, materia, modalidad }}
+                  />
                 </div>
               </div>
             </motion.div>

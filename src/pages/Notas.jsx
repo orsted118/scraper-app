@@ -936,7 +936,7 @@ function Notas({ deepLink } = {}) {
           </button>
         </div>
 
-        <motion.div key={view} initial={{ opacity: 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: EASE }} className="mt-5 pb-16">
+        <motion.div key={view} initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: EASE }} className="mt-5 pb-16">
           {view === 'active' ? (
             <QuickNoteRow quickNote={quickNote} setQuickNote={setQuickNote} onSubmit={handleQuickNoteSubmit} />
           ) : null}
@@ -986,7 +986,7 @@ function Notas({ deepLink } = {}) {
       {/* Bulk action bar */}
       {selectedIds.size > 0 ? (
         <motion.div
-          initial={{ opacity: 0, y: reduced ? 0 : 12 }}
+          initial={reduced ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: reduced ? 0 : 0.18, ease: EASE }}
           className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t px-6"
@@ -1052,7 +1052,7 @@ function Notas({ deepLink } = {}) {
       {/* Modal confirmación borrar etiqueta */}
       {deletingLabel ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: 'rgba(0, 0, 0, 0.4)' }} onClick={() => setDeletingLabel(null)}>
-          <motion.div initial={{ opacity: 0, scale: reduced ? 1 : 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reduced ? 0 : 0.18, ease: EASE }} role="dialog" aria-modal="true" className="w-full max-w-md border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }} onClick={(e) => e.stopPropagation()}>
+          <motion.div initial={reduced ? false : { opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reduced ? 0 : 0.18, ease: EASE }} role="dialog" aria-modal="true" className="w-full max-w-md border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }} onClick={(e) => e.stopPropagation()}>
             <p className="text-[11px] font-bold uppercase tracking-[0.24em]" style={{ color: 'var(--accent)' }}>Confirmar</p>
             <h4 className="mt-2 text-xl font-extrabold" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)', letterSpacing: '-0.02em' }}>Eliminar etiqueta «{deletingLabel}»</h4>
             <p className="mt-2 text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
@@ -1069,7 +1069,7 @@ function Notas({ deepLink } = {}) {
       {/* Modal ayuda de atajos */}
       {showHelp ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: 'rgba(0, 0, 0, 0.4)' }} onClick={() => setShowHelp(false)}>
-          <motion.div initial={{ opacity: 0, scale: reduced ? 1 : 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reduced ? 0 : 0.18, ease: EASE }} role="dialog" aria-modal="true" aria-label="Atajos de teclado" className="w-full max-w-md border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }} onClick={(e) => e.stopPropagation()}>
+          <motion.div initial={reduced ? false : { opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reduced ? 0 : 0.18, ease: EASE }} role="dialog" aria-modal="true" aria-label="Atajos de teclado" className="w-full max-w-md border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }} onClick={(e) => e.stopPropagation()}>
             <h4 className="text-xl font-extrabold" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)', letterSpacing: '-0.02em' }}>Atajos de teclado</h4>
             <table className="mt-4 w-full text-sm">
               <tbody>

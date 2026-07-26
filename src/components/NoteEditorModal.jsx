@@ -203,7 +203,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
       onClick={onClose}
     >
       <motion.div
-        initial={{ opacity: 0, scale: reduced ? 1 : 0.98 }}
+        initial={reduced ? false : { opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: reduced ? 0 : 0.18, ease: EASE }}
         role="dialog"

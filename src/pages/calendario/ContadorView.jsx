@@ -171,7 +171,7 @@ function ContadorView({ events, todayStart }) {
   return (
     <motion.section
       className="border p-6"
-      initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+      initial={reduced ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
       style={{

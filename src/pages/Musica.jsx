@@ -100,7 +100,7 @@ function Musica() {
     return (
       <div className="flex min-h-[60vh] flex-col">
       <motion.div
-        initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+        initial={reduced ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
         className="flex flex-1 flex-col items-start justify-center"
@@ -188,7 +188,7 @@ function Musica() {
       ) : null}
 
       <motion.div
-        initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+        initial={reduced ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
         className="mt-5 flex-1 overflow-y-auto"

@@ -449,7 +449,7 @@ function Actividades({
   };
 
   const renderCardsView = () => (
-    <motion.div className="space-y-4" variants={listVariants} initial="hidden" animate="visible">
+    <motion.div className="space-y-4" variants={listVariants} initial={reduced ? false : 'hidden'} animate="visible">
       {sortedActivities.map((activity) => (
         <motion.div
           key={getActivityAnchorId(activity)}
@@ -493,7 +493,7 @@ function Actividades({
         {showHidden ? (
           <motion.div
             key="hidden-list"
-            initial={{ height: 0, opacity: 0 }}
+            initial={reduced ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: reduced ? 0 : 0.22, ease: EASE }}
@@ -588,7 +588,7 @@ function Actividades({
               {isExpanded ? (
                 <motion.div
                   key="details"
-                  initial={{ height: 0, opacity: 0 }}
+                  initial={reduced ? false : { height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: reduced ? 0 : 0.22, ease: EASE }}
@@ -1241,7 +1241,7 @@ function Actividades({
       ) : (
         <motion.div
           key={`${viewMode}-${visibleActivityCount > 0 ? 'data' : 'empty'}`}
-          initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+          initial={reduced ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.14, ease: EASE }}
         >

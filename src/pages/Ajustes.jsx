@@ -177,7 +177,7 @@ function SettingRow({ title, description, children, last = false }) {
 function Section({ eyebrow, title, description, children, first = false, accentEyebrow = false, reduced }) {
   return (
     <motion.section
-      initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+      initial={reduced ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
       className={first ? '' : 'border-t pt-8'}
@@ -1233,7 +1233,7 @@ function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSave
       </Section>
 
       <motion.section
-        initial={{ opacity: 0, y: reduced ? 0 : 6 }}
+        initial={reduced ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
         className="flex flex-wrap items-end justify-between gap-4 border-t pt-6"
@@ -1274,7 +1274,7 @@ function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSave
           onClick={() => (dangerBusy ? null : setConfirmAction(null))}
         >
           <motion.div
-            initial={{ opacity: 0, scale: reduced ? 1 : 0.98 }}
+            initial={reduced ? false : { opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: reduced ? 0 : 0.18, ease: EASE }}
             role="dialog"

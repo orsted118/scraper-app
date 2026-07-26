@@ -548,6 +548,10 @@ function mockNoteMatchesFilters(note, filters = {}) {
   return true;
 }
 
+// En memoria a propósito: reiniciar el dev server debe devolver el set completo
+// de actividades, no arrastrar lo que se ocultó probando la UI.
+let MOCK_HIDDEN_ACTIVITY_IDS = [];
+
 let mockNotificationListener = null;
 
 if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) {
@@ -884,6 +888,19 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
             notes: `Resultado simulado para "${requirement.description}".`,
           })),
         };
+      },
+    },
+    hiddenActivities: {
+      get: async () => ({ ok: true, ids: [...MOCK_HIDDEN_ACTIVITY_IDS] }),
+      add: async (id) => {
+        if (!MOCK_HIDDEN_ACTIVITY_IDS.includes(id)) {
+          MOCK_HIDDEN_ACTIVITY_IDS.push(id);
+        }
+        return { ok: true, ids: [...MOCK_HIDDEN_ACTIVITY_IDS] };
+      },
+      remove: async (id) => {
+        MOCK_HIDDEN_ACTIVITY_IDS = MOCK_HIDDEN_ACTIVITY_IDS.filter((entry) => entry !== id);
+        return { ok: true, ids: [...MOCK_HIDDEN_ACTIVITY_IDS] };
       },
     },
     portalSistemas: {

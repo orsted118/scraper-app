@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld('scraperApp', {
       ipcRenderer.invoke('activity-analyzer:verify-submission', { requirements, submissionData, activityId }),
     parseFile: (payload) => ipcRenderer.invoke('activity-analyzer:parse-file', payload),
   },
+  hiddenActivities: {
+    get: () => ipcRenderer.invoke('hidden-activities:get'),
+    add: (id) => ipcRenderer.invoke('hidden-activities:add', id),
+    remove: (id) => ipcRenderer.invoke('hidden-activities:remove', id),
+  },
   portalSistemas: {
     getProfile: () => ipcRenderer.invoke('portal-sistemas:get-profile'),
     refreshProfile: () => ipcRenderer.invoke('portal-sistemas:refresh-profile'),

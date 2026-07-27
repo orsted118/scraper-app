@@ -73,13 +73,12 @@ contextBridge.exposeInMainWorld('scraperApp', {
       ipcRenderer.invoke('music-playlists:remove-track', { playlistId, trackPath }),
     reorder: (playlistId, fromIndex, toIndex) =>
       ipcRenderer.invoke('music-playlists:reorder', { playlistId, fromIndex, toIndex }),
-    setCover: (playlistId, imageArrayBuffer, filename) =>
-      ipcRenderer.invoke('music-playlists:set-cover', { playlistId, imageArrayBuffer, filename }),
+    // Elegir, leer y guardar la portada ocurre entero en main: acá solo viaja el
+    // id. No hay forma de pedirle al puente que lea un archivo por ruta.
+    pickCover: (playlistId) => ipcRenderer.invoke('music-playlists:pick-cover', { playlistId }),
     removeCover: (playlistId) => ipcRenderer.invoke('music-playlists:remove-cover', { playlistId }),
     importM3u: (filePath) => ipcRenderer.invoke('music-playlists:import-m3u', { filePath }),
     pickM3u: () => ipcRenderer.invoke('music-playlists:pick-m3u'),
-    pickImage: () => ipcRenderer.invoke('music-playlists:pick-image'),
-    readImage: (filePath) => ipcRenderer.invoke('music-playlists:read-image', filePath),
   },
   history: {
     list: () => ipcRenderer.invoke('music-history:list'),

@@ -95,13 +95,16 @@ function usePlaylists() {
     [commit],
   );
 
-  const setCover = useCallback(
-    async (playlistId, arrayBuffer, filename) => {
+  // No recibe la imagen: el diálogo lo abre main, que además la lee y la guarda.
+  // Devuelve el resultado para que la vista distinga cancelar de fallar.
+  const pickCover = useCallback(
+    async (playlistId) => {
       const bridge = getBridge();
-      if (!bridge) return;
+      if (!bridge) return { ok: false, canceled: true };
 
-      const result = await bridge.setCover(playlistId, arrayBuffer, filename);
+      const result = await bridge.pickCover(playlistId);
       if (result?.ok) replace(result.playlist);
+      return result || { ok: false, error: 'No hubo respuesta del proceso principal.' };
     },
     [replace],
   );
@@ -217,7 +220,7 @@ function usePlaylists() {
     addTrack,
     removeTrack,
     reorder,
-    setCover,
+    pickCover,
     removeCover,
     importM3u,
   };

@@ -62,6 +62,25 @@ contextBridge.exposeInMainWorld('scraperApp', {
     add: (filePath) => ipcRenderer.invoke('music-favorites:add', filePath),
     remove: (filePath) => ipcRenderer.invoke('music-favorites:remove', filePath),
   },
+  playlists: {
+    list: () => ipcRenderer.invoke('music-playlists:list'),
+    create: (name) => ipcRenderer.invoke('music-playlists:create', { name }),
+    rename: (id, name) => ipcRenderer.invoke('music-playlists:rename', { id, name }),
+    delete: (id) => ipcRenderer.invoke('music-playlists:delete', { id }),
+    addTrack: (playlistId, trackPath) =>
+      ipcRenderer.invoke('music-playlists:add-track', { playlistId, trackPath }),
+    removeTrack: (playlistId, trackPath) =>
+      ipcRenderer.invoke('music-playlists:remove-track', { playlistId, trackPath }),
+    reorder: (playlistId, fromIndex, toIndex) =>
+      ipcRenderer.invoke('music-playlists:reorder', { playlistId, fromIndex, toIndex }),
+    setCover: (playlistId, imageArrayBuffer, filename) =>
+      ipcRenderer.invoke('music-playlists:set-cover', { playlistId, imageArrayBuffer, filename }),
+    removeCover: (playlistId) => ipcRenderer.invoke('music-playlists:remove-cover', { playlistId }),
+    importM3u: (filePath) => ipcRenderer.invoke('music-playlists:import-m3u', { filePath }),
+    pickM3u: () => ipcRenderer.invoke('music-playlists:pick-m3u'),
+    pickImage: () => ipcRenderer.invoke('music-playlists:pick-image'),
+    readImage: (filePath) => ipcRenderer.invoke('music-playlists:read-image', filePath),
+  },
   history: {
     list: () => ipcRenderer.invoke('music-history:list'),
     add: (filePath, playedAt) => ipcRenderer.invoke('music-history:add', { path: filePath, playedAt }),

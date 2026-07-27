@@ -464,6 +464,9 @@ const MOCK_MUSIC_TRACKS = Array.from({ length: 20 }, (_, index) => {
     album,
     duration: 95 + index * 17,
     bitrate: 320000,
+    // Sin fs real no hay portadas que extraer: el placeholder de TrackCover es
+    // justamente el camino que conviene ejercitar en navegador.
+    coverPath: null,
   };
 });
 
@@ -677,6 +680,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
           return null;
         }
       },
+      // Las teclas multimedia las captura globalShortcut en el main process, que
+      // en navegador no existe: se devuelve el unsubscribe y nada más.
+      onMediaKey: () => () => {},
     },
     notes: {
       list: async ({ view = 'active', filters = {} } = {}) => {

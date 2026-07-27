@@ -19,7 +19,10 @@ import EmptyMessage from '../components/music/EmptyMessage';
 import FavoritesView from '../components/music/FavoritesView';
 import HistoryView from '../components/music/HistoryView';
 import TracksView from '../components/music/TracksView';
+import AddToPlaylistModal from '../components/music/AddToPlaylistModal';
+import PlaylistsView from '../components/music/PlaylistsView';
 import useFavorites from '../hooks/useFavorites';
+import usePlaylists from '../hooks/usePlaylists';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 import { EASE } from '../utils/motion';
 
@@ -29,6 +32,8 @@ const TABS = [
   { id: 'artists', label: 'Artistas' },
   { id: 'favorites', label: 'Favoritos' },
   { id: 'history', label: 'Historial' },
+  // Última a propósito: las cinco originales conservan el orden ya aprendido.
+  { id: 'playlists', label: 'Playlists' },
 ];
 
 function Musica() {
@@ -36,6 +41,7 @@ function Musica() {
   const reduced = useReducedMotion();
   const player = useMusicPlayer();
   const favorites = useFavorites();
+  const playlists = usePlaylists();
   const searchInputRef = useRef(null);
   const [library, setLibrary] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -45,6 +51,7 @@ function Musica() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [tab, setTab] = useState('tracks');
   const [contextMenu, setContextMenu] = useState(null);
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -158,6 +165,12 @@ function Musica() {
         separated: true,
       },
       {
+        key: 'add-to-playlist',
+        label: 'Agregar a playlist...',
+        Icon: ListPlus,
+        onClick: () => setAddToPlaylistTrack(track),
+      },
+      {
         key: 'copy-path',
         label: 'Copiar ruta',
         Icon: Link2,
@@ -261,6 +274,10 @@ function Musica() {
 
     if (tab === 'history') {
       return <HistoryView {...viewProps} />;
+    }
+
+    if (tab === 'playlists') {
+      return <PlaylistsView tracks={allTracks} search={search} playlists={playlists} onPlay={handlePlay} />;
     }
 
     return (
@@ -380,6 +397,20 @@ function Musica() {
       {/* El drawer vive acá y no en el provider: la cola solo tiene sentido
           mientras estás en Música, no flotando sobre Notas o Calendario. */}
       <QueueDrawer favorites={favorites} open={queueOpen} onClose={() => setQueueOpen(false)} />
+
+      <AddToPlaylistModal
+        open={Boolean(addToPlaylistTrack)}
+        track={addToPlaylistTrack}
+        playlists={playlists.playlists}
+        // El track lo devuelve el modal: para cuando estas callbacks corren, el
+        // state que las abrió ya se limpió al cerrar.
+        onAdd={(playlistId, target) => playlists.addTrack(playlistId, target.path)}
+        onCreate={async (name, target) => {
+          const created = await playlists.create(name);
+          if (created && target) playlists.addTrack(created.id, target.path);
+        }}
+        onClose={() => setAddToPlaylistTrack(null)}
+      />
 
       {contextMenu ? (
         <TrackContextMenu

@@ -473,6 +473,37 @@ const MOCK_MUSIC_TRACKS = Array.from({ length: 20 }, (_, index) => {
 let MOCK_MUSIC_LIBRARY = null;
 let MOCK_MUSIC_STATE = null;
 let MOCK_FAVORITE_PATHS = [MOCK_MUSIC_TRACKS[1].path, MOCK_MUSIC_TRACKS[4].path];
+
+const MOCK_COVER_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR42mNkYPhfz0AEYBxVSF+FgxWMcnBFAADg8wX7l6q3JgAAAABJRU5ErkJggg==';
+
+// Una con pistas y otra vacía: alcanzan para ejercitar grid, expand, reorder y
+// el empty state de playlist sin pistas.
+let MOCK_PLAYLISTS = [
+  {
+    id: 'pl_mock-tarde',
+    name: 'Para la tarde',
+    coverPath: null,
+    tracks: [MOCK_MUSIC_TRACKS[0].path, MOCK_MUSIC_TRACKS[2].path, MOCK_MUSIC_TRACKS[5].path],
+    createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+    updatedAt: new Date(Date.now() - DAY_MS).toISOString(),
+  },
+  {
+    id: 'pl_mock-vacia',
+    name: 'Sin nada todavía',
+    coverPath: null,
+    tracks: [],
+    createdAt: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+  },
+];
+
+function mockMutatePlaylist(id, mutator) {
+  const index = MOCK_PLAYLISTS.findIndex((p) => p.id === id);
+  if (index === -1) return { ok: false, error: 'La playlist no existe.' };
+  const updated = { ...mutator(MOCK_PLAYLISTS[index]), updatedAt: new Date().toISOString() };
+  MOCK_PLAYLISTS[index] = updated;
+  return { ok: true, playlist: { ...updated, tracks: [...updated.tracks] } };
+}
 // Historial sembrado: sin él la vista arranca vacía y no hay forma de ver el
 // orden por recientes ni el conteo de más escuchadas sin esperar reproducciones.
 let MOCK_HISTORY_ENTRIES = [
@@ -706,6 +737,58 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         MOCK_FAVORITE_PATHS = MOCK_FAVORITE_PATHS.filter((entry) => entry !== filePath);
         return { ok: true, paths: [...MOCK_FAVORITE_PATHS] };
       },
+    },
+    playlists: {
+      list: async () => ({ playlists: MOCK_PLAYLISTS.map((p) => ({ ...p, tracks: [...p.tracks] })) }),
+      create: async (name) => {
+        const trimmed = String(name || '').trim();
+        if (!trimmed) return { ok: false, error: 'La playlist necesita un nombre.' };
+        const now = new Date().toISOString();
+        const playlist = { id: `pl_${mockNoteId()}`, name: trimmed, coverPath: null, tracks: [], createdAt: now, updatedAt: now };
+        MOCK_PLAYLISTS.push(playlist);
+        return { ok: true, playlist: { ...playlist } };
+      },
+      rename: async (id, name) => mockMutatePlaylist(id, (p) => ({ ...p, name: String(name || '').trim() || p.name })),
+      delete: async (id) => {
+        const before = MOCK_PLAYLISTS.length;
+        MOCK_PLAYLISTS = MOCK_PLAYLISTS.filter((p) => p.id !== id);
+        return MOCK_PLAYLISTS.length < before ? { ok: true } : { ok: false, error: 'La playlist no existe.' };
+      },
+      addTrack: async (playlistId, trackPath) =>
+        mockMutatePlaylist(playlistId, (p) =>
+          (p.tracks.includes(trackPath) ? p : { ...p, tracks: [...p.tracks, trackPath] })),
+      removeTrack: async (playlistId, trackPath) =>
+        mockMutatePlaylist(playlistId, (p) => ({ ...p, tracks: p.tracks.filter((t) => t !== trackPath) })),
+      reorder: async (playlistId, fromIndex, toIndex) =>
+        mockMutatePlaylist(playlistId, (p) => {
+          const size = p.tracks.length;
+          const valid = (i) => Number.isInteger(i) && i >= 0 && i < size;
+          if (!valid(fromIndex) || !valid(toIndex) || fromIndex === toIndex) return p;
+          const tracks = [...p.tracks];
+          const [moved] = tracks.splice(fromIndex, 1);
+          tracks.splice(toIndex, 0, moved);
+          return { ...p, tracks };
+        }),
+      // El diálogo nativo no existe en navegador: se simula que el usuario
+      // eligió una imagen. Sin fs real se guarda el data URL del PNG de prueba
+      // como coverPath, que es lo que buildCoverUrl termina pasando al <img>.
+      pickCover: async (playlistId) =>
+        mockMutatePlaylist(playlistId, (p) => ({ ...p, coverPath: MOCK_COVER_DATA_URL })),
+      removeCover: async (playlistId) => mockMutatePlaylist(playlistId, (p) => ({ ...p, coverPath: null })),
+      importM3u: async () => {
+        const now = new Date().toISOString();
+        const playlist = {
+          id: `pl_${mockNoteId()}`,
+          name: 'Lista importada',
+          coverPath: null,
+          tracks: [MOCK_MUSIC_TRACKS[0].path, MOCK_MUSIC_TRACKS[3].path, 'C:/Users/mock/Music/borrada.mp3'],
+          createdAt: now,
+          updatedAt: now,
+        };
+        MOCK_PLAYLISTS.push(playlist);
+        return { ok: true, playlist: { ...playlist }, matchedCount: 2, unmatchedCount: 2 };
+      },
+      pickM3u: async () => 'C:/Users/mock/Music/Lista importada.m3u',
     },
     history: {
       list: async () => ({ entries: [...MOCK_HISTORY_ENTRIES] }),

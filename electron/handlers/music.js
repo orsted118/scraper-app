@@ -225,9 +225,17 @@ function isInside(filePath, folder) {
     : filePath.startsWith(root);
 }
 
-// Llamar DENTRO de whenReady. Sirve dos raíces y nada más: audio dentro de la
-// carpeta de librería configurada, e imágenes dentro de music-covers. Sin ese
-// cerco el protocolo es un primitivo de lectura arbitraria del disco.
+// Portadas custom de playlists. La ruta se calcula acá en vez de importarla de
+// music-playlists porque ese módulo ya importa este: cerrar el ciclo rompería
+// la carga.
+function getPlaylistCoversDir() {
+  return path.join(app.getPath('userData'), 'playlist-covers');
+}
+
+// Llamar DENTRO de whenReady. Sirve tres raíces y nada más: audio dentro de la
+// carpeta de librería configurada, e imágenes dentro de music-covers y de
+// playlist-covers. Sin ese cerco el protocolo es un primitivo de lectura
+// arbitraria del disco.
 function registerMusicProtocol() {
   protocol.handle(MEDIA_SCHEME, (request) => {
     try {
@@ -239,9 +247,12 @@ function registerMusicProtocol() {
       );
       const extension = path.extname(filePath).toLowerCase();
 
-      // Las portadas las escribe el propio scan con el sha256 del contenido como
-      // nombre, así que basta con que caigan dentro del directorio.
-      const allowed = isInside(filePath, getCoversDir())
+      // Las portadas las escribe la propia app dentro de esos directorios, así
+      // que alcanza con que el archivo caiga adentro y tenga extensión de
+      // imagen; el nombre ya lo controlamos nosotros.
+      const isCover =
+        isInside(filePath, getCoversDir()) || isInside(filePath, getPlaylistCoversDir());
+      const allowed = isCover
         ? COVER_EXTENSIONS.has(extension)
         : isInside(filePath, getLibrary()?.folderPath) && AUDIO_EXTENSIONS.has(extension);
 

@@ -74,6 +74,27 @@ contextBridge.exposeInMainWorld('scraperApp', {
     refresh: () => ipcRenderer.invoke('music:refresh'),
     saveState: (state) => ipcRenderer.invoke('music:save-state', state),
     loadState: () => ipcRenderer.invoke('music:load-state'),
+    // Teclas multimedia del teclado, capturadas por globalShortcut en main.
+    // Se quitan los listeners uno por uno (no removeAllListeners) para que dos
+    // suscriptores no se pisen entre sí.
+    onMediaKey: (callback) => {
+      const channels = {
+        'media-key:play-pause': 'play-pause',
+        'media-key:next': 'next',
+        'media-key:prev': 'prev',
+      };
+      const listeners = Object.entries(channels).map(([channel, key]) => {
+        const listener = () => callback(key);
+        ipcRenderer.on(channel, listener);
+        return [channel, listener];
+      });
+
+      return () => {
+        for (const [channel, listener] of listeners) {
+          ipcRenderer.removeListener(channel, listener);
+        }
+      };
+    },
   },
   notes: {
     list: (payload) => ipcRenderer.invoke('notes:list', payload),

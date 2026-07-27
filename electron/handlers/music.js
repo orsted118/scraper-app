@@ -3,15 +3,30 @@
 // También registra el protocolo dvpotro-media:// — en dev el renderer corre en
 // http://localhost (Vite) y Chromium bloquea subresources file://, así que el
 // <audio> necesita un protocolo propio que sirva los archivos locales.
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { app, dialog, ipcMain, net, protocol } = require('electron');
 const { pathToFileURL } = require('url');
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.flac', '.ogg', '.wav']);
+const COVER_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const MEDIA_SCHEME = 'dvpotro-media';
 // Directorios que un scan recursivo jamás debería pisar.
 const SKIP_DIRS = new Set(['node_modules', '.git', '$RECYCLE.BIN', 'System Volume Information']);
+
+// music-metadata reporta el formato de la portada como mime completo o como
+// extensión pelada según el contenedor — se aceptan las dos formas.
+const COVER_FORMATS = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  jpeg: '.jpg',
+  jpg: '.jpg',
+  'image/png': '.png',
+  png: '.png',
+  'image/webp': '.webp',
+  webp: '.webp',
+};
 
 function getLibraryPath() {
   return path.join(app.getPath('userData'), 'music-library.json');
@@ -19,6 +34,10 @@ function getLibraryPath() {
 
 function getStatePath() {
   return path.join(app.getPath('userData'), 'music-state.json');
+}
+
+function getCoversDir() {
+  return path.join(app.getPath('userData'), 'music-covers');
 }
 
 function readJson(filePath) {
@@ -63,6 +82,38 @@ function collectAudioFiles(dir, accumulator = []) {
   return accumulator;
 }
 
+// Extrae la portada embebida a userData/music-covers/<sha256>.<ext>. El hash
+// del contenido es el nombre: dos pistas del mismo álbum escriben el mismo
+// archivo una sola vez, y re-escanear no duplica nada.
+function extractCover(picture) {
+  if (!picture?.data) {
+    return null;
+  }
+
+  const extension = COVER_FORMATS[String(picture.format || '').toLowerCase()];
+
+  if (!extension) {
+    return null;
+  }
+
+  try {
+    const buffer = Buffer.from(picture.data);
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const coverPath = path.join(getCoversDir(), `${hash}${extension}`);
+
+    if (!fs.existsSync(coverPath)) {
+      fs.mkdirSync(getCoversDir(), { recursive: true });
+      fs.writeFileSync(coverPath, buffer);
+    }
+
+    return coverPath;
+  } catch (error) {
+    // Una portada ilegible no puede tumbar el scan de la pista.
+    console.error('[music] No se pudo extraer la portada:', error?.message || error);
+    return null;
+  }
+}
+
 async function scanFolder(folderPath) {
   if (!folderPath || !fs.existsSync(folderPath)) {
     return { error: 'La carpeta no existe o no es accesible.' };
@@ -77,7 +128,7 @@ async function scanFolder(folderPath) {
 
     try {
       // duration:true fuerza el cálculo aunque el header no lo declare (WAV/OGG).
-      const metadata = await parseFile(filePath, { duration: true, skipCovers: true });
+      const metadata = await parseFile(filePath, { duration: true });
       tracks.push({
         path: filePath,
         title: metadata.common.title?.trim() || fallbackTitle,
@@ -85,6 +136,7 @@ async function scanFolder(folderPath) {
         album: metadata.common.album?.trim() || '',
         duration: Number.isFinite(metadata.format.duration) ? Math.round(metadata.format.duration) : 0,
         bitrate: Number.isFinite(metadata.format.bitrate) ? Math.round(metadata.format.bitrate) : 0,
+        coverPath: extractCover(metadata.common.picture?.[0]),
       });
     } catch (_error) {
       // Archivo corrupto o tags ilegibles: entra igual con metadata mínima —
@@ -96,6 +148,7 @@ async function scanFolder(folderPath) {
         album: '',
         duration: 0,
         bitrate: 0,
+        coverPath: null,
       });
     }
   }
@@ -160,8 +213,21 @@ function registerMusicScheme() {
   ]);
 }
 
-// Llamar DENTRO de whenReady. Sirve solo archivos con extensión de audio — el
-// protocolo no debe convertirse en un file-server genérico del disco.
+// Separador anexado para que C:\Music no matchee C:\MusicEvil\.
+function isInside(filePath, folder) {
+  if (!folder) {
+    return false;
+  }
+
+  const root = path.normalize(folder + path.sep);
+  return process.platform === 'win32'
+    ? filePath.toLowerCase().startsWith(root.toLowerCase())
+    : filePath.startsWith(root);
+}
+
+// Llamar DENTRO de whenReady. Sirve dos raíces y nada más: audio dentro de la
+// carpeta de librería configurada, e imágenes dentro de music-covers. Sin ese
+// cerco el protocolo es un primitivo de lectura arbitraria del disco.
 function registerMusicProtocol() {
   protocol.handle(MEDIA_SCHEME, (request) => {
     try {
@@ -171,23 +237,19 @@ function registerMusicProtocol() {
       const filePath = path.normalize(
         process.platform === 'win32' && decoded.startsWith('/') ? decoded.slice(1) : decoded,
       );
+      const extension = path.extname(filePath).toLowerCase();
 
-      // Solo archivos dentro de la carpeta de librería configurada — sin esto el
-      // protocolo es un primitivo de lectura arbitraria de audio del disco.
-      // Separador anexado para que C:\Music no matchee C:\MusicEvil\.
-      const libraryFolder = getLibrary()?.folderPath;
-      if (!libraryFolder) {
-        return new Response('Forbidden', { status: 403 });
-      }
-      const root = path.normalize(libraryFolder + path.sep);
-      const inLibrary = process.platform === 'win32'
-        ? filePath.toLowerCase().startsWith(root.toLowerCase())
-        : filePath.startsWith(root);
-      if (!inLibrary) {
+      // Las portadas las escribe el propio scan con el sha256 del contenido como
+      // nombre, así que basta con que caigan dentro del directorio.
+      const allowed = isInside(filePath, getCoversDir())
+        ? COVER_EXTENSIONS.has(extension)
+        : isInside(filePath, getLibrary()?.folderPath) && AUDIO_EXTENSIONS.has(extension);
+
+      if (!allowed) {
         return new Response('Forbidden', { status: 403 });
       }
 
-      if (!AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()) || !fs.existsSync(filePath)) {
+      if (!fs.existsSync(filePath)) {
         return new Response('Not found', { status: 404 });
       }
 

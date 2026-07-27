@@ -26,6 +26,8 @@ export function MusicPlayerProvider({ children }) {
   // pista hidratada desde disco (no se puede setear antes de loadedmetadata).
   const pendingSeekRef = useRef(null);
   const hydratedRef = useRef(false);
+  // Pista en curso y si su escucha ya se registró en el historial.
+  const scrobbleRef = useRef({ path: null, registered: false });
 
   const [queue, setQueueState] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
@@ -178,6 +180,40 @@ export function MusicPlayerProvider({ children }) {
     [loadTrackIntoAudio],
   );
 
+  // Inserta justo después de la actual sin cortarla. Con la cola vacía no hay
+  // "después": la pista arranca y se convierte en la cola.
+  const playNext = useCallback(
+    (track) => {
+      if (!track) return;
+
+      if (queue.length === 0 || currentIndex < 0) {
+        playFromList([track], 0);
+        return;
+      }
+
+      setQueueState((current) => {
+        const next = [...current];
+        next.splice(currentIndex + 1, 0, track);
+        return next;
+      });
+    },
+    [queue.length, currentIndex, playFromList],
+  );
+
+  const enqueue = useCallback(
+    (track) => {
+      if (!track) return;
+
+      if (queue.length === 0) {
+        playFromList([track], 0);
+        return;
+      }
+
+      setQueueState((current) => [...current, track]);
+    },
+    [queue.length, playFromList],
+  );
+
   const toggleShuffle = useCallback(() => setShuffle((previous) => !previous), []);
   const setRepeat = useCallback((mode) => {
     setRepeatState(['off', 'all', 'one'].includes(mode) ? mode : 'off');
@@ -283,6 +319,10 @@ export function MusicPlayerProvider({ children }) {
     };
     const onEnded = () => {
       if (repeat === 'one') {
+        // Rearmar el scrobble a mano: currentTrack no cambia al repetir la misma
+        // pista, así que el efecto que lo resetea no corre y la segunda vuelta
+        // nunca se registraría.
+        scrobbleRef.current = { path: scrobbleRef.current.path, registered: false };
         audio.currentTime = 0;
         audio.play().catch(() => setIsPlaying(false));
         return;
@@ -402,6 +442,38 @@ export function MusicPlayerProvider({ children }) {
     // api estable durante la vida del renderer.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Historial de escucha ───────────────────────────────────────
+  // Umbral de scrobble clásico: 30 segundos o la mitad de la pista, lo que
+  // ocurra antes. Se registra al cruzarlo y no al terminar, así una pista que
+  // se skipea al 60% cuenta igual — que es lo que el usuario realmente escuchó.
+  useEffect(() => {
+    scrobbleRef.current = { path: currentTrack?.path || null, registered: false };
+  }, [currentTrack?.path]);
+
+  useEffect(() => {
+    if (!api?.history?.add || !isPlaying) return undefined;
+
+    // Chequeo cada 5s en vez de por timeupdate: timeupdate dispara cuatro veces
+    // por segundo y esto no necesita esa resolución.
+    const timer = setInterval(() => {
+      const audio = audioRef.current;
+      const state = scrobbleRef.current;
+
+      if (!audio || !state.path || state.registered) return;
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+      if (audio.currentTime >= Math.min(30, audio.duration / 2)) {
+        state.registered = true;
+        api.history.add(state.path, new Date().toISOString()).catch(() => {
+          // Falló el disco: se reintenta en la próxima reproducción, no vale
+          // la pena romper nada por una entrada de historial.
+        });
+      }
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [api, isPlaying]);
+
   // Hidratación al arrancar: restaura pista, posición y volumen — SIEMPRE en
   // pausa. Auto-play al abrir la app sería una emboscada al usuario.
   useEffect(() => {
@@ -479,6 +551,8 @@ export function MusicPlayerProvider({ children }) {
     setRepeat,
     removeFromQueue,
     reorderQueue,
+    playNext,
+    enqueue,
   };
 
   return (

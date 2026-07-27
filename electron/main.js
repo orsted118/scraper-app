@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, powerMonitor, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, powerMonitor, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -71,6 +71,31 @@ function registerPowerMonitor() {
 
   powerMonitor.on('resume', () => broadcastResume('resume'));
   powerMonitor.on('unlock-screen', () => broadcastResume('unlock-screen'));
+}
+
+// Teclas multimedia físicas del teclado. globalShortcut captura a nivel OS, así
+// que responden con DVPotro en segundo plano — que es el punto. Complementa a
+// MediaSession, que solo cubre los controles que Windows dibuja (volume flyout).
+const MEDIA_KEYS = [
+  ['MediaPlayPause', 'media-key:play-pause'],
+  ['MediaNextTrack', 'media-key:next'],
+  ['MediaPreviousTrack', 'media-key:prev'],
+];
+
+function registerMediaKeys() {
+  for (const [accelerator, channel] of MEDIA_KEYS) {
+    const registered = globalShortcut.register(accelerator, () => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(channel);
+      }
+    });
+
+    if (!registered) {
+      // Otra app (Spotify, el propio Windows) ya se quedó con la tecla. No es
+      // fatal: el resto del reproductor funciona igual.
+      console.warn(`[media-keys] ${accelerator} ya está tomada por otra aplicación.`);
+    }
+  }
 }
 
 app.whenReady().then(() => {
@@ -168,6 +193,7 @@ app.whenReady().then(() => {
   });
   registerPowerMonitor();
   createMainWindow();
+  registerMediaKeys();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -178,6 +204,12 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify();
   }
+});
+
+// Sin esto los accelerators quedan tomados a nivel OS después de cerrar y
+// ninguna otra app puede reclamarlos hasta reiniciar sesión.
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {

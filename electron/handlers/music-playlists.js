@@ -255,38 +255,63 @@ function registerMusicPlaylistsHandlers() {
     }),
   );
 
-  ipcMain.handle('music-playlists:set-cover', async (_event, payload) =>
-    withLock(() => {
-      const extension = getCoverExtension(payload?.filename);
+  // Elegir, leer y guardar la portada ocurren enteros acá. El renderer solo
+  // manda el id y recibe la playlist actualizada: los bytes de la imagen nunca
+  // cruzan el IPC y no queda ningún handler que lea un archivo por ruta
+  // arbitraria. contextIsolation protege el puente, no lo que el puente expone:
+  // un XSS en el renderer heredaría todo lo que el bridge sepa hacer.
+  ipcMain.handle('music-playlists:pick-cover', async (_event, payload) => {
+    const playlistId = payload?.playlistId;
 
-      if (!extension) {
-        return { ok: false, error: 'Formato de imagen no soportado.' };
+    if (!readPlaylists().some((entry) => entry.id === playlistId)) {
+      return { ok: false, error: 'La playlist no existe.' };
+    }
+
+    // El diálogo va FUERA del lock: es modal y puede quedarse abierto de forma
+    // indefinida. Adentro dejaría colgada cualquier otra escritura mientras
+    // tanto.
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: 'Elegir portada',
+      filters: [{ name: 'Imagen', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
+    });
+
+    if (canceled || !filePaths?.[0]) {
+      return { ok: false, canceled: true };
+    }
+
+    const sourcePath = filePaths[0];
+    // El filtro del diálogo es una comodidad de la UI, no una garantía: el
+    // usuario puede escribir cualquier nombre en el campo. Se revalida.
+    const extension = getCoverExtension(sourcePath);
+
+    if (!extension) {
+      return { ok: false, error: 'Formato de imagen no soportado.' };
+    }
+
+    return withLock(() => {
+      // El trabajo de disco va antes de mutate y no adentro: mutate interpreta
+      // un mutator que devuelve null como "no hubo cambio" y responde ok:true,
+      // así que un fallo de escritura se habría reportado como éxito.
+      let coverPath;
+
+      try {
+        const bytes = fs.readFileSync(sourcePath);
+        fs.mkdirSync(getCoversDir(), { recursive: true });
+        // Se borran todas las extensiones antes de escribir: cambiar de jpg a
+        // png dejaría el jpg viejo huérfano y ganando en el fallback.
+        deleteCoverFiles(playlistId);
+
+        coverPath = path.join(getCoversDir(), `${playlistId}.${extension}`);
+        fs.writeFileSync(coverPath, bytes);
+      } catch (error) {
+        console.error('[music-playlists] no se pudo guardar la portada:', error?.message);
+        return { ok: false, error: 'No fue posible guardar la portada.' };
       }
 
-      if (!payload?.imageArrayBuffer) {
-        return { ok: false, error: 'No se recibió la imagen.' };
-      }
-
-      const playlistId = payload?.playlistId;
-
-      return mutate(playlistId, (playlist) => {
-        try {
-          fs.mkdirSync(getCoversDir(), { recursive: true });
-          // Se borran todas las extensiones antes de escribir: cambiar de jpg a
-          // png dejaría el jpg viejo huérfano y ganando en el fallback.
-          deleteCoverFiles(playlistId);
-
-          const coverPath = path.join(getCoversDir(), `${playlistId}.${extension}`);
-          fs.writeFileSync(coverPath, Buffer.from(payload.imageArrayBuffer));
-
-          return { ...playlist, coverPath };
-        } catch (error) {
-          console.error('[music-playlists] no se pudo guardar la portada:', error?.message);
-          return null;
-        }
-      });
-    }),
-  );
+      return mutate(playlistId, (playlist) => ({ ...playlist, coverPath }));
+    });
+  });
 
   ipcMain.handle('music-playlists:remove-cover', async (_event, payload) =>
     withLock(() => {
@@ -358,31 +383,6 @@ function registerMusicPlaylistsHandlers() {
     return canceled ? null : filePaths[0];
   });
 
-  ipcMain.handle('music-playlists:pick-image', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      title: 'Elegir portada',
-      filters: [{ name: 'Imagen', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
-    });
-
-    return canceled ? null : filePaths[0];
-  });
-
-  // Devuelve los bytes de una imagen elegida por el usuario. La lista blanca de
-  // extensiones es lo que impide que esto sea un primitivo de lectura arbitraria
-  // del disco desde el renderer.
-  ipcMain.handle('music-playlists:read-image', async (_event, filePath) => {
-    if (typeof filePath !== 'string' || !getCoverExtension(filePath) || !fs.existsSync(filePath)) {
-      return null;
-    }
-
-    try {
-      return fs.readFileSync(filePath);
-    } catch (error) {
-      console.error('[music-playlists] no se pudo leer la imagen:', error?.message);
-      return null;
-    }
-  });
 }
 
 module.exports = { getCoversDir, registerMusicPlaylistsHandlers };

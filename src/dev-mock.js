@@ -769,9 +769,10 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
           tracks.splice(toIndex, 0, moved);
           return { ...p, tracks };
         }),
-      // Sin fs real: se guarda el data URL del PNG de prueba como coverPath, que
-      // es lo que buildCoverUrl termina pasando al <img>.
-      setCover: async (playlistId) =>
+      // El diálogo nativo no existe en navegador: se simula que el usuario
+      // eligió una imagen. Sin fs real se guarda el data URL del PNG de prueba
+      // como coverPath, que es lo que buildCoverUrl termina pasando al <img>.
+      pickCover: async (playlistId) =>
         mockMutatePlaylist(playlistId, (p) => ({ ...p, coverPath: MOCK_COVER_DATA_URL })),
       removeCover: async (playlistId) => mockMutatePlaylist(playlistId, (p) => ({ ...p, coverPath: null })),
       importM3u: async () => {
@@ -788,8 +789,6 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         return { ok: true, playlist: { ...playlist }, matchedCount: 2, unmatchedCount: 2 };
       },
       pickM3u: async () => 'C:/Users/mock/Music/Lista importada.m3u',
-      pickImage: async () => 'C:/Users/mock/Pictures/portada.png',
-      readImage: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
     },
     history: {
       list: async () => ({ entries: [...MOCK_HISTORY_ENTRIES] }),

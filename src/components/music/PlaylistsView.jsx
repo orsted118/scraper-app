@@ -85,18 +85,12 @@ function PlaylistsView({ tracks = [], search = '', playlists: store, onPlay }) {
   };
 
   const handlePickCover = async (playlist) => {
-    if (!api?.playlists?.pickImage) return;
+    const result = await store.pickCover(playlist.id);
 
-    const filePath = await api.playlists.pickImage();
-    if (!filePath) return;
+    // Cancelar es una decisión del usuario, no un error: nada que avisar.
+    if (result?.ok || result?.canceled) return;
 
-    const bytes = await api.playlists.readImage(filePath);
-    if (!bytes) {
-      flash('No fue posible leer la imagen.');
-      return;
-    }
-
-    await store.setCover(playlist.id, bytes, filePath);
+    flash(result?.error || 'No fue posible cambiar la portada.');
   };
 
   const handleDelete = async (playlist) => {

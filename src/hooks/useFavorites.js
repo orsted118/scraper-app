@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'dvpotro-music-favorites';
 
@@ -23,6 +23,11 @@ function writeFallback(paths) {
 
 function useFavorites() {
   const [paths, setPaths] = useState([]);
+  // Espejo síncrono del state. React difiere los updaters funcionales, así que
+  // dentro de toggle no hay forma de leer la lista actual desde setPaths: lo
+  // que se calcule ahí adentro todavía no corrió cuando sigue la ejecución.
+  const pathsRef = useRef(paths);
+  pathsRef.current = paths;
 
   useEffect(() => {
     let active = true;
@@ -56,19 +61,19 @@ function useFavorites() {
 
     const bridge = window.scraperApp?.favorites;
 
-    // Optimista: el corazón se llena en el mismo frame del click. Esperar al
-    // IPC deja un hueco de ~200ms que se siente roto.
-    let previous = null;
-    let wasFavorite = false;
+    const previous = pathsRef.current;
+    const wasFavorite = previous.includes(normalized);
+    const next = wasFavorite
+      ? previous.filter((entry) => entry !== normalized)
+      : [...previous, normalized];
 
-    setPaths((current) => {
-      previous = current;
-      wasFavorite = current.includes(normalized);
-      return wasFavorite ? current.filter((entry) => entry !== normalized) : [...current, normalized];
-    });
+    // Optimista: el corazón cambia en el mismo frame del click. Esperar al IPC
+    // deja un hueco de ~200ms que se siente roto.
+    pathsRef.current = next;
+    setPaths(next);
 
     if (!bridge) {
-      writeFallback(wasFavorite ? previous.filter((entry) => entry !== normalized) : [...previous, normalized]);
+      writeFallback(next);
       return;
     }
 
@@ -76,9 +81,15 @@ function useFavorites() {
       const result = wasFavorite ? await bridge.remove(normalized) : await bridge.add(normalized);
       // Realinear con la fuente de verdad: si otro punto de la app tocó el
       // archivo, gana el disco y no el estado optimista.
-      if (result?.paths) setPaths(result.paths);
-      else if (!result?.ok) setPaths(previous);
+      if (result?.paths) {
+        pathsRef.current = result.paths;
+        setPaths(result.paths);
+      } else if (!result?.ok) {
+        pathsRef.current = previous;
+        setPaths(previous);
+      }
     } catch (_error) {
+      pathsRef.current = previous;
       setPaths(previous);
     }
   }, []);

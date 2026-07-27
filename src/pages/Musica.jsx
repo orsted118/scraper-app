@@ -3,6 +3,7 @@ import {
   FolderOpen,
   Heart,
   Link2,
+  ListMusic,
   ListPlus,
   Loader2,
   RefreshCw,
@@ -10,7 +11,6 @@ import {
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import BottomPlayerBar from '../components/BottomPlayerBar';
 import QueueDrawer from '../components/QueueDrawer';
 import TrackContextMenu from '../components/TrackContextMenu';
 import AlbumsView from '../components/music/AlbumsView';
@@ -231,13 +231,8 @@ function Musica() {
           </p>
         ) : null}
       </motion.div>
-      {/* Edge: hay pista hidratada de otra sesión pero la librería fue borrada
-          — la barra sigue disponible (retorna null sola si no hay pista). Esa
-          cola hidratada es justamente la que el drawer tiene que poder mostrar,
-          así que acá va cableado igual que en la vista con biblioteca. */}
-      <div className="mt-4">
-        <BottomPlayerBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((open) => !open)} />
-      </div>
+      {/* Edge: la librería fue borrada pero quedó cola hidratada de otra sesión.
+          El drawer sigue disponible para verla; la barra la monta App. */}
       <QueueDrawer favorites={favorites} open={queueOpen} onClose={() => setQueueOpen(false)} />
       </div>
     );
@@ -322,6 +317,21 @@ function Musica() {
             <RefreshCw className={`h-3.5 w-3.5 ${scanning ? 'animate-spin' : ''}`} strokeWidth={1.5} />
             {scanning ? 'Escaneando...' : 'Actualizar'}
           </button>
+          {/* El drawer es una vista del módulo, no un control global del
+              reproductor: su disparador vive acá y no en la barra, que ahora se
+              ve desde cualquier página. */}
+          <button
+            type="button"
+            onClick={() => setQueueOpen((open) => !open)}
+            aria-label={queueOpen ? 'Cerrar cola' : 'Ver cola'}
+            aria-expanded={queueOpen}
+            title={queueOpen ? 'Cerrar cola' : 'Ver cola'}
+            className="btn-outline inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold"
+            style={queueOpen ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+          >
+            <ListMusic className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Cola
+          </button>
           <button type="button" onClick={handlePickFolder} disabled={scanning} className="link-accent text-xs font-medium">
             Cambiar carpeta
           </button>
@@ -366,10 +376,6 @@ function Musica() {
       >
         {renderTab()}
       </motion.div>
-
-      <div className="mt-4">
-        <BottomPlayerBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((open) => !open)} />
-      </div>
 
       {/* El drawer vive acá y no en el provider: la cola solo tiene sentido
           mientras estás en Música, no flotando sobre Notas o Calendario. */}

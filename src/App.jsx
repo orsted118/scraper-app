@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { EASE } from './utils/motion';
 import Sidebar from './components/Sidebar';
+import BottomPlayerBar from './components/BottomPlayerBar';
+import { useMusicPlayer } from './contexts/MusicPlayerContext';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
 import Actividades from './pages/Actividades';
@@ -66,6 +68,7 @@ function App() {
   const reduced = useReducedMotion();
   // Atajos del reproductor a nivel app: la música suena aunque estés en otro módulo.
   useMusicShortcuts();
+  const musicPlayer = useMusicPlayer();
   const [activePage, setActivePage] = useState('activities');
   // Deep-link a una nota puntual (desde app://notas?note={id} de un recordatorio).
   const [notasDeepLink, setNotasDeepLink] = useState(null);
@@ -801,7 +804,12 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8">
+      <div
+        className="relative z-10 mx-auto flex min-h-screen max-w-[1500px] gap-6 px-6 py-8"
+        // Reserva para la barra fija solo cuando hay algo sonando: sin pista no
+        // se dibuja nada y el hueco sería aire muerto al final de cada módulo.
+        style={musicPlayer?.currentTrack ? { paddingBottom: 'var(--player-bar-height)' } : undefined}
+      >
         <Sidebar
           activePage={activePage}
           activities={activities}
@@ -907,6 +915,16 @@ function App() {
             </motion.div>
           </AnimatePresence>
         )}
+      </div>
+
+      {/* La barra vive en el shell y no en Música: el audio es global de la app
+          y seguía al scroll cuando colgaba del flow de la página. Se retorna
+          null sola si no hay pista, así que el wrapper queda vacío sin ocupar.
+          El contenido va centrado al mismo ancho que el resto del layout. */}
+      <div className="fixed inset-x-0 bottom-0 z-30" style={{ background: 'var(--bg)' }}>
+        <div className="mx-auto max-w-[1500px] px-6">
+          <BottomPlayerBar />
+        </div>
       </div>
     </div>
   );

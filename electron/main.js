@@ -17,6 +17,7 @@ const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas')
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
 const { registerMusicFavoritesHandlers } = require('./handlers/music-favorites');
 const { registerMusicHistoryHandlers } = require('./handlers/music-history');
+const { registerMusicPlaylistsHandlers } = require('./handlers/music-playlists');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
 const calendarioHandler = require('./handlers/calendario');
 
@@ -133,6 +134,7 @@ app.whenReady().then(() => {
   registerMusicProtocol();
   registerMusicFavoritesHandlers();
   registerMusicHistoryHandlers();
+  registerMusicPlaylistsHandlers();
   // Revela el archivo en el explorador del sistema. No abre nada: seleccionar
   // en una carpeta no ejecuta ni entrega contenido al renderer.
   ipcMain.handle('music:show-in-folder', async (_event, filePath) => {

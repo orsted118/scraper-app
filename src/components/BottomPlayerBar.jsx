@@ -1,4 +1,4 @@
-import { ListMusic, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import { Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import { buildCoverUrl, useMusicPlayer } from '../contexts/MusicPlayerContext';
 
 const REPEAT_CYCLE = { off: 'all', all: 'one', one: 'off' };
@@ -46,9 +46,10 @@ function TrackCover({ track, size }) {
   );
 }
 
-// Barra inferior del reproductor: montada por Musica.jsx (visible solo ahí),
-// pero el audio vive en el contexto — la música sigue al navegar.
-function BottomPlayerBar({ onToggleQueue, queueOpen = false }) {
+// Barra inferior del reproductor. La monta App como elemento fijo del shell:
+// el audio es global, así que el control también. El disparador de la cola no
+// vive acá — ese drawer es una vista del módulo Música.
+function BottomPlayerBar() {
   const player = useMusicPlayer();
 
   if (!player?.currentTrack) return null;
@@ -115,14 +116,18 @@ function BottomPlayerBar({ onToggleQueue, queueOpen = false }) {
         <TrackCover track={currentTrack} size={48} />
 
         <div className="min-w-0 flex-1">
+          {/* Sin textWrap:'balance' — reparte el texto en varias líneas y pelea
+              contra truncate, que necesita whitespace-nowrap. Con títulos largos
+              de descargas la barra crecía a tres líneas y rompía los 64px. */}
           <p
-            className="truncate text-base font-extrabold leading-tight"
+            className="truncate font-extrabold leading-tight"
             style={{
               color: 'var(--text-strong)',
               fontFamily: 'var(--font-display, sans-serif)',
               letterSpacing: '-0.02em',
-              fontSize: '20px',
-              textWrap: 'balance',
+              // 20px competía con los titulares de la vista; la barra es
+              // información de apoyo, no un headline.
+              fontSize: '16px',
             }}
             title={currentTrack.title}
           >
@@ -199,17 +204,6 @@ function BottomPlayerBar({ onToggleQueue, queueOpen = false }) {
             style={toggleStyle(repeat !== 'off')}
           >
             <RepeatIcon className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-          <button
-            type="button"
-            onClick={onToggleQueue}
-            aria-label={queueOpen ? 'Cerrar cola' : 'Ver cola'}
-            aria-expanded={queueOpen}
-            title={queueOpen ? 'Cerrar cola' : 'Ver cola'}
-            className="p-2"
-            style={toggleStyle(queueOpen)}
-          >
-            <ListMusic className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
 

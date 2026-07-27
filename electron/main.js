@@ -15,6 +15,8 @@ const { registerHiddenActivitiesHandlers } = require('./handlers/hidden-activiti
 const { getDemoActivities, isDemoModeEnabled } = require('./handlers/demo-activities');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
 const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
+const { registerMusicFavoritesHandlers } = require('./handlers/music-favorites');
+const { registerMusicHistoryHandlers } = require('./handlers/music-history');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
 const calendarioHandler = require('./handlers/calendario');
 
@@ -129,6 +131,18 @@ app.whenReady().then(() => {
   registerPortalSistemasHandlers();
   registerMusicHandlers();
   registerMusicProtocol();
+  registerMusicFavoritesHandlers();
+  registerMusicHistoryHandlers();
+  // Revela el archivo en el explorador del sistema. No abre nada: seleccionar
+  // en una carpeta no ejecuta ni entrega contenido al renderer.
+  ipcMain.handle('music:show-in-folder', async (_event, filePath) => {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      return { ok: false, error: 'Ruta vacía.' };
+    }
+
+    shell.showItemInFolder(filePath);
+    return { ok: true };
+  });
   registerNotesHandlers();
   notificationCenter.startSchedulers();
   ipcMain.handle('calendario:run', (_event, options) => calendarioHandler.run(options || {}));

@@ -1,6 +1,7 @@
-import { X } from 'lucide-react';
+import { ChevronsRight, FolderOpen, Heart, Link2, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import TrackContextMenu from './TrackContextMenu';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 import { EASE } from '../utils/motion';
 
@@ -19,12 +20,17 @@ function formatDuration(seconds) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-function QueueDrawer({ open, onClose }) {
+// `favorites` llega por prop y no de useFavorites() propio: cada llamada al hook
+// crea su propio estado, y marcar desde la cola no se veía en la lista hasta
+// recargar. La página dueña de ambos monta una sola instancia y la reparte.
+function QueueDrawer({ favorites, open, onClose }) {
   const reduced = useReducedMotion();
   const player = useMusicPlayer();
   // El índice de origen del drag vive en un ref y no en state: onDragStart y
   // onDrop ocurren en gestos distintos y el state llegaría viejo al drop.
   const dragFromRef = useRef(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const api = typeof window !== 'undefined' ? window.scraperApp : null;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -45,6 +51,59 @@ function QueueDrawer({ open, onClose }) {
     dragFromRef.current = null;
     if (fromIndex === null || fromIndex === toIndex) return;
     player.reorderQueue(fromIndex, toIndex);
+  };
+
+  const handleContextMenu = (event, track, index) => {
+    // Sin esto Electron dibuja su menú nativo encima del nuestro.
+    event.preventDefault();
+    setContextMenu({ track, index, x: event.clientX, y: event.clientY });
+  };
+
+  // Acá no va "agregar a la cola" — ya está en la cola. Su lugar lo toma la
+  // acción inversa, que es la que tiene sentido desde este panel.
+  const buildActions = (track, index) => {
+    const isFavorite = favorites?.has(track.path) || false;
+
+    return [
+      {
+        key: 'play-next',
+        label: 'Reproducir siguiente',
+        Icon: ChevronsRight,
+        onClick: () => player.playNext(track),
+      },
+      {
+        key: 'remove-from-queue',
+        label: 'Quitar de la cola',
+        Icon: X,
+        onClick: () => player.removeFromQueue(index),
+      },
+      {
+        key: 'favorite',
+        label: isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito',
+        Icon: Heart,
+        onClick: () => favorites?.toggle(track.path),
+        separated: true,
+      },
+      {
+        key: 'copy-path',
+        label: 'Copiar ruta',
+        Icon: Link2,
+        onClick: async () => {
+          try {
+            await navigator.clipboard.writeText(track.path);
+          } catch (_error) {
+            // Portapapeles bloqueado (ventana sin foco): fallar en silencio.
+          }
+        },
+        separated: true,
+      },
+      {
+        key: 'show-in-folder',
+        label: 'Mostrar en carpeta',
+        Icon: FolderOpen,
+        onClick: () => api?.music?.showInFolder?.(track.path),
+      },
+    ];
   };
 
   const panel = open ? (
@@ -121,6 +180,7 @@ function QueueDrawer({ open, onClose }) {
                       }}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => handleDrop(index)}
+                      onContextMenu={(event) => handleContextMenu(event, track, index)}
                       className="group row-hover flex items-center gap-3 border-b px-4 py-2"
                       style={{
                         borderBottomColor: 'var(--border-subtle)',
@@ -197,6 +257,15 @@ function QueueDrawer({ open, onClose }) {
       {open ? <div className="fixed inset-0 z-30" onClick={onClose} aria-hidden="true" /> : null}
 
       <AnimatePresence>{panel}</AnimatePresence>
+
+      {open && contextMenu ? (
+        <TrackContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          actions={buildActions(contextMenu.track, contextMenu.index)}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </>
   );
 }

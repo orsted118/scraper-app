@@ -1,39 +1,41 @@
-import { FolderOpen, Loader2, RefreshCw, Search } from 'lucide-react';
+import {
+  ChevronsRight,
+  FolderOpen,
+  Heart,
+  Link2,
+  ListPlus,
+  Loader2,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import BottomPlayerBar, { TrackCover } from '../components/BottomPlayerBar';
+import BottomPlayerBar from '../components/BottomPlayerBar';
 import QueueDrawer from '../components/QueueDrawer';
+import TrackContextMenu from '../components/TrackContextMenu';
+import AlbumsView from '../components/music/AlbumsView';
+import ArtistsView from '../components/music/ArtistsView';
+import EmptyMessage from '../components/music/EmptyMessage';
+import FavoritesView from '../components/music/FavoritesView';
+import HistoryView from '../components/music/HistoryView';
+import TracksView from '../components/music/TracksView';
+import useFavorites from '../hooks/useFavorites';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 import { EASE } from '../utils/motion';
 
-// usage:'search' + sensitivity:'base' ignora mayúsculas y diacríticos, así que
-// "cancion" encuentra "Canción".
-const SEARCH_COLLATOR = new Intl.Collator('es', { sensitivity: 'base', usage: 'search' });
-
-function matchesQuery(haystack, needle) {
-  const text = String(haystack || '');
-  const size = needle.length;
-
-  for (let start = 0; start + size <= text.length; start += 1) {
-    if (SEARCH_COLLATOR.compare(text.slice(start, start + size), needle) === 0) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function formatDuration(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '—:——';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${String(secs).padStart(2, '0')}`;
-}
+const TABS = [
+  { id: 'tracks', label: 'Pistas' },
+  { id: 'albums', label: 'Álbumes' },
+  { id: 'artists', label: 'Artistas' },
+  { id: 'favorites', label: 'Favoritos' },
+  { id: 'history', label: 'Historial' },
+];
 
 function Musica() {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const reduced = useReducedMotion();
   const player = useMusicPlayer();
+  const favorites = useFavorites();
   const searchInputRef = useRef(null);
   const [library, setLibrary] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -41,6 +43,8 @@ function Musica() {
   const [scanError, setScanError] = useState('');
   const [search, setSearch] = useState('');
   const [queueOpen, setQueueOpen] = useState(false);
+  const [tab, setTab] = useState('tracks');
+  const [contextMenu, setContextMenu] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -74,20 +78,7 @@ function Musica() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const allTracks = library?.tracks;
-  const visibleTracks = useMemo(() => {
-    const tracks = allTracks || [];
-    const needle = search.trim();
-
-    if (!needle) return tracks;
-
-    return tracks.filter(
-      (track) =>
-        matchesQuery(track.title, needle) ||
-        matchesQuery(track.artist, needle) ||
-        matchesQuery(track.album, needle),
-    );
-  }, [allTracks, search]);
+  const allTracks = useMemo(() => library?.tracks || [], [library]);
 
   const runScan = async (folderPath) => {
     setScanning(true);
@@ -131,14 +122,62 @@ function Musica() {
     await runScan(library.folderPath);
   };
 
-  const handleTrackClick = (index) => {
-    // playFromList alinea cola + reproduce en un paso: la cola persistida de
-    // una sesión anterior puede no coincidir con la librería re-escaneada.
-    //
-    // La cola se arma con los resultados filtrados, no con la librería entera:
-    // si buscás un artista y le das play, "siguiente" tiene que seguir dentro de
-    // ese artista y no saltar a lo que venía después en la biblioteca completa.
-    player.playFromList(visibleTracks, index);
+  // Cada vista pasa la lista que el usuario tiene delante, no la biblioteca
+  // entera: si estás en un álbum y das play, "siguiente" sigue en ese álbum.
+  const handlePlay = (list, index) => {
+    player.playFromList(list, index);
+  };
+
+  const handleContextMenu = (event, track) => {
+    // Sin esto Electron dibuja su menú nativo encima del nuestro.
+    event.preventDefault();
+    setContextMenu({ track, x: event.clientX, y: event.clientY });
+  };
+
+  const buildActions = (track) => {
+    const isFavorite = favorites.has(track.path);
+
+    return [
+      {
+        key: 'play-next',
+        label: 'Reproducir siguiente',
+        Icon: ChevronsRight,
+        onClick: () => player.playNext(track),
+      },
+      {
+        key: 'add-to-queue',
+        label: 'Agregar a la cola',
+        Icon: ListPlus,
+        onClick: () => player.enqueue(track),
+      },
+      {
+        key: 'favorite',
+        label: isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito',
+        Icon: Heart,
+        onClick: () => favorites.toggle(track.path),
+        separated: true,
+      },
+      {
+        key: 'copy-path',
+        label: 'Copiar ruta',
+        Icon: Link2,
+        onClick: async () => {
+          try {
+            await navigator.clipboard.writeText(track.path);
+          } catch (_error) {
+            // Portapapeles bloqueado (ventana sin foco). No hay sistema de
+            // toast global; fallar en silencio es preferible a inventar uno.
+          }
+        },
+        separated: true,
+      },
+      {
+        key: 'show-in-folder',
+        label: 'Mostrar en carpeta',
+        Icon: FolderOpen,
+        onClick: () => api?.music?.showInFolder?.(track.path),
+      },
+    ];
   };
 
   if (!loaded) {
@@ -146,7 +185,7 @@ function Musica() {
   }
 
   // ── Empty state: primera vez, sin carpeta elegida ─────────────
-  if (!library?.tracks?.length) {
+  if (!allTracks.length) {
     return (
       <div className="flex min-h-[60vh] flex-col">
       <motion.div
@@ -199,12 +238,49 @@ function Musica() {
       <div className="mt-4">
         <BottomPlayerBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((open) => !open)} />
       </div>
-      <QueueDrawer open={queueOpen} onClose={() => setQueueOpen(false)} />
+      <QueueDrawer favorites={favorites} open={queueOpen} onClose={() => setQueueOpen(false)} />
       </div>
     );
   }
 
-  // ── Biblioteca cargada: track list plana ──────────────────────
+  const viewProps = {
+    tracks: allTracks,
+    search,
+    favorites,
+    onPlay: handlePlay,
+    onContextMenu: handleContextMenu,
+  };
+
+  const renderTab = () => {
+    if (tab === 'albums') {
+      return <AlbumsView {...viewProps} emptyState={<EmptyMessage title={`Sin álbumes para «${search.trim()}»`} />} />;
+    }
+
+    if (tab === 'artists') {
+      return <ArtistsView {...viewProps} emptyState={<EmptyMessage title={`Sin artistas para «${search.trim()}»`} />} />;
+    }
+
+    if (tab === 'favorites') {
+      return <FavoritesView {...viewProps} />;
+    }
+
+    if (tab === 'history') {
+      return <HistoryView {...viewProps} />;
+    }
+
+    return (
+      <TracksView
+        {...viewProps}
+        emptyState={
+          <EmptyMessage
+            title={`Sin resultados para «${search.trim()}»`}
+            detail="Probá con otro título, artista o álbum."
+          />
+        }
+      />
+    );
+  };
+
   return (
     <div className="flex min-h-[calc(100vh-14rem)] flex-col">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -217,10 +293,7 @@ function Musica() {
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          Biblioteca ·{' '}
-          {search.trim()
-            ? `${visibleTracks.length} de ${library.tracks.length} pistas`
-            : `${library.tracks.length} pistas`}
+          Biblioteca · {allTracks.length} pistas
         </p>
         <div className="flex items-center gap-3">
           <div className="field relative">
@@ -260,85 +333,38 @@ function Musica() {
         </p>
       ) : null}
 
+      <div className="mt-5 flex items-end gap-6 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        {TABS.map((item) => {
+          const isActive = item.id === tab;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              aria-pressed={isActive}
+              className={`relative pb-2 text-xs font-bold uppercase ${isActive ? '' : 'tab-hover'}`}
+              style={{
+                color: isActive ? 'var(--text-strong)' : 'var(--text-muted)',
+                letterSpacing: '0.14em',
+                borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                marginBottom: '-1px',
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
       <motion.div
+        key={tab}
         initial={reduced ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
         className="mt-5 flex-1 overflow-y-auto"
       >
-        {visibleTracks.length === 0 ? (
-          <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
-            <p
-              className="text-sm font-bold"
-              style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)' }}
-            >
-              Sin resultados para «{search.trim()}»
-            </p>
-            <p className="mt-2 max-w-md text-sm" style={{ color: 'var(--text-muted)' }}>
-              Probá con otro título, artista o álbum.
-            </p>
-          </div>
-        ) : null}
-
-        {visibleTracks.map((track, index) => {
-          const isCurrent = player.currentTrack?.path === track.path;
-
-          return (
-            <button
-              key={track.path}
-              type="button"
-              onClick={() => handleTrackClick(index)}
-              className="row-hover flex w-full items-center gap-4 border-t px-3 py-3 text-left"
-              style={{
-                borderTopColor: 'var(--border-subtle)',
-                borderLeftWidth: isCurrent ? '3px' : '0px',
-                borderLeftStyle: 'solid',
-                borderLeftColor: isCurrent ? 'var(--accent)' : 'transparent',
-                paddingLeft: isCurrent ? '9px' : '12px',
-              }}
-            >
-              <TrackCover track={track} size={32} />
-
-              <div className="min-w-0 flex-1">
-                <p
-                  className="truncate font-bold"
-                  style={{
-                    color: isCurrent ? 'var(--accent)' : 'var(--text-strong)',
-                    fontFamily: 'var(--font-display, sans-serif)',
-                    fontSize: '18px',
-                    letterSpacing: '-0.01em',
-                  }}
-                  title={track.title}
-                >
-                  {track.title}
-                </p>
-                <p
-                  className="mt-0.5 truncate"
-                  style={{
-                    color: 'var(--text-muted)',
-                    fontFamily: 'var(--font-mono, monospace)',
-                    fontSize: '13px',
-                  }}
-                  title={track.artist}
-                >
-                  {track.artist}
-                  {track.album ? ` · ${track.album}` : ''}
-                </p>
-              </div>
-              <p
-                className="shrink-0 text-right text-xs"
-                style={{
-                  color: 'var(--text-muted)',
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatDuration(track.duration)}
-              </p>
-            </button>
-          );
-        })}
-        <div className="border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+        {renderTab()}
       </motion.div>
 
       <div className="mt-4">
@@ -347,7 +373,16 @@ function Musica() {
 
       {/* El drawer vive acá y no en el provider: la cola solo tiene sentido
           mientras estás en Música, no flotando sobre Notas o Calendario. */}
-      <QueueDrawer open={queueOpen} onClose={() => setQueueOpen(false)} />
+      <QueueDrawer favorites={favorites} open={queueOpen} onClose={() => setQueueOpen(false)} />
+
+      {contextMenu ? (
+        <TrackContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          actions={buildActions(contextMenu.track)}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

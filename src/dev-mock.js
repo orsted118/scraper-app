@@ -472,6 +472,17 @@ const MOCK_MUSIC_TRACKS = Array.from({ length: 20 }, (_, index) => {
 
 let MOCK_MUSIC_LIBRARY = null;
 let MOCK_MUSIC_STATE = null;
+let MOCK_FAVORITE_PATHS = [MOCK_MUSIC_TRACKS[1].path, MOCK_MUSIC_TRACKS[4].path];
+// Historial sembrado: sin él la vista arranca vacía y no hay forma de ver el
+// orden por recientes ni el conteo de más escuchadas sin esperar reproducciones.
+let MOCK_HISTORY_ENTRIES = [
+  { path: MOCK_MUSIC_TRACKS[2].path, playedAt: new Date(Date.now() - 4 * 60 * 1000).toISOString() },
+  { path: MOCK_MUSIC_TRACKS[0].path, playedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString() },
+  { path: MOCK_MUSIC_TRACKS[2].path, playedAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString() },
+  { path: MOCK_MUSIC_TRACKS[7].path, playedAt: new Date(Date.now() - 26 * 3600 * 1000).toISOString() },
+  { path: MOCK_MUSIC_TRACKS[2].path, playedAt: new Date(Date.now() - 3 * DAY_MS).toISOString() },
+  { path: MOCK_MUSIC_TRACKS[0].path, playedAt: new Date(Date.now() - 9 * DAY_MS).toISOString() },
+];
 
 const mockNoteId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -683,6 +694,29 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       // Las teclas multimedia las captura globalShortcut en el main process, que
       // en navegador no existe: se devuelve el unsubscribe y nada más.
       onMediaKey: () => () => {},
+      showInFolder: async () => ({ ok: true }),
+    },
+    favorites: {
+      list: async () => ({ paths: [...MOCK_FAVORITE_PATHS] }),
+      add: async (filePath) => {
+        if (!MOCK_FAVORITE_PATHS.includes(filePath)) MOCK_FAVORITE_PATHS.push(filePath);
+        return { ok: true, paths: [...MOCK_FAVORITE_PATHS] };
+      },
+      remove: async (filePath) => {
+        MOCK_FAVORITE_PATHS = MOCK_FAVORITE_PATHS.filter((entry) => entry !== filePath);
+        return { ok: true, paths: [...MOCK_FAVORITE_PATHS] };
+      },
+    },
+    history: {
+      list: async () => ({ entries: [...MOCK_HISTORY_ENTRIES] }),
+      add: async (filePath, playedAt) => {
+        MOCK_HISTORY_ENTRIES = [{ path: filePath, playedAt }, ...MOCK_HISTORY_ENTRIES].slice(0, 500);
+        return { ok: true };
+      },
+      clear: async () => {
+        MOCK_HISTORY_ENTRIES = [];
+        return { ok: true };
+      },
     },
     notes: {
       list: async ({ view = 'active', filters = {} } = {}) => {

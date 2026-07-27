@@ -57,6 +57,16 @@ contextBridge.exposeInMainWorld('scraperApp', {
       ipcRenderer.invoke('activity-analyzer:verify-submission', { requirements, submissionData, activityId }),
     parseFile: (payload) => ipcRenderer.invoke('activity-analyzer:parse-file', payload),
   },
+  favorites: {
+    list: () => ipcRenderer.invoke('music-favorites:list'),
+    add: (filePath) => ipcRenderer.invoke('music-favorites:add', filePath),
+    remove: (filePath) => ipcRenderer.invoke('music-favorites:remove', filePath),
+  },
+  history: {
+    list: () => ipcRenderer.invoke('music-history:list'),
+    add: (filePath, playedAt) => ipcRenderer.invoke('music-history:add', { path: filePath, playedAt }),
+    clear: () => ipcRenderer.invoke('music-history:clear'),
+  },
   hiddenActivities: {
     get: () => ipcRenderer.invoke('hidden-activities:get'),
     add: (id) => ipcRenderer.invoke('hidden-activities:add', id),
@@ -77,6 +87,7 @@ contextBridge.exposeInMainWorld('scraperApp', {
     // Teclas multimedia del teclado, capturadas por globalShortcut en main.
     // Se quitan los listeners uno por uno (no removeAllListeners) para que dos
     // suscriptores no se pisen entre sí.
+    showInFolder: (filePath) => ipcRenderer.invoke('music:show-in-folder', filePath),
     onMediaKey: (callback) => {
       const channels = {
         'media-key:play-pause': 'play-pause',

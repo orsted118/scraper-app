@@ -36,6 +36,9 @@ function TrackCover({ track, size }) {
     <img
       src={buildCoverUrl(track.coverPath)}
       alt=""
+      // Explícito: Chromium no aplica lazy por defecto y la grilla de álbumes
+      // puede pedir cien portadas de 180px de una.
+      loading="lazy"
       className="shrink-0 object-cover"
       style={box}
       draggable="false"

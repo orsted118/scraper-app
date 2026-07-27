@@ -48,7 +48,13 @@ export function MusicPlayerProvider({ children }) {
     audio.src = buildMediaUrl(track.path);
 
     if (autoplay) {
-      audio.play().catch(() => {
+      audio.play().catch((error) => {
+        // AbortError es esperable y NO es una falla: asignar src arranca una
+        // carga y el play() inmediato queda interrumpido por ella, aunque el
+        // audio después suene igual. Tratarlo como error dejaba isPlaying en
+        // false mientras sonaba, con el icono al revés y el historial mudo.
+        if (error?.name === 'AbortError') return;
+
         // El archivo puede haber desaparecido del disco: el estado visual no
         // debe quedar en "reproduciendo" un silencio.
         setIsPlaying(false);
@@ -322,7 +328,7 @@ export function MusicPlayerProvider({ children }) {
         // Rearmar el scrobble a mano: currentTrack no cambia al repetir la misma
         // pista, así que el efecto que lo resetea no corre y la segunda vuelta
         // nunca se registraría.
-        scrobbleRef.current = { path: scrobbleRef.current.path, registered: false };
+        scrobbleRef.current = { ...scrobbleRef.current, registered: false };
         audio.currentTime = 0;
         audio.play().catch(() => setIsPlaying(false));
         return;
@@ -447,32 +453,45 @@ export function MusicPlayerProvider({ children }) {
   // ocurra antes. Se registra al cruzarlo y no al terminar, así una pista que
   // se skipea al 60% cuenta igual — que es lo que el usuario realmente escuchó.
   useEffect(() => {
-    scrobbleRef.current = { path: currentTrack?.path || null, registered: false };
-  }, [currentTrack?.path]);
+    scrobbleRef.current = {
+      path: currentTrack?.path || null,
+      // Duración de los tags, leída por music-metadata al escanear. El <audio>
+      // reporta Infinity o NaN con MP3 de bitrate variable sin cabecera Xing —
+      // justo los que salen de descargas — así que la del archivo manda.
+      duration: Number.isFinite(currentTrack?.duration) ? currentTrack.duration : 0,
+      registered: false,
+    };
+  }, [currentTrack?.path, currentTrack?.duration]);
 
   useEffect(() => {
-    if (!api?.history?.add || !isPlaying) return undefined;
+    if (!api?.history?.add) return undefined;
 
-    // Chequeo cada 5s en vez de por timeupdate: timeupdate dispara cuatro veces
-    // por segundo y esto no necesita esa resolución.
+    // El intervalo NO se condiciona a isPlaying: ese state es un espejo de la
+    // realidad y se desincroniza (ver AbortError en loadTrackIntoAudio). La
+    // fuente de verdad de si algo suena es el propio <audio>.
     const timer = setInterval(() => {
       const audio = audioRef.current;
       const state = scrobbleRef.current;
 
-      if (!audio || !state.path || state.registered) return;
-      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      if (!audio || audio.paused || !state.path || state.registered) return;
 
-      if (audio.currentTime >= Math.min(30, audio.duration / 2)) {
+      const duration = Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : state.duration;
+
+      if (duration <= 0) return;
+
+      if (audio.currentTime >= Math.min(30, duration / 2)) {
         state.registered = true;
         api.history.add(state.path, new Date().toISOString()).catch(() => {
           // Falló el disco: se reintenta en la próxima reproducción, no vale
           // la pena romper nada por una entrada de historial.
         });
       }
-    }, 5000);
+    }, 2000);
 
     return () => clearInterval(timer);
-  }, [api, isPlaying]);
+  }, [api]);
 
   // Hidratación al arrancar: restaura pista, posición y volumen — SIEMPRE en
   // pausa. Auto-play al abrir la app sería una emboscada al usuario.

@@ -13,6 +13,7 @@ import Musica from './pages/Musica';
 import Notas from './pages/Notas';
 import Ajustes from './pages/Ajustes';
 import useAutoSync from './hooks/useAutoSync';
+import useMusicShortcuts from './hooks/useMusicShortcuts';
 import dvpotroLogo from './assets/branding/dvpotro-logo-128.png';
 
 const pageRegistry = {
@@ -63,6 +64,8 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function App() {
   const reduced = useReducedMotion();
+  // Atajos del reproductor a nivel app: la música suena aunque estés en otro módulo.
+  useMusicShortcuts();
   const [activePage, setActivePage] = useState('activities');
   // Deep-link a una nota puntual (desde app://notas?note={id} de un recordatorio).
   const [notasDeepLink, setNotasDeepLink] = useState(null);

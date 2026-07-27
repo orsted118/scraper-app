@@ -1,10 +1,27 @@
-import { FolderOpen, Loader2, RefreshCw } from 'lucide-react';
+import { FolderOpen, Loader2, RefreshCw, Search } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import BottomPlayerBar from '../components/BottomPlayerBar';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import BottomPlayerBar, { TrackCover } from '../components/BottomPlayerBar';
+import QueueDrawer from '../components/QueueDrawer';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 import { EASE } from '../utils/motion';
 
+// usage:'search' + sensitivity:'base' ignora mayúsculas y diacríticos, así que
+// "cancion" encuentra "Canción".
+const SEARCH_COLLATOR = new Intl.Collator('es', { sensitivity: 'base', usage: 'search' });
+
+function matchesQuery(haystack, needle) {
+  const text = String(haystack || '');
+  const size = needle.length;
+
+  for (let start = 0; start + size <= text.length; start += 1) {
+    if (SEARCH_COLLATOR.compare(text.slice(start, start + size), needle) === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function formatDuration(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) return '—:——';
@@ -17,10 +34,13 @@ function Musica() {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const reduced = useReducedMotion();
   const player = useMusicPlayer();
+  const searchInputRef = useRef(null);
   const [library, setLibrary] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [search, setSearch] = useState('');
+  const [queueOpen, setQueueOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -42,6 +62,32 @@ function Musica() {
     };
     // api estable durante la vida del renderer.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!event.ctrlKey || event.key.toLowerCase() !== 'f') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const allTracks = library?.tracks;
+  const visibleTracks = useMemo(() => {
+    const tracks = allTracks || [];
+    const needle = search.trim();
+
+    if (!needle) return tracks;
+
+    return tracks.filter(
+      (track) =>
+        matchesQuery(track.title, needle) ||
+        matchesQuery(track.artist, needle) ||
+        matchesQuery(track.album, needle),
+    );
+  }, [allTracks, search]);
 
   const runScan = async (folderPath) => {
     setScanning(true);
@@ -88,7 +134,11 @@ function Musica() {
   const handleTrackClick = (index) => {
     // playFromList alinea cola + reproduce en un paso: la cola persistida de
     // una sesión anterior puede no coincidir con la librería re-escaneada.
-    player.playFromList(library.tracks, index);
+    //
+    // La cola se arma con los resultados filtrados, no con la librería entera:
+    // si buscás un artista y le das play, "siguiente" tiene que seguir dentro de
+    // ese artista y no saltar a lo que venía después en la biblioteca completa.
+    player.playFromList(visibleTracks, index);
   };
 
   if (!loaded) {
@@ -143,10 +193,13 @@ function Musica() {
         ) : null}
       </motion.div>
       {/* Edge: hay pista hidratada de otra sesión pero la librería fue borrada
-          — la barra sigue disponible (retorna null sola si no hay pista). */}
+          — la barra sigue disponible (retorna null sola si no hay pista). Esa
+          cola hidratada es justamente la que el drawer tiene que poder mostrar,
+          así que acá va cableado igual que en la vista con biblioteca. */}
       <div className="mt-4">
-        <BottomPlayerBar />
+        <BottomPlayerBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((open) => !open)} />
       </div>
+      <QueueDrawer open={queueOpen} onClose={() => setQueueOpen(false)} />
       </div>
     );
   }
@@ -164,9 +217,29 @@ function Musica() {
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          Biblioteca · {library.tracks.length} pistas
+          Biblioteca ·{' '}
+          {search.trim()
+            ? `${visibleTracks.length} de ${library.tracks.length} pistas`
+            : `${library.tracks.length} pistas`}
         </p>
         <div className="flex items-center gap-3">
+          <div className="field relative">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+              strokeWidth={1.5}
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar en la biblioteca..."
+              aria-label="Buscar en la biblioteca"
+              className="w-full bg-transparent py-1.5 pl-9 pr-3 text-xs outline-none"
+              style={{ color: 'var(--text-strong)', width: '240px' }}
+            />
+          </div>
           <button
             type="button"
             onClick={handleRefresh}
@@ -193,7 +266,21 @@ function Musica() {
         transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
         className="mt-5 flex-1 overflow-y-auto"
       >
-        {library.tracks.map((track, index) => {
+        {visibleTracks.length === 0 ? (
+          <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
+            <p
+              className="text-sm font-bold"
+              style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)' }}
+            >
+              Sin resultados para «{search.trim()}»
+            </p>
+            <p className="mt-2 max-w-md text-sm" style={{ color: 'var(--text-muted)' }}>
+              Probá con otro título, artista o álbum.
+            </p>
+          </div>
+        ) : null}
+
+        {visibleTracks.map((track, index) => {
           const isCurrent = player.currentTrack?.path === track.path;
 
           return (
@@ -210,6 +297,8 @@ function Musica() {
                 paddingLeft: isCurrent ? '9px' : '12px',
               }}
             >
+              <TrackCover track={track} size={32} />
+
               <div className="min-w-0 flex-1">
                 <p
                   className="truncate font-bold"
@@ -253,8 +342,12 @@ function Musica() {
       </motion.div>
 
       <div className="mt-4">
-        <BottomPlayerBar />
+        <BottomPlayerBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((open) => !open)} />
       </div>
+
+      {/* El drawer vive acá y no en el provider: la cola solo tiene sentido
+          mientras estás en Música, no flotando sobre Notas o Calendario. */}
+      <QueueDrawer open={queueOpen} onClose={() => setQueueOpen(false)} />
     </div>
   );
 }

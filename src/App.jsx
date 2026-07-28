@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { EASE } from './utils/motion';
 import Sidebar from './components/Sidebar';
 import BottomPlayerBar from './components/BottomPlayerBar';
+import NowPlaying from './components/NowPlaying';
 import { useMusicPlayer } from './contexts/MusicPlayerContext';
 import Onboarding from './components/Onboarding';
 import TaskPanel from './components/TaskPanel';
@@ -66,8 +67,13 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function App() {
   const reduced = useReducedMotion();
+  // La vista fullscreen vive en el shell junto a la barra: se abre desde
+  // cualquier página, igual que suena la música.
+  const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
+  const closeNowPlaying = useCallback(() => setNowPlayingOpen(false), []);
+  const toggleNowPlaying = useCallback(() => setNowPlayingOpen((previous) => !previous), []);
   // Atajos del reproductor a nivel app: la música suena aunque estés en otro módulo.
-  useMusicShortcuts();
+  useMusicShortcuts({ onToggleFullscreen: toggleNowPlaying });
   const musicPlayer = useMusicPlayer();
   const [activePage, setActivePage] = useState('activities');
   // Deep-link a una nota puntual (desde app://notas?note={id} de un recordatorio).
@@ -923,9 +929,11 @@ function App() {
           El contenido va centrado al mismo ancho que el resto del layout. */}
       <div className="fixed inset-x-0 bottom-0 z-30" style={{ background: 'var(--bg)' }}>
         <div className="mx-auto max-w-[1500px] px-6">
-          <BottomPlayerBar />
+          <BottomPlayerBar onToggleFullscreen={toggleNowPlaying} />
         </div>
       </div>
+
+      <NowPlaying open={nowPlayingOpen} onClose={closeNowPlaying} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import { Maximize2, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import SleepTimer from './SleepTimer';
 import { buildCoverUrl, useMusicPlayer } from '../contexts/MusicPlayerContext';
 
@@ -50,7 +50,7 @@ function TrackCover({ track, size }) {
 // Barra inferior del reproductor. La monta App como elemento fijo del shell:
 // el audio es global, así que el control también. El disparador de la cola no
 // vive acá — ese drawer es una vista del módulo Música.
-function BottomPlayerBar() {
+function BottomPlayerBar({ onToggleFullscreen }) {
   const player = useMusicPlayer();
 
   if (!player?.currentTrack) return null;
@@ -209,6 +209,17 @@ function BottomPlayerBar() {
         </div>
 
         <SleepTimer />
+
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          aria-label="Ver a pantalla completa"
+          title="Ver a pantalla completa (F)"
+          className="shrink-0 p-2"
+          style={{ color: 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
+        >
+          <Maximize2 className="h-4 w-4" strokeWidth={1.5} />
+        </button>
 
         <div className="flex shrink-0 items-center gap-2">
           <Volume2 className="h-3.5 w-3.5" strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />

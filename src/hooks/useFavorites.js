@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'dvpotro-music-favorites';
 
@@ -21,32 +21,54 @@ function writeFallback(paths) {
   }
 }
 
+// La lista vive en el módulo y no en cada instancia del hook. Con estado por
+// instancia, dos componentes montados a la vez tenían dos listas: marcar un
+// favorito desde la cola no se veía en la biblioteca hasta recargar. Esto
+// además elimina el espejo en ref — `sharedPaths` ya es síncrono, así que
+// toggle puede leerlo sin pelearse con los updaters diferidos de React.
+let sharedPaths = [];
+const subscribers = new Set();
+let loadPromise = null;
+
+function publish(next) {
+  sharedPaths = next;
+  for (const notify of subscribers) {
+    notify(next);
+  }
+}
+
+// Una sola lectura del disco por sesión, la pida quien la pida.
+function loadOnce() {
+  if (loadPromise) return loadPromise;
+
+  const bridge = window.scraperApp?.favorites;
+
+  if (!bridge) {
+    publish(readFallback());
+    loadPromise = Promise.resolve();
+    return loadPromise;
+  }
+
+  loadPromise = bridge
+    .list()
+    .then((data) => publish(data?.paths || []))
+    .catch(() => {});
+
+  return loadPromise;
+}
+
 function useFavorites() {
-  const [paths, setPaths] = useState([]);
-  // Espejo síncrono del state. React difiere los updaters funcionales, así que
-  // dentro de toggle no hay forma de leer la lista actual desde setPaths: lo
-  // que se calcule ahí adentro todavía no corrió cuando sigue la ejecución.
-  const pathsRef = useRef(paths);
-  pathsRef.current = paths;
+  const [paths, setPaths] = useState(sharedPaths);
 
   useEffect(() => {
-    let active = true;
-    const bridge = window.scraperApp?.favorites;
-
-    if (!bridge) {
-      setPaths(readFallback());
-      return () => {};
-    }
-
-    bridge
-      .list()
-      .then((data) => {
-        if (active) setPaths(data?.paths || []);
-      })
-      .catch(() => {});
+    subscribers.add(setPaths);
+    // Realinear al montar: otra instancia pudo haber cargado o tocado la lista
+    // mientras esta todavía no existía.
+    setPaths(sharedPaths);
+    loadOnce();
 
     return () => {
-      active = false;
+      subscribers.delete(setPaths);
     };
   }, []);
 
@@ -61,7 +83,7 @@ function useFavorites() {
 
     const bridge = window.scraperApp?.favorites;
 
-    const previous = pathsRef.current;
+    const previous = sharedPaths;
     const wasFavorite = previous.includes(normalized);
     const next = wasFavorite
       ? previous.filter((entry) => entry !== normalized)
@@ -69,8 +91,7 @@ function useFavorites() {
 
     // Optimista: el corazón cambia en el mismo frame del click. Esperar al IPC
     // deja un hueco de ~200ms que se siente roto.
-    pathsRef.current = next;
-    setPaths(next);
+    publish(next);
 
     if (!bridge) {
       writeFallback(next);
@@ -82,15 +103,12 @@ function useFavorites() {
       // Realinear con la fuente de verdad: si otro punto de la app tocó el
       // archivo, gana el disco y no el estado optimista.
       if (result?.paths) {
-        pathsRef.current = result.paths;
-        setPaths(result.paths);
+        publish(result.paths);
       } else if (!result?.ok) {
-        pathsRef.current = previous;
-        setPaths(previous);
+        publish(previous);
       }
     } catch (_error) {
-      pathsRef.current = previous;
-      setPaths(previous);
+      publish(previous);
     }
   }, []);
 

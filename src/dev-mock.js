@@ -470,6 +470,29 @@ const MOCK_MUSIC_TRACKS = Array.from({ length: 20 }, (_, index) => {
   };
 });
 
+// Sidecars .lrc simulados. Solo dos pistas los tienen, y la segunda arranca
+// después del segundo 12: así se puede ver el caso "sin letra todavía" y el
+// caso "sin letra en absoluto" sin tocar el disco.
+const MOCK_LYRICS = {
+  'track-01.mp3': [
+    '[ti:Pista de prueba 1]',
+    '[00:00.00] Primera línea de la letra',
+    '[00:05.50] Segunda línea, un poco más larga que la anterior',
+    '[00:12.00] Tercera línea',
+    '[00:18.25] Cuarta línea',
+    '[00:24.00]',
+    '[00:30.00] Quinta línea después de la pausa',
+    '[00:36.00][00:48.00] Sexta con doble marca de tiempo',
+    '[00:42.00] Séptima línea',
+    '[01:00.00] Octava línea',
+  ].join('\n'),
+  'track-03.mp3': [
+    '[00:12.00] Esta letra recién arranca al segundo doce',
+    '[00:20.00] La segunda línea',
+    '[00:28.00] Y la tercera',
+  ].join('\n'),
+};
+
 let MOCK_MUSIC_LIBRARY = null;
 let MOCK_MUSIC_STATE = null;
 let MOCK_MUSIC_FOLDERS = [];
@@ -757,6 +780,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         return () => MOCK_LIBRARY_LISTENERS.delete(callback);
       },
       getLibrary: async () => MOCK_MUSIC_LIBRARY,
+      readLyrics: async (trackPath) => MOCK_LYRICS[String(trackPath).split('/').pop()] || null,
       refresh: async () => {
         await new Promise((resolve) => setTimeout(resolve, 800));
         if (MOCK_MUSIC_FOLDERS.length === 0) return { error: 'No hay carpetas para re-escanear.' };

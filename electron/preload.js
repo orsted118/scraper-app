@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld('scraperApp', {
       return () => ipcRenderer.removeListener('music-library:updated', listener);
     },
     getLibrary: () => ipcRenderer.invoke('music:get-library'),
+    // Devuelve el .lrc crudo o null. main valida que la pista esté dentro de la
+    // biblioteca antes de tocar el disco: el renderer no elige qué se lee.
+    readLyrics: (trackPath) => ipcRenderer.invoke('music:read-lyrics', trackPath),
     refresh: () => ipcRenderer.invoke('music:refresh'),
     saveState: (state) => ipcRenderer.invoke('music:save-state', state),
     loadState: () => ipcRenderer.invoke('music:load-state'),

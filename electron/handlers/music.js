@@ -511,6 +511,35 @@ function registerMusicProtocol() {
   });
 }
 
+// Letra sincronizada: archivo .lrc con el mismo nombre que la pista, al lado.
+// Se valida la ruta de la PISTA contra las carpetas de la biblioteca y el .lrc
+// se deriva de ahí: el renderer no elige el archivo que se lee, así que no hay
+// forma de pedir un .lrc arbitrario del disco.
+function readLyrics(trackPath) {
+  if (typeof trackPath !== 'string' || trackPath.length === 0) {
+    return null;
+  }
+
+  const normalized = path.normalize(trackPath);
+
+  if (!isInsideAny(normalized, readLibrary().folders)) {
+    console.warn('[music] letra pedida fuera de la biblioteca, se rechaza:', trackPath);
+    return null;
+  }
+
+  const { dir, name } = path.parse(normalized);
+
+  try {
+    return fs.readFileSync(path.join(dir, `${name}.lrc`), 'utf8');
+  } catch (error) {
+    // Sin sidecar es el caso normal, no un error.
+    if (error?.code !== 'ENOENT') {
+      console.error('[music] error leyendo la letra:', error?.message || error);
+    }
+    return null;
+  }
+}
+
 function registerMusicHandlers() {
   // El diálogo NO entra al lock: es modal y puede quedarse abierto de forma
   // indefinida, dejando colgada cualquier otra escritura mientras tanto.
@@ -525,6 +554,7 @@ function registerMusicHandlers() {
   ipcMain.handle('music:list-folders', async () => ({ folders: readLibrary().folders }));
   ipcMain.handle('music:get-library', async () => getLibrary());
   ipcMain.handle('music:refresh', async () => withLock(() => rescanAll()));
+  ipcMain.handle('music:read-lyrics', async (_event, trackPath) => readLyrics(trackPath));
   ipcMain.handle('music:save-state', async (_event, state) => saveState(state));
   ipcMain.handle('music:load-state', async () => loadState());
 }
@@ -533,6 +563,7 @@ module.exports = {
   addFolder,
   getLibrary,
   loadState,
+  readLyrics,
   registerMusicHandlers,
   registerMusicProtocol,
   registerMusicScheme,

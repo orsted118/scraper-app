@@ -38,9 +38,16 @@
   --radius-dot: 9999px;
   --shadow-card: none;
   --border-width-card: 1px;
-  /* Alto de la barra del reproductor. La usa el layout para reservar espacio
-     al final del contenido, así la última fila no queda tapada. */
-  --player-bar-height: 64px;
+
+  /* Excepciones controladas al Swiss Noir, válidas SOLO para BottomPlayerBar.
+     La barra flota sobre el contenido del módulo en vez de estar pegada al
+     borde de la ventana: sin radio ni sombra propios leería como un bloque
+     recortado del layout y no como una superficie elevada. Ningún otro
+     componente puede consumir estos tokens. */
+  --radius-player: 12px;
+  --shadow-player: 0 12px 32px -8px rgba(0, 0, 0, 0.55), 0 4px 12px -4px rgba(0, 0, 0, 0.35);
+  --player-inset: 16px;
+  --player-bar-height: 72px;
 
   /* Iconos de archivo: color de marca de cada formato. Son el único acento
      saturado que se permite fuera de --accent, y solo dentro del icono.

@@ -14,7 +14,13 @@ const { registerActivityAnalyzerHandlers } = require('./handlers/activity-analyz
 const { registerHiddenActivitiesHandlers } = require('./handlers/hidden-activities');
 const { getDemoActivities, isDemoModeEnabled } = require('./handlers/demo-activities');
 const { registerPortalSistemasHandlers } = require('./handlers/portal-sistemas');
-const { registerMusicHandlers, registerMusicProtocol, registerMusicScheme } = require('./handlers/music');
+const {
+  registerMusicHandlers,
+  registerMusicProtocol,
+  registerMusicScheme,
+  startAllWatchers,
+  stopAllWatchers,
+} = require('./handlers/music');
 const { registerMusicFavoritesHandlers } = require('./handlers/music-favorites');
 const { registerMusicHistoryHandlers } = require('./handlers/music-history');
 const { registerMusicPlaylistsHandlers } = require('./handlers/music-playlists');
@@ -132,6 +138,9 @@ app.whenReady().then(() => {
   registerPortalSistemasHandlers();
   registerMusicHandlers();
   registerMusicProtocol();
+  // Vigila las carpetas ya configuradas: altas y bajas de archivos se reflejan
+  // sin que el usuario pida un re-escaneo.
+  startAllWatchers();
   registerMusicFavoritesHandlers();
   registerMusicHistoryHandlers();
   registerMusicPlaylistsHandlers();
@@ -226,6 +235,9 @@ app.whenReady().then(() => {
 // ninguna otra app puede reclamarlos hasta reiniciar sesión.
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  // Los watchers mantienen handles de archivo abiertos: sin cerrarlos quedan
+  // colgados del proceso al salir.
+  stopAllWatchers();
 });
 
 app.on('window-all-closed', () => {

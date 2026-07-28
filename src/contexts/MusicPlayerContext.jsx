@@ -3,6 +3,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 const MusicPlayerContext = createContext(null);
 
 const SAVE_DEBOUNCE_MS = 500;
+// Cada cuánto se baja la posición a disco mientras algo suena. No puede ir por
+// el debounce de arriba: timeupdate corre a ~4Hz y reiniciaría el timer para
+// siempre, así que el archivo solo se escribía al pausar.
+const POSITION_SAVE_INTERVAL_MS = 10000;
 // Duración del apagado gradual con el que termina el sleep timer.
 const FADE_SECONDS = 20;
 
@@ -683,24 +687,93 @@ export function MusicPlayerProvider({ children }) {
     // api estable durante la vida del renderer.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persistencia con debounce: cualquier cambio relevante → music-state.json.
+  // ── Persistencia ───────────────────────────────────────────────
+  // Espejo del state para los flushes que corren fuera del ciclo de render
+  // (interval, beforeunload, visibilitychange): esos callbacks se registran una
+  // vez y necesitan leer el state del momento en que disparan. Es seguro porque
+  // se lee de forma síncrona y no hay cadena async que pueda pisarlo entre
+  // medio.
+  const persistRef = useRef(null);
+  persistRef.current = { queue, currentIndex, position, volume, shuffle, repeat };
+
+  // Único lugar que escribe music-state.json. El handler de main reemplaza el
+  // archivo entero (writeJson sin merge), así que todo save manda el snapshot
+  // completo: un patch parcial borraría cola, volumen y modos.
+  const persist = useCallback(() => {
+    const snapshot = persistRef.current;
+    if (!api?.music?.saveState || snapshot.queue.length === 0) return;
+
+    // El <audio> manda sobre el state: timeupdate llega a ~4Hz y `position`
+    // puede ir hasta un cuarto de segundo atrás del audio real.
+    //
+    // Salvo que haya un seek pendiente: entre que se pide la pista y que llega
+    // loadedmetadata, currentTime todavía es 0 aunque el state ya tenga la
+    // posición buena. Es la ventana de la hidratación al arrancar — sin este
+    // guard, el primer save escribía 0 encima del punto de resume y abrir la
+    // app alcanzaba para perderlo.
+    const audio = audioRef.current;
+    const domIsAuthoritative = pendingSeekRef.current === null && Number.isFinite(audio?.currentTime);
+    const livePosition = domIsAuthoritative ? audio.currentTime : snapshot.position;
+
+    api.music.saveState({
+      queue: snapshot.queue,
+      currentIndex: snapshot.currentIndex,
+      position: Math.floor(livePosition),
+      volume: snapshot.volume,
+      shuffle: snapshot.shuffle,
+      repeat: snapshot.repeat,
+    });
+  }, [api]);
+
+  // Cambios discretos: debounce corto. `position` quedó FUERA de las deps a
+  // propósito — mientras sonaba, cada timeupdate reiniciaba el debounce y el
+  // setTimeout no llegaba nunca a escribir.
   useEffect(() => {
     if (!api?.music?.saveState || queue.length === 0) return undefined;
 
     clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      api.music.saveState({
-        queue,
-        currentIndex,
-        position: Math.floor(position),
-        volume,
-        shuffle,
-        repeat,
-      });
-    }, SAVE_DEBOUNCE_MS);
+    saveTimeoutRef.current = setTimeout(persist, SAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(saveTimeoutRef.current);
-  }, [api, queue, currentIndex, position, volume, shuffle, repeat]);
+  }, [api, queue, currentIndex, volume, shuffle, repeat, persist]);
+
+  // Keep-alive de la posición: el único camino por el que la posición llega a
+  // disco mientras la pista avanza sin que el usuario toque nada.
+  useEffect(() => {
+    if (!isPlaying || queue.length === 0) return undefined;
+
+    const timer = setInterval(persist, POSITION_SAVE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [isPlaying, queue.length, persist]);
+
+  // Al pausar hay que bajar la posición exacta: sin `position` en las deps del
+  // debounce, pausar ya no dispara ninguna escritura por sí solo. Cubre también
+  // el fin de cola, que apaga isPlaying sin tocar ningún campo discreto.
+  const wasPlayingRef = useRef(false);
+
+  useEffect(() => {
+    const wasPlaying = wasPlayingRef.current;
+    wasPlayingRef.current = isPlaying;
+    if (wasPlaying && !isPlaying) persist();
+  }, [isPlaying, persist]);
+
+  // Cierre de ventana y minimizado/cambio de app. El handler es síncrono a
+  // propósito: en beforeunload no hay tiempo para esperar la respuesta del IPC,
+  // solo para dejar el mensaje despachado. Sin returnValue — no queremos que
+  // Electron muestre el diálogo nativo de confirmación.
+  useEffect(() => {
+    const flushOnHide = () => {
+      if (document.visibilityState === 'hidden') persist();
+    };
+
+    window.addEventListener('beforeunload', persist);
+    document.addEventListener('visibilitychange', flushOnHide);
+
+    return () => {
+      window.removeEventListener('beforeunload', persist);
+      document.removeEventListener('visibilitychange', flushOnHide);
+    };
+  }, [persist]);
 
   const value = {
     currentTrack,

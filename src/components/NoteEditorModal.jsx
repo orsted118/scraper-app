@@ -16,9 +16,23 @@ import {
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
+import NoteImproveModal from './NoteImproveModal';
+import { sanitizeNoteHtml, stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
 import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
+
+// El handler de main nunca tira: siempre vuelve { error, message? }. El message
+// friendly manda cuando viene; los códigos de validación no traen uno porque el
+// copy depende de la UI que los muestra.
+const IMPROVE_ERROR_COPY = {
+  EMPTY_INPUT: 'Escribí algo en la nota antes de mejorarla.',
+  TOO_LONG: 'La nota es demasiado larga para mejorarla de una. Probá con menos texto.',
+  EMPTY_RESULT: 'La respuesta quedó vacía. Intentá de nuevo.',
+};
+
+function improveErrorMessage(result) {
+  return IMPROVE_ERROR_COPY[result?.error] || result?.message || 'No fue posible mejorar la nota.';
+}
 
 
 
@@ -79,13 +93,20 @@ function IconButton({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage }) {
+function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage, onToast }) {
   const reduced = useReducedMotion();
   const [draft, setDraft] = useState(note);
   const [showColors, setShowColors] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
   const [newLabel, setNewLabel] = useState('');
+  const [improving, setImproving] = useState(false);
+  const [preview, setPreview] = useState(null);
+  // RichTextEditor fija su innerHTML una sola vez al montar. Aceptar una mejora
+  // cambia draft.body pero no volvería a entrar al DOM: bumpear la key lo
+  // remonta con el HTML nuevo. Es el mismo mecanismo con el que el modal ya
+  // remonta el editor al cambiar de nota.
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const saveTimeoutRef = useRef(null);
   const draftRef = useRef(note);
 
@@ -116,6 +137,12 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
 
   useEffect(() => {
     const onKey = (event) => {
+      // Con el preview de la mejora encima, el teclado es suyo: Escape descarta
+      // la sugerencia y nada más. Se chequea acá y no solo con stopPropagation
+      // del hijo porque ambos listeners cuelgan de window, y ahí el orden lo
+      // decide el registro, no la fase.
+      if (preview) return;
+
       if (event.key === 'Escape') onClose();
       // Ctrl+Enter guarda y cierra (save-final ocurre en el cleanup del efecto).
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -125,7 +152,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, preview]);
 
   const patch = (fields) => setDraft((previous) => ({ ...previous, ...fields }));
 
@@ -144,6 +171,48 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
   const handleRemoveImageBySrc = async (src) => {
     if (!onRemoveImage) return;
     await onRemoveImage(draftRef.current, src);
+  };
+
+  const flash = (message) => {
+    if (onToast) onToast(message);
+  };
+
+  // El editor pasa su HTML vivo. La respuesta del LLM se sanea acá — el handler
+  // de main la devuelve cruda a propósito, porque el sanitizer es DOM y vive en
+  // el renderer.
+  const handleImprove = async (html) => {
+    setImproving(true);
+
+    try {
+      const result = await window.scraperApp?.notes?.improve?.(html);
+
+      if (!result || result.error) {
+        flash(improveErrorMessage(result));
+        return;
+      }
+
+      const sanitized = sanitizeNoteHtml(result.improved);
+
+      // El modelo puede devolver prosa suelta o tags que el allowlist descarta:
+      // sin esto el preview mostraría una columna vacía como si fuera válida.
+      if (!stripNoteHtml(sanitized)) {
+        flash(improveErrorMessage({ error: 'EMPTY_RESULT' }));
+        return;
+      }
+
+      setPreview({ original: sanitizeNoteHtml(html), improved: sanitized, backend: result.backend });
+    } catch (_error) {
+      flash('No fue posible conectar con la IA.');
+    } finally {
+      setImproving(false);
+    }
+  };
+
+  // Click síncrono: se lee del state del preview, no de un ref espejo.
+  const acceptImprovement = (improved) => {
+    patch({ body: improved });
+    setEditorEpoch((epoch) => epoch + 1);
+    setPreview(null);
   };
 
   const toggleType = () => {
@@ -239,11 +308,14 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
 
           {draft.type === 'text' ? (
             <RichTextEditor
+              key={editorEpoch}
               initialHtml={draft.body}
               onChange={(html) => patch({ body: html })}
               placeholder="Escribe una nota..."
               onAttachImage={onAttachImage ? handleAttachImage : undefined}
               onRemoveImage={handleRemoveImageBySrc}
+              onImprove={handleImprove}
+              improving={improving}
             />
           ) : (
             <div className="mt-4 space-y-1">
@@ -465,6 +537,17 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
             Cerrar
           </button>
         </div>
+
+        {/* Dentro del motion.div a propósito: ese nodo ya corta la propagación
+            de clicks, así que cerrar el preview no cierra también la nota. */}
+        <NoteImproveModal
+          open={Boolean(preview)}
+          original={preview?.original || ''}
+          improved={preview?.improved || ''}
+          backend={preview?.backend}
+          onAccept={acceptImprovement}
+          onDiscard={() => setPreview(null)}
+        />
       </motion.div>
     </div>
   );

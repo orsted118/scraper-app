@@ -1,6 +1,8 @@
 import {
   ChevronsRight,
+  Folder,
   FolderOpen,
+  FolderPlus,
   Heart,
   Link2,
   ListMusic,
@@ -8,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  X,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +25,7 @@ import TracksView from '../components/music/TracksView';
 import AddToPlaylistModal from '../components/music/AddToPlaylistModal';
 import PlaylistsView from '../components/music/PlaylistsView';
 import useFavorites from '../hooks/useFavorites';
+import useLibrary from '../hooks/useLibrary';
 import usePlaylists from '../hooks/usePlaylists';
 import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 import { EASE } from '../utils/motion';
@@ -43,8 +47,7 @@ function Musica() {
   const favorites = useFavorites();
   const playlists = usePlaylists();
   const searchInputRef = useRef(null);
-  const [library, setLibrary] = useState(null);
-  const [loaded, setLoaded] = useState(false);
+  const { library, loading, folders, addFolder, removeFolder, refreshAll } = useLibrary();
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
   const [search, setSearch] = useState('');
@@ -52,27 +55,8 @@ function Musica() {
   const [tab, setTab] = useState('tracks');
   const [contextMenu, setContextMenu] = useState(null);
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    api?.music
-      ?.getLibrary?.()
-      .then((cached) => {
-        if (mounted && cached?.tracks) {
-          setLibrary(cached);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (mounted) setLoaded(true);
-      });
-
-    return () => {
-      mounted = false;
-    };
-    // api estable durante la vida del renderer.
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -87,46 +71,66 @@ function Musica() {
 
   const allTracks = useMemo(() => library?.tracks || [], [library]);
 
-  const runScan = async (folderPath) => {
+  const flash = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 2400);
+  };
+
+  const handleAddFolder = async () => {
     setScanning(true);
     setScanError('');
 
     try {
-      const result = await api.music.scanFolder(folderPath);
+      const result = await addFolder();
+
+      if (result?.canceled) return;
 
       if (result?.error) {
         setScanError(result.error);
         return;
       }
 
-      setLibrary(result);
+      // added:false llega cuando la carpeta ya estaba o es subcarpeta de otra.
+      if (result?.added === false) {
+        flash(result.reason === 'nested'
+          ? 'Esa carpeta ya está cubierta por otra de la biblioteca.'
+          : 'Esa carpeta ya está en la biblioteca.');
+        return;
+      }
+
       // La cola del player se alinea a la librería nueva; nada suena solo.
       player?.setQueue?.(result.tracks, -1);
     } catch (_error) {
-      setScanError('No fue posible escanear la carpeta.');
+      setScanError('No fue posible agregar la carpeta.');
     } finally {
       setScanning(false);
     }
   };
 
-  const handlePickFolder = async () => {
-    if (!api?.music?.pickFolder) {
-      setScanError('Disponible solo dentro de Electron.');
-      return;
-    }
+  const handleRemoveFolder = async (folderPath) => {
+    const confirmed = window.confirm(
+      `¿Remover «${folderPath}» de la biblioteca? Las canciones que solo estén ahí dejarán de aparecer.`,
+    );
+    if (!confirmed) return;
 
-    try {
-      const folderPath = await api.music.pickFolder();
-      if (!folderPath) return;
-      await runScan(folderPath);
-    } catch (_error) {
-      setScanError('Error al seleccionar carpeta.');
-    }
+    const result = await removeFolder(folderPath);
+    if (result?.error) setScanError(result.error);
   };
 
   const handleRefresh = async () => {
-    if (!library?.folderPath) return;
-    await runScan(library.folderPath);
+    if (folders.length === 0) return;
+
+    setScanning(true);
+    setScanError('');
+
+    try {
+      const result = await refreshAll();
+      if (result?.error) setScanError(result.error);
+    } catch (_error) {
+      setScanError('No fue posible re-escanear.');
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Cada vista pasa la lista que el usuario tiene delante, no la biblioteca
@@ -193,7 +197,7 @@ function Musica() {
     ];
   };
 
-  if (!loaded) {
+  if (loading) {
     return null;
   }
 
@@ -227,11 +231,12 @@ function Musica() {
           Aún no hay música
         </h2>
         <p className="mt-4 max-w-md text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
-          Elige una carpeta de tu equipo y DVPotro la escanea completa: MP3, M4A, FLAC, OGG y WAV.
+          Elige una o varias carpetas de tu equipo y DVPotro las escanea completas: MP3, M4A,
+          FLAC, OGG y WAV. Podés agregar más carpetas después.
         </p>
         <button
           type="button"
-          onClick={handlePickFolder}
+          onClick={handleAddFolder}
           disabled={scanning}
           className="btn-primary mt-7 inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -349,11 +354,87 @@ function Musica() {
             <ListMusic className="h-3.5 w-3.5" strokeWidth={1.5} />
             Cola
           </button>
-          <button type="button" onClick={handlePickFolder} disabled={scanning} className="link-accent text-xs font-medium">
-            Cambiar carpeta
+          <button
+            type="button"
+            onClick={() => setFoldersOpen((open) => !open)}
+            aria-expanded={foldersOpen}
+            title="Carpetas de la biblioteca"
+            className="btn-outline inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold"
+            style={foldersOpen ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+          >
+            <Folder className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Carpetas · {folders.length}
           </button>
         </div>
       </div>
+
+      {foldersOpen ? (
+        <div
+          className="mt-4 border-y py-3"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
+        >
+          {folders.length === 0 ? (
+            <p className="px-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+              Todavía no hay carpetas en la biblioteca.
+            </p>
+          ) : (
+            folders.map((folderPath) => (
+              <div key={folderPath} className="row-hover flex items-center gap-3 px-3 py-2">
+                <Folder className="h-4 w-4 shrink-0" strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+                <p
+                  className="min-w-0 flex-1 truncate"
+                  style={{ color: 'var(--text-normal)', fontFamily: 'var(--font-mono, monospace)', fontSize: '12px' }}
+                  title={folderPath}
+                >
+                  {folderPath}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => api?.music?.showInFolder?.(folderPath)}
+                  className="link-accent shrink-0 text-xs font-medium"
+                >
+                  Abrir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveFolder(folderPath)}
+                  aria-label={`Quitar ${folderPath} de la biblioteca`}
+                  title="Quitar de la biblioteca"
+                  className="shrink-0 p-1"
+                  style={{ color: 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </div>
+            ))
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 border-t px-3 pt-3" style={{ borderColor: 'var(--border-subtle)' }}>
+            <button
+              type="button"
+              onClick={handleAddFolder}
+              disabled={scanning}
+              className="btn-outline inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              Agregar carpeta
+            </button>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={scanning || folders.length === 0}
+              className="link-accent text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Re-escanear todo
+            </button>
+            {notice ? (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {notice}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {scanError ? (
         <p className="mt-2 text-xs" style={{ color: 'var(--error-text)' }}>
           {scanError}

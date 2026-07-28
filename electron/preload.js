@@ -98,6 +98,16 @@ contextBridge.exposeInMainWorld('scraperApp', {
   music: {
     pickFolder: () => ipcRenderer.invoke('music:pick-folder'),
     scanFolder: (folderPath) => ipcRenderer.invoke('music:scan-folder', folderPath),
+    addFolder: (folderPath) => ipcRenderer.invoke('music:add-folder', folderPath),
+    removeFolder: (folderPath) => ipcRenderer.invoke('music:remove-folder', folderPath),
+    listFolders: () => ipcRenderer.invoke('music:list-folders'),
+    // Altas y bajas detectadas por el watcher. Se quita el listener puntual
+    // (no removeAllListeners) para que dos suscriptores no se pisen.
+    onLibraryUpdated: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on('music-library:updated', listener);
+      return () => ipcRenderer.removeListener('music-library:updated', listener);
+    },
     getLibrary: () => ipcRenderer.invoke('music:get-library'),
     refresh: () => ipcRenderer.invoke('music:refresh'),
     saveState: (state) => ipcRenderer.invoke('music:save-state', state),

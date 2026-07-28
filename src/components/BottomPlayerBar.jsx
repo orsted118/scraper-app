@@ -1,4 +1,5 @@
 import { Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import SleepTimer from './SleepTimer';
 import { buildCoverUrl, useMusicPlayer } from '../contexts/MusicPlayerContext';
 
 const REPEAT_CYCLE = { off: 'all', all: 'one', one: 'off' };
@@ -206,6 +207,8 @@ function BottomPlayerBar() {
             <RepeatIcon className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
+
+        <SleepTimer />
 
         <div className="flex shrink-0 items-center gap-2">
           <Volume2 className="h-3.5 w-3.5" strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />

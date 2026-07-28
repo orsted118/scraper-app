@@ -4,6 +4,7 @@ import { useMusicPlayer } from '../contexts/MusicPlayerContext';
 // Atajos de teclado del reproductor, activos desde cualquier página:
 //
 //   Space              play / pausa
+//   F                  abrir / cerrar la vista a pantalla completa
 //   Ctrl + →           pista siguiente
 //   Ctrl + ←           pista anterior
 //   Ctrl + ↑           subir volumen 10%
@@ -26,12 +27,14 @@ function isTypingTarget(target) {
   return ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName);
 }
 
-function useMusicShortcuts() {
+function useMusicShortcuts({ onToggleFullscreen } = {}) {
   const player = useMusicPlayer();
   // El listener se registra una sola vez; lee el player de un ref para no
   // re-suscribirse en cada tick de posición.
   const playerRef = useRef(player);
   playerRef.current = player;
+  const fullscreenRef = useRef(onToggleFullscreen);
+  fullscreenRef.current = onToggleFullscreen;
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -43,6 +46,14 @@ function useMusicShortcuts() {
       if (event.code === 'Space' && !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         current.toggle();
+        return;
+      }
+
+      // Tecla pelada como Space: isTypingTarget ya descarta campos de texto, y
+      // Ctrl+F queda libre para el buscador de la biblioteca.
+      if (event.code === 'KeyF' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        fullscreenRef.current?.();
         return;
       }
 

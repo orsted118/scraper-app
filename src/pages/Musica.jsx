@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BottomPlayerBar from '../components/BottomPlayerBar';
 import QueueDrawer from '../components/QueueDrawer';
 import TrackContextMenu from '../components/TrackContextMenu';
 import AlbumsView from '../components/music/AlbumsView';
@@ -40,7 +41,7 @@ const TABS = [
   { id: 'playlists', label: 'Playlists' },
 ];
 
-function Musica() {
+function Musica({ onToggleFullscreen }) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const reduced = useReducedMotion();
   const player = useMusicPlayer();
@@ -250,8 +251,9 @@ function Musica() {
         ) : null}
       </motion.div>
       {/* Edge: la librería fue borrada pero quedó cola hidratada de otra sesión.
-          El drawer sigue disponible para verla; la barra la monta App. */}
+          Drawer y barra siguen disponibles para verla y controlarla. */}
       <QueueDrawer favorites={favorites} open={queueOpen} onClose={() => setQueueOpen(false)} />
+      <BottomPlayerBar onToggleFullscreen={onToggleFullscreen} />
       </div>
     );
   }
@@ -474,6 +476,11 @@ function Musica() {
       >
         {renderTab()}
       </motion.div>
+
+      {/* Última en el flow y sticky: se apoya sola al final del módulo cuando el
+          contenido es corto y queda flotando sobre la lista cuando hay scroll,
+          sin reservar padding artificial ni pisar el sidebar. */}
+      <BottomPlayerBar onToggleFullscreen={onToggleFullscreen} />
 
       {/* El drawer vive acá y no en el provider: la cola solo tiene sentido
           mientras estás en Música, no flotando sobre Notas o Calendario. */}

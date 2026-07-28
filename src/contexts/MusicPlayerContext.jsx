@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 const MusicPlayerContext = createContext(null);
 
 const SAVE_DEBOUNCE_MS = 500;
+// Duración del apagado gradual con el que termina el sleep timer.
+const FADE_SECONDS = 20;
 
 // dvpotro-media:///C:/ruta/cancion.mp3 — el protocolo custom del main process
 // sirve el archivo (file:// no carga desde el origin http del dev server).
@@ -28,6 +30,10 @@ export function MusicPlayerProvider({ children }) {
   const hydratedRef = useRef(false);
   // Pista en curso y si su escucha ya se registró en el historial.
   const scrobbleRef = useRef({ path: null, registered: false });
+  // Grafo de Web Audio del sleep timer. Solo se arma cuando hace falta.
+  const audioContextRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const sleepFadingRef = useRef(false);
 
   const [queue, setQueueState] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
@@ -37,6 +43,9 @@ export function MusicPlayerProvider({ children }) {
   const [volume, setVolumeState] = useState(1);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeatState] = useState('off'); // 'off' | 'all' | 'one'
+  // Sleep timer: instante en que la música tiene que cortarse y cuánto falta.
+  const [sleepTimerEndsAt, setSleepTimerEndsAt] = useState(null);
+  const [sleepTimerRemaining, setSleepTimerRemaining] = useState(null);
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] || null : null;
 
@@ -61,6 +70,71 @@ export function MusicPlayerProvider({ children }) {
       });
     }
   }, []);
+
+  // ── Web Audio para el fade del sleep timer ─────────────────────
+  // createMediaElementSource se puede llamar UNA sola vez por elemento: el
+  // <audio> queda casado con ese contexto para siempre. Por eso el grafo se
+  // arma perezosamente y una única vez, y a partir de ahí toda la salida pasa
+  // por el gain. El `volume` del elemento sigue valiendo — se aplica antes del
+  // grafo — así que el control de volumen del usuario y el fade se multiplican
+  // en vez de pisarse.
+  const ensureAudioGraph = useCallback(() => {
+    if (gainNodeRef.current) return gainNodeRef.current;
+
+    const audio = audioRef.current;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!audio || !AudioContextCtor) return null;
+
+    let context;
+
+    try {
+      context = new AudioContextCtor();
+      const source = context.createMediaElementSource(audio);
+      const gain = context.createGain();
+      source.connect(gain);
+      gain.connect(context.destination);
+
+      // Si el contexto arranca suspendido por la política de autoplay, todo el
+      // audio se va a silencio al enrutarlo: hay que despertarlo sí o sí.
+      context.resume?.().catch(() => {});
+
+      audioContextRef.current = context;
+      gainNodeRef.current = gain;
+      return gain;
+    } catch (error) {
+      // En dev, si HMR reemplaza este módulo el ref se pierde pero el <audio>
+      // sigue casado con el contexto anterior: createMediaElementSource tira
+      // InvalidStateError. Se pierde el fade hasta recargar; el timer sigue
+      // cortando la música igual. En producción no ocurre.
+      console.warn('[music] sin fade: no se pudo armar el grafo de Web Audio.', error?.message || error);
+      context?.close?.().catch(() => {});
+      return null;
+    }
+  }, []);
+
+  const resetGain = useCallback(() => {
+    const gain = gainNodeRef.current;
+    const context = audioContextRef.current;
+    if (!gain || !context) return;
+
+    gain.gain.cancelScheduledValues(context.currentTime);
+    gain.gain.setValueAtTime(1, context.currentTime);
+  }, []);
+
+  const startFadeOut = useCallback((seconds) => {
+    const gain = ensureAudioGraph();
+    const context = audioContextRef.current;
+    if (!gain || !context) return;
+
+    context.resume?.().catch(() => {});
+
+    const now = context.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    // Anclar en el valor actual y no en 1: si el fade se re-programa a mitad de
+    // camino, tiene que seguir bajando desde donde estaba.
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + Math.max(1, seconds));
+  }, [ensureAudioGraph]);
 
   const jumpTo = useCallback(
     (index) => {
@@ -117,6 +191,14 @@ export function MusicPlayerProvider({ children }) {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
 
+    // Retomar durante el apagado: el gain quedó donde lo dejó la rampa y la
+    // música volvería casi muda. Se restaura y el próximo tick del timer
+    // vuelve a programar el fade sobre el tiempo que reste.
+    if (sleepFadingRef.current) {
+      sleepFadingRef.current = false;
+      resetGain();
+    }
+
     if (!audio.src) {
       loadTrackIntoAudio(currentTrack, { autoplay: true, seekTo: position });
       setIsPlaying(true);
@@ -124,7 +206,7 @@ export function MusicPlayerProvider({ children }) {
     }
 
     audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-  }, [currentTrack, position, loadTrackIntoAudio]);
+  }, [currentTrack, position, loadTrackIntoAudio, resetGain]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -224,6 +306,80 @@ export function MusicPlayerProvider({ children }) {
   const setRepeat = useCallback((mode) => {
     setRepeatState(['off', 'all', 'one'].includes(mode) ? mode : 'off');
   }, []);
+
+  // ── Sleep timer ────────────────────────────────────────────────
+  // Cuenta tiempo real, no tiempo reproducido: si el usuario pausa a mano el
+  // reloj sigue corriendo y al vencer simplemente no hay nada que pausar.
+  // El grafo de Web Audio se arma acá, sobre el gesto que inicia el timer: con
+  // la política de autoplay ya satisfecha el contexto no arranca suspendido, y
+  // re-enrutar la salida ahora en vez de en mitad del fade evita el salto.
+  const armSleepTimer = useCallback(
+    (milliseconds) => {
+      ensureAudioGraph();
+      sleepFadingRef.current = false;
+      resetGain();
+      setSleepTimerEndsAt(Date.now() + milliseconds);
+    },
+    [ensureAudioGraph, resetGain],
+  );
+
+  const startSleepTimer = useCallback(
+    (minutes) => {
+      const value = Number(minutes);
+      if (!Number.isFinite(value) || value <= 0) return;
+      armSleepTimer(value * 60 * 1000);
+    },
+    [armSleepTimer],
+  );
+
+  const startSleepTimerAtTrackEnd = useCallback(() => {
+    const audio = audioRef.current;
+    // La duración del <audio> manda cuando existe; con MP3 de bitrate variable
+    // reporta NaN y hay que caer a la de los tags.
+    const total = Number.isFinite(audio?.duration) && audio.duration > 0 ? audio.duration : duration;
+    if (total <= 0) return;
+
+    // Un segundo de margen para que el corte caiga después del final natural.
+    armSleepTimer(Math.max(1, total - (audio?.currentTime || 0) + 1) * 1000);
+  }, [duration, armSleepTimer]);
+
+  const cancelSleepTimer = useCallback(() => {
+    sleepFadingRef.current = false;
+    resetGain();
+    setSleepTimerEndsAt(null);
+  }, [resetGain]);
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) {
+      setSleepTimerRemaining(null);
+      return undefined;
+    }
+
+    const tick = () => {
+      const remainingMs = sleepTimerEndsAt - Date.now();
+      setSleepTimerRemaining(Math.max(0, Math.ceil(remainingMs / 1000)));
+
+      if (remainingMs <= 0) {
+        pause();
+        sleepFadingRef.current = false;
+        resetGain();
+        setSleepTimerEndsAt(null);
+        return;
+      }
+
+      if (remainingMs <= FADE_SECONDS * 1000 && !sleepFadingRef.current) {
+        sleepFadingRef.current = true;
+        // La rampa dura lo que realmente falta: con un timer de menos de veinte
+        // segundos una rampa fija llegaría a mitad de camino y el corte se
+        // oiría seco, que es justo lo que el fade viene a evitar.
+        startFadeOut(remainingMs / 1000);
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [sleepTimerEndsAt, pause, resetGain, startFadeOut]);
 
   const removeFromQueue = useCallback(
     (index) => {
@@ -572,6 +728,11 @@ export function MusicPlayerProvider({ children }) {
     reorderQueue,
     playNext,
     enqueue,
+    sleepTimerEndsAt,
+    sleepTimerRemaining,
+    startSleepTimer,
+    startSleepTimerAtTrackEnd,
+    cancelSleepTimer,
   };
 
   return (

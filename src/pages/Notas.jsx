@@ -1028,12 +1028,6 @@ function Notas({ deepLink } = {}) {
       ) : null}
 
       {/* Toast */}
-      {toast ? (
-        <div className="fixed bottom-16 left-1/2 z-50 -translate-x-1/2 border px-4 py-2 text-xs" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-card)', color: 'var(--text-strong)', fontFamily: 'var(--font-mono, monospace)', borderRadius: 'var(--radius-card, 0px)' }}>
-          {toast}
-        </div>
-      ) : null}
-
       {editing ? (
         <NoteEditorModal
           note={editing}
@@ -1046,7 +1040,17 @@ function Notas({ deepLink } = {}) {
           onExport={createdIdRef.current || !editing.__isNew ? () => handleExport(createdIdRef.current || editing.id) : undefined}
           onAttachImage={handleAttachImage}
           onRemoveImage={handleRemoveImageBySrc}
+          onToast={showToast}
         />
+      ) : null}
+
+      {/* Después de los modales y por encima de ellos: con z-50 y antes en el
+          DOM, el overlay del editor lo tapaba y los errores de guardado se leían
+          a través de un velo negro. */}
+      {toast ? (
+        <div className="fixed bottom-16 left-1/2 z-[70] -translate-x-1/2 border px-4 py-2 text-xs" style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-card)', color: 'var(--text-strong)', fontFamily: 'var(--font-mono, monospace)', borderRadius: 'var(--radius-card, 0px)' }}>
+          {toast}
+        </div>
       ) : null}
 
       {/* Modal confirmación borrar etiqueta */}

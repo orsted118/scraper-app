@@ -1,4 +1,4 @@
-import { Bold, ImagePlus, Italic, Strikethrough, Type, Underline, X } from 'lucide-react';
+import { Bold, ImagePlus, Italic, Loader2, Sparkles, Strikethrough, Type, Underline, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { sanitizeNoteHtml } from '../utils/sanitizeNoteHtml';
 import { NOTE_COLORS } from '../utils/noteColors';
@@ -16,7 +16,7 @@ const escAttr = (s) => (s || '')
 // Editor de texto enriquecido cero-dep: contentEditable + execCommand. Electron
 // es Chromium fijo, así que el "deprecated" de execCommand no muerde. El HTML se
 // sanitiza (allowlist DOM) al reportar cambios, al montar y al pegar.
-function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onRemoveImage }) {
+function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onRemoveImage, onImprove, improving = false }) {
   const ref = useRef(null);
   const fileInputRef = useRef(null);
   const savedRangeRef = useRef(null);
@@ -166,6 +166,20 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
         {onAttachImage ? (
           <ToolbarButton icon={ImagePlus} label="Insertar imagen" onMouseDown={preserveSelection} onClick={openFilePicker} />
         ) : null}
+
+        {/* Sin onImprove el botón no existe: el padre lo omite para checklists,
+            que no tienen HTML que mejorar. El editor no conoce el tipo de nota. */}
+        {onImprove ? (
+          <ToolbarButton
+            icon={improving ? Loader2 : Sparkles}
+            label="Mejorar con IA"
+            disabled={improving}
+            spin={improving}
+            onMouseDown={preserveSelection}
+            // El HTML vivo del DOM, no initialHtml: eso quedó congelado al montar.
+            onClick={() => onImprove(ref.current?.innerHTML || '')}
+          />
+        ) : null}
       </div>
 
       <input
@@ -226,18 +240,19 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
   );
 }
 
-function ToolbarButton({ icon: Icon, label, onMouseDown, onClick }) {
+function ToolbarButton({ icon: Icon, label, onMouseDown, onClick, disabled = false, spin = false }) {
   return (
     <button
       type="button"
       onMouseDown={onMouseDown}
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
-      className="p-1.5"
+      className="p-1.5 disabled:cursor-not-allowed disabled:opacity-60"
       style={{ color: 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
     >
-      <Icon className="h-4 w-4" strokeWidth={1.5} />
+      <Icon className={`h-4 w-4 ${spin ? 'animate-spin' : ''}`} strokeWidth={1.5} />
     </button>
   );
 }

@@ -472,6 +472,41 @@ const MOCK_MUSIC_TRACKS = Array.from({ length: 20 }, (_, index) => {
 
 let MOCK_MUSIC_LIBRARY = null;
 let MOCK_MUSIC_STATE = null;
+let MOCK_MUSIC_FOLDERS = [];
+const MOCK_LIBRARY_LISTENERS = new Set();
+
+// Simula lo que en Electron emite chokidar. Solo dev: permite ver el efecto de
+// un alta o una baja sin tocar el disco.
+if (typeof window !== 'undefined') {
+  window.__mockLibraryEvent = (reason, trackPath) => {
+    if (!MOCK_MUSIC_LIBRARY) return null;
+
+    const tracks = reason === 'unlink'
+      ? MOCK_MUSIC_LIBRARY.tracks.filter((track) => track.path !== trackPath)
+      : [
+        ...MOCK_MUSIC_LIBRARY.tracks,
+        { path: trackPath, title: trackPath.split('/').pop(), artist: 'Artista desconocido', album: '', duration: 111, bitrate: 0, coverPath: null },
+      ];
+
+    MOCK_MUSIC_LIBRARY = { ...MOCK_MUSIC_LIBRARY, tracks };
+    MOCK_LIBRARY_LISTENERS.forEach((listener) => listener({ reason, path: trackPath, library: MOCK_MUSIC_LIBRARY }));
+    return MOCK_MUSIC_LIBRARY.tracks.length;
+  };
+}
+
+// Reparte las pistas entre las carpetas dadas de alta, así agregar una segunda
+// suma pistas de verdad y quitarla las saca.
+function mockBuildLibrary() {
+  const porCarpeta = Math.ceil(MOCK_MUSIC_TRACKS.length / Math.max(1, MOCK_MUSIC_FOLDERS.length));
+  const tracks = MOCK_MUSIC_FOLDERS.flatMap((folder, index) =>
+    MOCK_MUSIC_TRACKS.slice(index * porCarpeta, (index + 1) * porCarpeta).map((track) => ({
+      ...track,
+      path: `${folder}/${track.path.split('/').pop()}`,
+    })),
+  );
+
+  return { folders: [...MOCK_MUSIC_FOLDERS], tracks, scannedAt: new Date().toISOString() };
+}
 let MOCK_FAVORITE_PATHS = [MOCK_MUSIC_TRACKS[1].path, MOCK_MUSIC_TRACKS[4].path];
 
 const MOCK_COVER_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR42mNkYPhfz0AEYBxVSF+FgxWMcnBFAADg8wX7l6q3JgAAAABJRU5ErkJggg==';
@@ -690,20 +725,43 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       },
     },
     music: {
-      pickFolder: async () => 'C:/Users/mock/Music',
-      scanFolder: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        MOCK_MUSIC_LIBRARY = {
-          folderPath: 'C:/Users/mock/Music',
-          tracks: MOCK_MUSIC_TRACKS,
-          scannedAt: new Date().toISOString(),
-        };
-        return MOCK_MUSIC_LIBRARY;
+      // Cada llamada devuelve una carpeta distinta para poder ejercitar el alta
+      // de varias; la tercera repite la primera y dispara el caso duplicado.
+      pickFolder: async () => {
+        const opciones = ['C:/Users/mock/Music', 'D:/Descargas/musica', 'C:/Users/mock/Music'];
+        return opciones[Math.min(MOCK_MUSIC_FOLDERS.length, opciones.length - 1)];
+      },
+      scanFolder: async (folderPath) => window.scraperApp.music.addFolder(folderPath),
+      addFolder: async (folderPath) => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+
+        if (MOCK_MUSIC_FOLDERS.includes(folderPath)) {
+          return { ...mockBuildLibrary(), added: false, reason: 'duplicate' };
+        }
+
+        MOCK_MUSIC_FOLDERS.push(folderPath);
+        MOCK_MUSIC_LIBRARY = mockBuildLibrary();
+        return { ...MOCK_MUSIC_LIBRARY, added: true };
+      },
+      removeFolder: async (folderPath) => {
+        MOCK_MUSIC_FOLDERS = MOCK_MUSIC_FOLDERS.filter((entry) => entry !== folderPath);
+        MOCK_MUSIC_LIBRARY = MOCK_MUSIC_FOLDERS.length ? mockBuildLibrary() : null;
+        return { ok: true, library: MOCK_MUSIC_LIBRARY || { folders: [], tracks: [] } };
+      },
+      listFolders: async () => ({ folders: [...MOCK_MUSIC_FOLDERS] }),
+      // chokidar vive en el main process: en navegador nadie emite solo. Se
+      // guardan los suscriptores para poder simular un alta desde la consola
+      // con window.__mockLibraryEvent('add', ruta).
+      onLibraryUpdated: (callback) => {
+        MOCK_LIBRARY_LISTENERS.add(callback);
+        return () => MOCK_LIBRARY_LISTENERS.delete(callback);
       },
       getLibrary: async () => MOCK_MUSIC_LIBRARY,
       refresh: async () => {
         await new Promise((resolve) => setTimeout(resolve, 800));
-        return MOCK_MUSIC_LIBRARY || { error: 'No hay carpeta configurada para re-escanear.' };
+        if (MOCK_MUSIC_FOLDERS.length === 0) return { error: 'No hay carpetas para re-escanear.' };
+        MOCK_MUSIC_LIBRARY = mockBuildLibrary();
+        return MOCK_MUSIC_LIBRARY;
       },
       saveState: async (state) => {
         MOCK_MUSIC_STATE = { ...state, savedAt: new Date().toISOString() };

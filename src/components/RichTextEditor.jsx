@@ -1,4 +1,5 @@
-import { Bold, ImagePlus, Italic, Strikethrough, Type, Underline, X } from 'lucide-react';
+import { Bold, ImagePlus, Italic, Rocket, Sparkles, Strikethrough, Type, Underline, X } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { sanitizeNoteHtml } from '../utils/sanitizeNoteHtml';
 import { NOTE_COLORS } from '../utils/noteColors';
@@ -16,7 +17,8 @@ const escAttr = (s) => (s || '')
 // Editor de texto enriquecido cero-dep: contentEditable + execCommand. Electron
 // es Chromium fijo, así que el "deprecated" de execCommand no muerde. El HTML se
 // sanitiza (allowlist DOM) al reportar cambios, al montar y al pegar.
-function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onRemoveImage }) {
+function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onRemoveImage, onImprove, improving = false }) {
+  const reduced = useReducedMotion();
   const ref = useRef(null);
   const fileInputRef = useRef(null);
   const savedRangeRef = useRef(null);
@@ -165,6 +167,41 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
 
         {onAttachImage ? (
           <ToolbarButton icon={ImagePlus} label="Insertar imagen" onMouseDown={preserveSelection} onClick={openFilePicker} />
+        ) : null}
+
+        {/* Sin onImprove el botón no existe: el padre lo omite para checklists,
+            que no tienen HTML que mejorar. El editor no conoce el tipo de nota.
+            Botón manual y no ToolbarButton: es el único del toolbar con ícono
+            animado, y ToolbarButton solo acepta un componente de ícono. */}
+        {onImprove ? (
+          <button
+            type="button"
+            onMouseDown={preserveSelection}
+            // El HTML vivo del DOM, no initialHtml: eso quedó congelado al montar.
+            onClick={() => onImprove(ref.current?.innerHTML || '')}
+            disabled={improving}
+            aria-label="Mejorar con IA"
+            aria-busy={improving}
+            title="Mejorar con IA"
+            className="p-1.5 disabled:cursor-default disabled:opacity-60"
+            style={{ color: improving ? 'var(--accent)' : 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
+          >
+            {improving ? (
+              // Cohete despegando: sube y se desvanece en loop. El recorrido es
+              // corto (6px) porque el botón mide 28px y con más se sale de caja.
+              // Con reduced motion queda quieto: el ícono distinto y el disabled
+              // ya comunican que está trabajando.
+              <motion.span
+                className="inline-flex"
+                animate={reduced ? {} : { y: [0, -6, 0], opacity: [1, 0.35, 1] }}
+                transition={{ duration: reduced ? 0 : 1.1, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Rocket className="h-4 w-4" strokeWidth={1.5} />
+              </motion.span>
+            ) : (
+              <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+            )}
+          </button>
         ) : null}
       </div>
 

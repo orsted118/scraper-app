@@ -160,6 +160,7 @@ contextBridge.exposeInMainWorld('scraperApp', {
     snoozeReminder: (id, minutes) => ipcRenderer.invoke('notes:snooze-reminder', { id, minutes }),
     duplicate: (id) => ipcRenderer.invoke('notes:duplicate', id),
     exportMarkdown: (id) => ipcRenderer.invoke('notes:export-markdown', id),
+    improve: (html) => ipcRenderer.invoke('notes:improve', { html }),
     bulkAction: (ids, action, payload) => ipcRenderer.invoke('notes:bulk-action', { ids, action, payload }),
     attachImage: (noteId, arrayBuffer, filename, mime) => ipcRenderer.invoke('notes:attach-image', { noteId, arrayBuffer, filename, mime }),
     removeAttachment: (noteId, attachmentId) => ipcRenderer.invoke('notes:remove-attachment', { noteId, attachmentId }),

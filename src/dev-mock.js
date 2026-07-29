@@ -1000,6 +1000,36 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         const meta = `Color: ${note.color} · Etiquetas: ${note.labels.length ? note.labels.join(', ') : '—'} · Creada: ${new Date(note.createdAt).toLocaleString('es-MX')} · Actualizada: ${new Date(note.updatedAt).toLocaleString('es-MX')}`;
         return { ok: true, markdown: `# ${note.title || 'Sin título'}\n\n${bodyBlock}\n\n---\n${meta}\n` };
       },
+
+      // Sin LLM en el browser: el mock imita la forma de la respuesta, no el
+      // contenido. Toca solo los nodos de texto para que la estructura de tags
+      // (listas, negritas, spans de color, <img>) llegue intacta al preview —
+      // así el lado a lado prueba de verdad que el render preserva el markup.
+      // Firma del preload (html suelto), no la del payload IPC: el mock ocupa el
+      // lugar de window.scraperApp, no el del canal.
+      improve: async (html) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+
+        const text = String(html || '').replace(/<[^>]*>/g, ' ').trim();
+        if (!text) return { error: 'EMPTY_INPUT' };
+        if (String(html).length > 8000) return { error: 'TOO_LONG' };
+
+        // Devuelve códigos de error a demanda para poder ejercitar los toasts:
+        // escribí "fallar-ia" o "sin-ia" en la nota.
+        if (/fallar-ia/i.test(text)) {
+          return { error: 'ALL_FAILED', message: 'La IA no respondió. Puede ser límite de cuota: probá de nuevo en un rato.' };
+        }
+        if (/sin-ia/i.test(text)) {
+          return { error: 'NO_BACKEND', message: 'No hay IA configurada. Agregá una key (por ejemplo CEREBRAS_API_KEY o GEMINI_API_KEY) al .env.' };
+        }
+        if (/vacio-ia/i.test(text)) return { improved: '   ' };
+
+        const improved = String(html).replace(/>([^<]+)</g, (match, chunk) => (
+          chunk.trim() ? `>${chunk.replace(/\s+/g, ' ').trim()} (mejorado)<` : match
+        ));
+
+        return { improved, backend: 'mock-model' };
+      },
       attachImage: async (noteId, arrayBuffer, filename, mime) => {
         const note = MOCK_NOTES.find((n) => n.id === noteId);
         if (!note) return { error: 'La nota no existe.' };

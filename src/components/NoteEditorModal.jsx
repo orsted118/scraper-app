@@ -13,12 +13,29 @@ import {
   Type,
   X,
 } from 'lucide-react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
+import { sanitizeNoteHtml, stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
 import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
+
+// El handler de main nunca tira: siempre vuelve { error, message? }. El message
+// friendly manda cuando viene; los códigos de validación no traen uno porque el
+// copy depende de la UI que los muestra.
+const IMPROVE_ERROR_COPY = {
+  EMPTY_INPUT: 'Escribí algo en la nota antes de mejorarla.',
+  TOO_LONG: 'La nota es demasiado larga para mejorarla de una. Probá con menos texto.',
+  EMPTY_RESULT: 'La respuesta quedó vacía. Intentá de nuevo.',
+};
+
+// Ventana para arrepentirse del reemplazo. Larga a propósito: el usuario tiene
+// que poder leer la versión nueva completa antes de decidir.
+const UNDO_TIMEOUT_MS = 8000;
+
+function improveErrorMessage(result) {
+  return IMPROVE_ERROR_COPY[result?.error] || result?.message || 'No fue posible mejorar la nota.';
+}
 
 
 
@@ -79,13 +96,23 @@ function IconButton({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage }) {
+function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage, onToast }) {
   const reduced = useReducedMotion();
   const [draft, setDraft] = useState(note);
   const [showColors, setShowColors] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
   const [newLabel, setNewLabel] = useState('');
+  const [improving, setImproving] = useState(false);
+  // Backup único: la mejora reemplaza el texto en el acto y esto es lo que
+  // permite volver atrás. No hay historial — solo el último reemplazo.
+  const [improveBackup, setImproveBackup] = useState(null);
+  const [improveToast, setImproveToast] = useState({ visible: false, backend: null });
+  // RichTextEditor fija su innerHTML una sola vez al montar. Aceptar una mejora
+  // cambia draft.body pero no volvería a entrar al DOM: bumpear la key lo
+  // remonta con el HTML nuevo. Es el mismo mecanismo con el que el modal ya
+  // remonta el editor al cambiar de nota.
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const saveTimeoutRef = useRef(null);
   const draftRef = useRef(note);
 
@@ -127,6 +154,15 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // El toast de deshacer se cierra solo. El cleanup cubre las tres salidas:
+  // expiración, deshacer manual y cierre del modal antes de tiempo.
+  useEffect(() => {
+    if (!improveToast.visible) return undefined;
+
+    const timer = setTimeout(() => setImproveToast({ visible: false, backend: null }), UNDO_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [improveToast]);
+
   const patch = (fields) => setDraft((previous) => ({ ...previous, ...fields }));
 
   const setReminderAt = (at) => {
@@ -144,6 +180,57 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
   const handleRemoveImageBySrc = async (src) => {
     if (!onRemoveImage) return;
     await onRemoveImage(draftRef.current, src);
+  };
+
+  const flash = (message) => {
+    if (onToast) onToast(message);
+  };
+
+  // El editor pasa su HTML vivo. La respuesta del LLM se sanea acá — el handler
+  // de main la devuelve cruda a propósito, porque el sanitizer es DOM y vive en
+  // el renderer. El reemplazo es directo: el seguro es el toast de deshacer.
+  const handleImprove = async (html) => {
+    setImproving(true);
+
+    try {
+      const result = await window.scraperApp?.notes?.improve?.(html);
+
+      if (!result || result.error) {
+        flash(improveErrorMessage(result));
+        return;
+      }
+
+      const sanitized = sanitizeNoteHtml(result.improved);
+
+      // El modelo puede devolver prosa suelta o tags que el allowlist descarta:
+      // sin esto se pisaría la nota con vacío.
+      if (!stripNoteHtml(sanitized)) {
+        flash(improveErrorMessage({ error: 'EMPTY_RESULT' }));
+        return;
+      }
+
+      // El backup se guarda ANTES de pisar. Mejorar dos veces seguidas descarta
+      // el backup anterior: la primera mejora queda aceptada de hecho.
+      setImproveBackup(html);
+      patch({ body: sanitized });
+      setEditorEpoch((epoch) => epoch + 1);
+      setImproveToast({ visible: true, backend: result.backend });
+    } catch (_error) {
+      flash('No fue posible conectar con la IA.');
+    } finally {
+      setImproving(false);
+    }
+  };
+
+  // Click síncrono: se lee del state, no de un ref espejo.
+  const undoImprovement = () => {
+    if (improveBackup === null) return;
+
+    patch({ body: improveBackup });
+    setEditorEpoch((epoch) => epoch + 1);
+    setImproveToast({ visible: false, backend: null });
+    setImproveBackup(null);
+    flash('Cambio revertido');
   };
 
   const toggleType = () => {
@@ -209,7 +296,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
         role="dialog"
         aria-modal="true"
         aria-label="Editor de nota"
-        className="flex max-h-[80vh] w-full max-w-[640px] flex-col border"
+        className="relative flex max-h-[80vh] w-full max-w-[640px] flex-col border"
         style={{
           borderTopColor: 'var(--border)',
           borderRightColor: 'var(--border)',
@@ -239,11 +326,14 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
 
           {draft.type === 'text' ? (
             <RichTextEditor
+              key={editorEpoch}
               initialHtml={draft.body}
               onChange={(html) => patch({ body: html })}
               placeholder="Escribe una nota..."
               onAttachImage={onAttachImage ? handleAttachImage : undefined}
               onRemoveImage={handleRemoveImageBySrc}
+              onImprove={handleImprove}
+              improving={improving}
             />
           ) : (
             <div className="mt-4 space-y-1">
@@ -465,8 +555,82 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
             Cerrar
           </button>
         </div>
+
+        {/* Flota sobre el contenido del modal, no del viewport: si el cuerpo de
+            la nota scrollea, el toast se queda anclado al modal. */}
+        <UndoImproveToast
+          visible={improveToast.visible}
+          backend={improveToast.backend}
+          reduced={reduced}
+          onUndo={undoImprovement}
+        />
       </motion.div>
     </div>
+  );
+}
+
+// Local y no en archivo aparte: el contrato (acción + backend + auto-cierre) es
+// de este flujo. El showToast global de Notas solo acepta string y meterle una
+// acción le rompería la firma a todos sus otros llamadores.
+function UndoImproveToast({ visible, backend, reduced, onUndo }) {
+  return (
+    <AnimatePresence>
+      {visible ? (
+        <motion.div
+          key="undo-improve"
+          // Las tres fases declaran opacity Y y: si exit animara algo que
+          // animate no declara, el nodo no desmontaría nunca.
+          initial={reduced ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={{ duration: reduced ? 0 : 0.2, ease: EASE }}
+          role="status"
+          // Centrado con inset-x + mx-auto, NO con left-1/2 + -translate-x-1/2:
+          // framer escribe `transform` inline para animar y pisa el translate de
+          // Tailwind, así que el toast quedaba corrido media caja y se salía del
+          // modal. Con márgenes automáticos no hay transform en disputa.
+          // z-20 tapa el cuerpo de la nota pero queda debajo del overlay de
+          // cualquier modal que se abra encima.
+          className="absolute inset-x-6 bottom-[72px] z-20 mx-auto flex max-w-md items-center gap-3 border px-4 py-3"
+          style={{
+            background: 'var(--bg-tertiary)',
+            borderColor: 'var(--border)',
+            borderRadius: 'var(--radius-card, 0px)',
+            boxShadow: 'var(--shadow-card, none)',
+          }}
+        >
+          <span
+            className="shrink-0 text-sm font-semibold"
+            style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-body, inherit)' }}
+          >
+            Nota mejorada
+          </span>
+
+          {backend ? (
+            <span
+              className="min-w-0 flex-1 truncate text-[11px]"
+              style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+              title={backend}
+            >
+              {backend}
+            </span>
+          ) : (
+            <span className="flex-1" />
+          )}
+
+          <span className="h-4 w-px shrink-0" style={{ background: 'var(--border-normal)' }} aria-hidden="true" />
+
+          <button
+            type="button"
+            onClick={onUndo}
+            className="shrink-0 text-sm font-semibold"
+            style={{ color: 'var(--accent)' }}
+          >
+            Deshacer
+          </button>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 

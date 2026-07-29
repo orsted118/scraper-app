@@ -1,5 +1,6 @@
 const { DEFAULT_COOLDOWN_SECONDS, markSlotCooldown } = require('./key-pool');
 const { availableBackends, pickBackend } = require('./selector');
+const { logUsage } = require('./usage-log');
 
 // Tope de proveedores distintos por llamada: sin esto, con las 16 keys de Gemini
 // una consigna rota podría encadenar decenas de requests antes de rendirse.
@@ -10,7 +11,24 @@ const MAX_REQUESTS_PER_CALL = 6;
 // borrarla del .env.
 const KEY_FATAL_COOLDOWN_SECONDS = 24 * 60 * 60;
 
-async function chat(messages, { task = 'extraction', jsonSchema = null, maxTokens = 2000, temperature = 0.2 } = {}) {
+// Cada intento se registra en el JSONL, exitoso o no. Va envuelto porque el log
+// es diagnóstico: si falla, la llamada al modelo tiene que seguir su curso.
+function record(picked, task, handler, extra) {
+  try {
+    logUsage({
+      handler,
+      task,
+      backend: picked.name,
+      keyEnvVar: picked.slot.envVar,
+      keyIndex: picked.slot.index,
+      ...extra,
+    });
+  } catch (error) {
+    console.error('[llm] no se pudo registrar el uso:', error?.message || error);
+  }
+}
+
+async function chat(messages, { task = 'extraction', jsonSchema = null, maxTokens = 2000, temperature = 0.2, handler = 'unknown' } = {}) {
   const tried = new Set();
   const deadSlots = new Set();
   const failures = [];
@@ -24,12 +42,24 @@ async function chat(messages, { task = 'extraction', jsonSchema = null, maxToken
     }
 
     requests += 1;
+    const startedAt = Date.now();
 
     try {
-      return await picked.backend.chat(messages, { maxTokens, temperature, jsonSchema });
+      const response = await picked.backend.chat(messages, { maxTokens, temperature, jsonSchema });
+
+      record(picked, task, handler, {
+        success: true,
+        latencyMs: Date.now() - startedAt,
+        model: response?.model,
+        promptTokens: response?.tokensUsed,
+        responseChars: response?.content?.length,
+      });
+
+      return response;
     } catch (error) {
       const message = error?.message || String(error);
       failures.push(`${picked.name}/${picked.slot.envVar}: ${message}`);
+      record(picked, task, handler, { success: false, latencyMs: Date.now() - startedAt, error: message });
 
       // Key muerta: se descarta esa key y se reintenta el MISMO backend con otra
       // del pool. Sólo si no queda ninguna se pasa al siguiente proveedor.

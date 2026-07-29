@@ -157,7 +157,7 @@ async function extractRequirements(activity) {
       { role: 'system', content: EXTRACT_SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
-    { task: 'extraction', maxTokens: 2000, temperature: 0.2 },
+    { task: 'extraction', maxTokens: 2000, temperature: 0.2, handler: 'activity-analyzer:extract' },
   );
 
   const requirements = normalizeRequirements(data);
@@ -293,7 +293,7 @@ async function verifySubmission(requirements, submissionData, activityId = null)
       { role: 'system', content: VERIFY_SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
-    { task: 'verification', maxTokens: 2500, temperature: 0.1 },
+    { task: 'verification', maxTokens: 2500, temperature: 0.1, handler: 'activity-analyzer:verify' },
   );
 
   const results = normalizeVerification(data, list);

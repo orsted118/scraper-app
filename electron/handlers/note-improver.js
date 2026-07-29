@@ -94,7 +94,7 @@ async function improveNote(html) {
       ],
       // temperature más alta que la extracción pura: queremos que reescriba la
       // prosa, no que copie. Por encima de esto empieza a inventar contenido.
-      { task: 'extraction', maxTokens: 2000, temperature: 0.4 },
+      { task: 'extraction', maxTokens: 2000, temperature: 0.4, handler: 'note-improver' },
     );
 
     return { improved: response.content, backend: response.model };

@@ -26,6 +26,7 @@ const { registerMusicHistoryHandlers } = require('./handlers/music-history');
 const { registerMusicPlaylistsHandlers } = require('./handlers/music-playlists');
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
 const { registerNoteImproverHandlers } = require('./handlers/note-improver');
+const { registerLlmStatusHandlers } = require('./handlers/llm-status');
 const calendarioHandler = require('./handlers/calendario');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -157,6 +158,7 @@ app.whenReady().then(() => {
   });
   registerNotesHandlers();
   registerNoteImproverHandlers();
+  registerLlmStatusHandlers();
   notificationCenter.startSchedulers();
   ipcMain.handle('calendario:run', (_event, options) => calendarioHandler.run(options || {}));
   ipcMain.handle('calendario:clear-cache', () => calendarioHandler.clearCache());

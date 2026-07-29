@@ -165,5 +165,12 @@ contextBridge.exposeInMainWorld('scraperApp', {
     attachImage: (noteId, arrayBuffer, filename, mime) => ipcRenderer.invoke('notes:attach-image', { noteId, arrayBuffer, filename, mime }),
     removeAttachment: (noteId, attachmentId) => ipcRenderer.invoke('notes:remove-attachment', { noteId, attachmentId }),
   },
+  // Diagnóstico de los backends LLM. Solo lectura: nada de acá cambia el
+  // routing ni expone el valor de las keys, apenas sus nombres de variable.
+  llm: {
+    probeAll: (opts) => ipcRenderer.invoke('llm:probe-all', opts),
+    usageStats: (opts) => ipcRenderer.invoke('llm:usage-stats', opts),
+    currentOrder: () => ipcRenderer.invoke('llm:current-order'),
+  },
 });
 

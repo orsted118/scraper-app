@@ -162,6 +162,46 @@ Datos en runtime se guardan en `app.getPath('userData')` en producción.
 
 ---
 
+## Diagnóstico LLM
+
+Los backends de IA (cerebras, github, mistral, gemini, groq) rotan por una cadena
+de fallback y por un pool de claves autodescubierto desde `.env`
+(`GEMINI_API_KEY`, `GEMINI_API_KEY2`, ... hasta 20 por proveedor).
+
+**Health check desde la terminal** — no necesita Electron corriendo:
+
+```bash
+npm run llm:doctor
+```
+
+Prueba una clave a la vez (de a 3 en paralelo) con una request mínima y arma una
+tabla con estado, latencia y modelo de cada una, más el orden de preferencia
+vigente. Sale con código 1 si no queda ninguna clave viva.
+
+Gasta cuota real: una llamada por clave. En proveedores con cuota diaria chica
+(Gemini free tier son 20 requests por día y por clave) correrlo seguido agota el
+saldo del día.
+
+**Desde la app**: Ajustes → *Backends LLM*. Muestra el mismo estado, el uso de
+los últimos 7 días por backend y por función, y sugerencias de reordenamiento
+basadas en el historial. Las sugerencias son informativas: el orden se cambia
+editando `PREFERENCE_ORDER` en `electron/llm/selector.js`. La variable de entorno
+`LLM_BACKEND` fuerza un proveedor al primer puesto sin tocar código.
+
+**Log de uso**: cada llamada se registra en JSONL, una línea por intento
+(incluidos los fallidos y los reintentos con otra clave).
+
+```
+%APPDATA%\dvpotro\llm-usage.jsonl      (Windows, dentro de Electron)
+~/.dvpotro-cli/llm-usage.jsonl         (fallback en Node standalone)
+```
+
+Rota solo al superar 10 MB: el archivo pasa a `llm-usage.jsonl.1` y se arranca
+uno nuevo. Solo se conservan esas dos generaciones. El log guarda **nombres** de
+variable de entorno, nunca el valor de las claves.
+
+---
+
 ## Workflow de desarrollo en este proyecto
 
 Por convención del repositorio:

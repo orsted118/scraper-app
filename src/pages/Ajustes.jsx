@@ -2,6 +2,7 @@ import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import ColorPicker from '../components/ColorPicker';
+import LlmBackendsPanel from '../components/LlmBackendsPanel';
 import { useSidebar } from '../SidebarContext';
 import { useTheme } from '../ThemeContext';
 import { DEFAULT_THEME, THEMES } from '../themes';
@@ -1195,6 +1196,17 @@ function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSave
             label="Sidebar compacto"
           />
         </SettingRow>
+      </Section>
+
+      {/* Antes de la zona de riesgo a propósito: las acciones destructivas
+          quedan siempre últimas, que es donde el usuario las espera. */}
+      <Section
+        reduced={reduced}
+        eyebrow="Inteligencia Artificial"
+        title="Backends LLM"
+        description="Estado de las claves configuradas en .env, uso de los últimos 7 días y sugerencias de orden. Solo diagnóstico: nada de acá modifica la configuración."
+      >
+        <LlmBackendsPanel />
       </Section>
 
       <Section

@@ -40,10 +40,20 @@ function registerLlmStatusHandlers() {
     }
   });
 
-  ipcMain.handle('llm:usage-stats', async (_event, { days = 7 } = {}) => {
+  // includeProbe apagado por defecto: un solo "Probar todas" mete 23 entradas y
+  // sepultaría las llamadas reales en la tabla de uso.
+  ipcMain.handle('llm:usage-stats', async (_event, { days = 7, includeProbe = false } = {}) => {
     try {
-      const entries = await readRecentUsage({ days });
-      return { ok: true, stats: aggregateUsage(entries), logPath: getLogPath(), days };
+      const all = await readRecentUsage({ days });
+      const entries = includeProbe ? all : all.filter((entry) => entry.task !== 'probe');
+
+      return {
+        ok: true,
+        stats: aggregateUsage(entries),
+        probeEntries: all.length - entries.length,
+        logPath: getLogPath(),
+        days,
+      };
     } catch (error) {
       console.error('[llm-status] usage-stats falló:', error?.message);
       return { ok: false, error: error?.message || 'No fue posible leer el log de uso.' };

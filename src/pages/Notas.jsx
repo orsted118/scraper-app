@@ -127,7 +127,7 @@ function formatReminderDate(iso) {
   return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function NoteCard({ note, view, selected, selectionActive, focused, onCardClick, onOpen, onAction, onRemoveLabel, listMode }) {
+function NoteCard({ note, view, selected, selectionActive, focused, onCardClick, onOpen, onAction, onRemoveLabel, listMode, onContextMenu }) {
   const doneCount = note.items.filter((i) => i.done).length;
   const previewItems = [...note.items].sort((a, b) => Number(a.done) - Number(b.done)).slice(0, 3);
   const extraItems = note.items.length - previewItems.length;
@@ -144,6 +144,12 @@ function NoteCard({ note, view, selected, selectionActive, focused, onCardClick,
       tabIndex={0}
       data-note-card={note.id}
       onClick={(event) => onCardClick(event, note)}
+      onContextMenu={(event) => {
+        if (!onContextMenu) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onContextMenu(event, note);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter') onOpen(note);
       }}
@@ -330,6 +336,205 @@ function NoteCard({ note, view, selected, selectionActive, focused, onCardClick,
   );
 }
 
+// Menú contextual (click derecho) sobre una card. Vive a nivel de Notas para
+// que solo haya uno abierto a la vez. Se cierra en click afuera, Escape, o al
+// disparar cualquier acción.
+function NoteContextMenu({ menu, view, onAction, onClose }) {
+  const { note, x, y } = menu;
+  const menuRef = useRef(null);
+  // Ajuste de posición para no salirse del viewport (el context abre en el
+  // cursor, no en la card).
+  const [position, setPosition] = useState({ left: x, top: y });
+
+  useEffect(() => {
+    const handlePointer = (event) => {
+      if (!menuRef.current?.contains(event.target)) onClose();
+    };
+    const handleKey = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', handlePointer);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    let nextLeft = x;
+    let nextTop = y;
+    if (rect.right > window.innerWidth - margin) nextLeft = Math.max(margin, x - rect.width);
+    if (rect.bottom > window.innerHeight - margin) nextTop = Math.max(margin, y - rect.height);
+    if (nextLeft !== x || nextTop !== y) setPosition({ left: nextLeft, top: nextTop });
+  }, [x, y]);
+
+  const dispatch = (action, payload) => {
+    onAction(action, note, payload);
+    onClose();
+  };
+
+  const currentStatus = note.status || DEFAULT_NOTE_STATUS;
+
+  return (
+    <div
+      ref={menuRef}
+      role="menu"
+      className="fixed z-50 min-w-[200px] border py-1"
+      style={{
+        left: position.left,
+        top: position.top,
+        borderColor: 'var(--border-normal)',
+        background: 'var(--bg-card)',
+        borderRadius: 'var(--radius-card, 0px)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+      }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => dispatch('copyText')}
+        className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+        style={{ color: 'var(--text-strong)' }}
+      >
+        <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+        Copiar texto
+      </button>
+
+      {view === 'active' ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => dispatch('togglePin')}
+          className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+          style={{ color: 'var(--text-strong)' }}
+        >
+          {note.pinned ? <PinOff className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Pin className="h-3.5 w-3.5" strokeWidth={1.5} />}
+          {note.pinned ? 'Desfijar' : 'Fijar'}
+        </button>
+      ) : null}
+
+      {view === 'active' ? (
+        <>
+          <div className="my-1 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+          <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-muted)' }}>
+            Estado
+          </p>
+          {NOTE_STATUSES.map((status) => {
+            const isCurrent = currentStatus === status.id;
+            return (
+              <button
+                key={status.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isCurrent}
+                onClick={() => (isCurrent ? onClose() : dispatch('setStatus', { status: status.id }))}
+                className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+                style={{ color: isCurrent ? 'var(--accent)' : 'var(--text-strong)' }}
+              >
+                <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0" style={{ background: status.hex, borderRadius: 'var(--radius-badge, 0px)' }} />
+                <span className="flex-1">{status.label}</span>
+                {isCurrent ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : null}
+              </button>
+            );
+          })}
+        </>
+      ) : null}
+
+      <div className="my-1 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+
+      {view === 'active' ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('duplicate')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <StickyNote className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Duplicar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('archive')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Archivar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('trash')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Mover a papelera
+          </button>
+        </>
+      ) : null}
+
+      {view === 'archived' ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('unarchive')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <ArchiveRestore className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Desarchivar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('trash')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Mover a papelera
+          </button>
+        </>
+      ) : null}
+
+      {view === 'trashed' ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('restore')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Restaurar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dispatch('permanentDelete')}
+            className="row-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
+            style={{ color: 'var(--text-strong)' }}
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Eliminar para siempre
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function Notas({ deepLink } = {}) {
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
   const reduced = useReducedMotion();
@@ -356,6 +561,8 @@ function Notas({ deepLink } = {}) {
   const [newLabelName, setNewLabelName] = useState('');
   const [quickNote, setQuickNote] = useState({ text: '', type: 'text', color: 'neutral', pinned: false });
   const [toast, setToast] = useState('');
+  // { note, x, y } — coordenadas absolutas del cursor donde se abrió.
+  const [contextMenu, setContextMenu] = useState(null);
 
   const createdIdRef = useRef(null);
   const searchRef = useRef(null);
@@ -489,6 +696,7 @@ function Notas({ deepLink } = {}) {
         type: draft.type,
         items: draft.items,
         color: draft.color,
+        status: draft.status,
         labels: draft.labels,
         pinned: draft.pinned,
         reminder: draft.reminder,
@@ -515,8 +723,13 @@ function Notas({ deepLink } = {}) {
     [api, refresh, showToast],
   );
 
+  const openContextMenu = useCallback((event, note) => {
+    setContextMenu({ note, x: event.clientX, y: event.clientY });
+  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
   const handleAction = useCallback(
-    async (action, note) => {
+    async (action, note, payload) => {
       if (!api?.notes) return;
 
       try {
@@ -539,8 +752,8 @@ function Notas({ deepLink } = {}) {
           }
           return;
         }
-        if (action === 'setStatus') {
-          await api.notes.update(note.id, { status: note.__nextStatus });
+        if (action === 'setStatus' && payload?.status) {
+          await api.notes.update(note.id, { status: payload.status });
         }
         await refresh();
       } catch (_error) {
@@ -801,6 +1014,7 @@ function Notas({ deepLink } = {}) {
               onCardClick={handleCardClick}
               onOpen={openExisting}
               onAction={handleAction}
+              onContextMenu={openContextMenu}
               onRemoveLabel={handleRemoveLabel}
               listMode={viewMode === 'list'}
             />
@@ -1104,6 +1318,15 @@ function Notas({ deepLink } = {}) {
           <button type="button" onClick={() => runBulk('trash')} className="btn-outline btn-outline-accent px-3 py-1.5 text-xs font-semibold" style={{ color: 'var(--accent)' }}>Eliminar</button>
           <button type="button" onClick={clearSelection} className="btn-outline px-3 py-1.5 text-xs font-semibold">Cancelar</button>
         </motion.div>
+      ) : null}
+
+      {contextMenu ? (
+        <NoteContextMenu
+          menu={contextMenu}
+          view={view}
+          onAction={handleAction}
+          onClose={closeContextMenu}
+        />
       ) : null}
 
       {/* Toast */}

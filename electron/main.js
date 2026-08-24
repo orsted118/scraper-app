@@ -44,6 +44,13 @@ if (fs.existsSync(envPath)) {
 registerMusicScheme();
 registerNoteImageScheme();
 
+// Sin AppUserModelID Windows agrupa la ventana bajo "Electron" en la taskbar y
+// pinta el ícono default de Electron, aunque electron-builder puso el nuestro
+// en el .exe. Debe coincidir con `appId` de electron-builder.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('mx.itson.dvpotro');
+}
+
 function createMainWindow() {
   const mainWindow = new BrowserWindow({
     title: 'DVPotro',

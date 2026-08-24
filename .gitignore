@@ -5,3 +5,6 @@ release/
 .local-data/
 scratch/
 
+
+# spike output (recon runs contra iVirtual real: HTML + screenshots con datos personales)
+scripts/spike-output/

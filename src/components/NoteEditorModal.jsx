@@ -19,6 +19,7 @@ import RichTextEditor from './RichTextEditor';
 import { sanitizeNoteHtml, stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
 import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
+import { NOTE_STATUSES, DEFAULT_NOTE_STATUS, noteStatus } from '../utils/noteStatuses';
 
 // El handler de main nunca tira: siempre vuelve { error, message? }. El message
 // friendly manda cuando viene; los códigos de validación no traen uno porque el
@@ -102,6 +103,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
   const [showColors, setShowColors] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
+  const [showStatuses, setShowStatuses] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [improving, setImproving] = useState(false);
   // Backup único: la mejora reemplaza el texto en el acto y esto es lo que
@@ -411,7 +413,39 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
           <IconButton icon={draft.type === 'text' ? CheckSquare : Type} label={draft.type === 'text' ? 'Convertir a checklist' : 'Convertir a texto'} onClick={toggleType} />
 
           <div className="relative">
-            <IconButton icon={Circle} label="Color" active={draft.color !== 'neutral'} onClick={() => { setShowColors((v) => !v); setShowLabels(false); }} />
+            <IconButton
+              icon={Circle}
+              label={'Estado: ' + noteStatus(draft.status || DEFAULT_NOTE_STATUS).label}
+              active={(draft.status || DEFAULT_NOTE_STATUS) !== DEFAULT_NOTE_STATUS}
+              onClick={() => { setShowStatuses((v) => !v); setShowColors(false); setShowLabels(false); setShowReminder(false); }}
+            />
+            {showStatuses ? (
+              <div
+                className="absolute bottom-full left-0 z-10 mb-2 w-44 border p-1"
+                style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
+              >
+                {NOTE_STATUSES.map((status) => {
+                  const isActive = (draft.status || DEFAULT_NOTE_STATUS) === status.id;
+                  return (
+                    <button
+                      key={status.id}
+                      type="button"
+                      onClick={() => { patch({ status: status.id }); setShowStatuses(false); }}
+                      className="row-hover flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs"
+                      style={{ color: isActive ? 'var(--accent)' : 'var(--text-normal)' }}
+                    >
+                      <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: status.hex, borderRadius: 'var(--radius-badge, 0px)' }} />
+                      <span className="flex-1">{status.label}</span>
+                      {isActive ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="relative">
+            <IconButton icon={Circle} label="Color" active={draft.color !== 'neutral'} onClick={() => { setShowColors((v) => !v); setShowLabels(false); setShowStatuses(false); }} />
             {showColors ? (
               <div
                 className="absolute bottom-full left-0 mb-2 flex gap-1.5 border p-2"
@@ -438,7 +472,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
           </div>
 
           <div className="relative">
-            <IconButton icon={Tag} label="Etiquetas" active={draft.labels.length > 0} onClick={() => { setShowLabels((v) => !v); setShowColors(false); }} />
+            <IconButton icon={Tag} label="Etiquetas" active={draft.labels.length > 0} onClick={() => { setShowLabels((v) => !v); setShowColors(false); setShowStatuses(false); }} />
             {showLabels ? (
               <div
                 className="absolute bottom-full left-0 mb-2 max-h-48 w-48 overflow-y-auto border p-1"
@@ -491,7 +525,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
           </div>
 
           <div className="relative">
-            <IconButton icon={Bell} label="Recordatorio" active={Boolean(draft.reminder)} onClick={() => { setShowReminder((v) => !v); setShowColors(false); setShowLabels(false); }} />
+            <IconButton icon={Bell} label="Recordatorio" active={Boolean(draft.reminder)} onClick={() => { setShowReminder((v) => !v); setShowColors(false); setShowLabels(false); setShowStatuses(false); }} />
             {showReminder ? (
               <div
                 className="absolute bottom-full left-0 mb-2 w-52 border p-1"

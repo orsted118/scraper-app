@@ -23,8 +23,29 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NoteEditorModal, { buildNoteImageUrl } from '../components/NoteEditorModal';
 import { NOTE_COLORS, noteColorHex } from '../utils/noteColors';
+import { NOTE_STATUSES, DEFAULT_NOTE_STATUS, noteStatus } from '../utils/noteStatuses';
 import { stripNoteHtml } from '../utils/sanitizeNoteHtml';
 import { EASE } from '../utils/motion';
+
+// Serializa una nota a texto plano para el portapapeles. Texto libre: título en
+// primera línea, cuerpo sin HTML, checklists como "[x]"/"[ ]". Nada de
+// front-matter — el usuario esperaría poder pegar esto en cualquier lado.
+function noteToPlainText(note) {
+  const parts = [];
+  if (note.title) parts.push(note.title);
+
+  if (note.type === 'checklist') {
+    const items = (note.items || [])
+      .map((item) => (item.done ? '[x] ' : '[ ] ') + (item.text || ''))
+      .join('\n');
+    if (items) parts.push(items);
+  } else {
+    const body = stripNoteHtml(note.body || '').trim();
+    if (body) parts.push(body);
+  }
+
+  return parts.join('\n\n');
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -52,6 +73,7 @@ const SHORTCUTS = [
   ['Esc', 'Cerrar / limpiar selección'],
   ['↑ ↓ ← →', 'Navegar notas'],
   ['Enter', 'Abrir nota enfocada'],
+  ['Ctrl+C', 'Copiar texto de enfocada'],
   ['Ctrl+D', 'Duplicar enfocada'],
   ['E', 'Archivar enfocada'],
   ['#', 'Mover a papelera'],
@@ -239,9 +261,31 @@ function NoteCard({ note, view, selected, selectionActive, focused, onCardClick,
       ) : null}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-[11px]" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)', fontVariantNumeric: 'tabular-nums' }}>
-          {view === 'trashed' && note.deletedAt ? `eliminada ${formatRelative(note.deletedAt)}` : formatRelative(note.updatedAt)}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          {(() => {
+            const status = noteStatus(note.status || DEFAULT_NOTE_STATUS);
+            return (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+                title={`Estado: ${status.label}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-1.5 w-1.5"
+                  style={{ background: status.hex, borderRadius: 'var(--radius-badge, 0px)' }}
+                />
+                {status.short}
+              </span>
+            );
+          })()}
+          <span
+            className="truncate text-[11px]"
+            style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {view === 'trashed' && note.deletedAt ? `eliminada ${formatRelative(note.deletedAt)}` : formatRelative(note.updatedAt)}
+          </span>
+        </div>
 
         <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
           {view === 'active' ? (
@@ -249,7 +293,7 @@ function NoteCard({ note, view, selected, selectionActive, focused, onCardClick,
               <button type="button" onClick={stop(() => onAction('togglePin', note))} aria-label={note.pinned ? 'Desfijar' : 'Fijar'} className="p-1.5" style={{ color: note.pinned ? 'var(--accent)' : 'var(--text-muted)' }}>
                 {note.pinned ? <PinOff className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Pin className="h-3.5 w-3.5" strokeWidth={1.5} />}
               </button>
-              <button type="button" onClick={stop(() => onAction('duplicate', note))} aria-label="Duplicar" className="p-1.5" style={{ color: 'var(--text-muted)' }}>
+              <button type="button" onClick={stop(() => onAction('copyText', note))} aria-label="Copiar texto" title="Copiar texto" className="p-1.5" style={{ color: 'var(--text-muted)' }}>
                 <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
               <button type="button" onClick={stop(() => onAction('archive', note))} aria-label="Archivar" className="p-1.5" style={{ color: 'var(--text-muted)' }}>
@@ -297,6 +341,7 @@ function Notas({ deepLink } = {}) {
   const [colorFilters, setColorFilters] = useState([]);
   const [labelFilters, setLabelFilters] = useState([]);
   const [typeFilters, setTypeFilters] = useState([]);
+  const [statusFilters, setStatusFilters] = useState([]);
   const [sortBy, setSortBy] = useState('updatedAt');
   const [viewMode, setViewMode] = useState('grid');
   const [editing, setEditing] = useState(null);
@@ -334,6 +379,7 @@ function Notas({ deepLink } = {}) {
     if (colorFilters.length) filters.colors = colorFilters;
     if (labelFilters.length) filters.labels = labelFilters;
     if (typeFilters.length) filters.types = typeFilters;
+    if (statusFilters.length) filters.statuses = statusFilters;
     if (search.trim()) filters.search = search.trim();
 
     const [list, labelList] = await Promise.all([
@@ -343,7 +389,7 @@ function Notas({ deepLink } = {}) {
     setNotes(Array.isArray(list) ? list : []);
     setLabels(Array.isArray(labelList) ? labelList : []);
     setLoaded(true);
-  }, [api, view, search, colorFilters, labelFilters, typeFilters]);
+  }, [api, view, search, colorFilters, labelFilters, typeFilters, statusFilters]);
 
   useEffect(() => {
     refresh();
@@ -483,6 +529,18 @@ function Notas({ deepLink } = {}) {
         if (action === 'duplicate') {
           await api.notes.duplicate(note.id);
           showToast('Nota duplicada');
+        }
+        if (action === 'copyText') {
+          try {
+            await navigator.clipboard.writeText(noteToPlainText(note));
+            showToast('Texto copiado');
+          } catch (_error) {
+            showToast('No se pudo copiar');
+          }
+          return;
+        }
+        if (action === 'setStatus') {
+          await api.notes.update(note.id, { status: note.__nextStatus });
         }
         await refresh();
       } catch (_error) {
@@ -682,6 +740,7 @@ function Notas({ deepLink } = {}) {
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); setFocusedIndex((i) => Math.max(0, i - 1)); }
       else if (event.key === 'Enter' && focusedNote) { event.preventDefault(); openExisting(focusedNote); }
       else if ((event.ctrlKey || event.metaKey) && (event.key === 'd' || event.key === 'D') && focusedNote) { event.preventDefault(); handleAction('duplicate', focusedNote); }
+      else if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'C') && focusedNote && !window.getSelection()?.toString()) { event.preventDefault(); handleAction('copyText', focusedNote); }
       else if ((event.key === 'e' || event.key === 'E') && focusedNote && view === 'active') { event.preventDefault(); handleAction('archive', focusedNote); }
       else if (event.key === '#' && focusedNote && view !== 'trashed') { event.preventDefault(); handleAction('trash', focusedNote); }
     };
@@ -898,6 +957,26 @@ function Notas({ deepLink } = {}) {
                     {typeFilters.includes(t.id) ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Circle className="h-3.5 w-3.5" strokeWidth={1.5} />}
                   </span>
                   {t.label}
+                </button>
+              ))}
+            </div>
+          </FilterChip>
+
+          <FilterChip label="Estado" active={filterChipActive(statusFilters)} open={openMenu === 'status'} onToggle={(e) => { e.stopPropagation(); setOpenMenu(openMenu === 'status' ? null : 'status'); }}>
+            <div className="w-40 p-1">
+              {NOTE_STATUSES.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleIn(setStatusFilters, s.id); }}
+                  className="row-hover flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs"
+                  style={{ color: 'var(--text-normal)' }}
+                >
+                  <span style={{ color: statusFilters.includes(s.id) ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {statusFilters.includes(s.id) ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Circle className="h-3.5 w-3.5" strokeWidth={1.5} />}
+                  </span>
+                  <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0" style={{ background: s.hex, borderRadius: 'var(--radius-badge, 0px)' }} />
+                  {s.label}
                 </button>
               ))}
             </div>

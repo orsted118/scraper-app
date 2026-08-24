@@ -124,7 +124,7 @@ async function saveStudentName(name) {
 
 const CREDENTIAL_ENV_KEYS = ['IVIRTUAL_USER', 'IVIRTUAL_PASS', 'CIA_USER', 'CIA_PASS'];
 
-function clearCredentials() {
+async function clearCredentials() {
   try {
     const envLines = readEnvLines().filter(
       (line) =>
@@ -136,6 +136,15 @@ function clearCredentials() {
 
     for (const key of CREDENTIAL_ENV_KEYS) {
       delete process.env[key];
+    }
+
+    // El historial de autocompletado guarda las mismas contraseñas cifradas:
+    // si no se borra acá, la zona de riesgo deja copias atrás.
+    const { clearHistory } = require('./credential-history');
+    const historyResult = await clearHistory();
+
+    if (!historyResult?.success) {
+      return { success: false, error: historyResult?.error || 'No fue posible borrar el historial.' };
     }
 
     return { success: true };

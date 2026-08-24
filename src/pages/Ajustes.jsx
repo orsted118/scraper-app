@@ -230,8 +230,49 @@ function PortalCredentials({
   const [testing, setTesting] = useState(false);
   const [connStatus, setConnStatus] = useState(() => readConnStatus(portal));
   const [feedback, showFeedback] = useTransientFeedback();
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState([]);
+  // null = el campo se acaba de enfocar y todavía no se tipeó. Filtrar por el
+  // valor actual dejaría fuera al resto de las cuentas, que es exactamente lo
+  // que se busca al abrir la lista sobre un campo ya lleno.
+  const [typedQuery, setTypedQuery] = useState(null);
+  const userRef = useRef(null);
+  const suggestionsRef = useRef(null);
 
   const configured = Boolean(user) && hasPassword;
+
+  const refreshHistory = async () => {
+    if (!api?.credentialHistory) {
+      return;
+    }
+
+    setHistoryEntries((await api.credentialHistory.list(portal)) || []);
+  };
+
+  useEffect(() => {
+    refreshHistory();
+  }, [portal]);
+
+  const filteredSuggestions = typedQuery
+    ? historyEntries.filter((entry) =>
+        entry.user.toLowerCase().includes(typedQuery.toLowerCase()),
+      )
+    : historyEntries;
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target) &&
+        userRef.current &&
+        !userRef.current.contains(event.target)
+      ) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -240,6 +281,7 @@ function PortalCredentials({
     if (result?.ok) {
       showFeedback('ok', `Guardado · ${formatClock()}`);
       setShowPassword(false);
+      await refreshHistory();
       return;
     }
 
@@ -344,16 +386,74 @@ function PortalCredentials({
           <span className="text-xs font-medium" style={{ color: 'var(--text-normal)' }}>
             {userLabel}
           </span>
-          <div className="field">
+          <div className="field relative">
             <input
+              ref={userRef}
               type="text"
               value={user}
               autoComplete="off"
-              onChange={(event) => onUserChange(event.target.value)}
+              onChange={(event) => {
+                onUserChange(event.target.value);
+                setTypedQuery(event.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => {
+                setTypedQuery(null);
+                setShowSuggestions(true);
+              }}
               placeholder={userPlaceholder}
               className="w-full bg-transparent px-3.5 py-2.5 text-sm outline-none"
               style={{ color: 'var(--text-strong)' }}
             />
+            {showSuggestions && filteredSuggestions.length > 0 && (
+              <div
+                ref={suggestionsRef}
+                className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-y-auto border"
+                style={{
+                  borderColor: 'var(--border-normal)',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-card, 0px)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                }}
+              >
+                {filteredSuggestions.map((entry) => (
+                  <button
+                    key={entry.user}
+                    type="button"
+                    onMouseUp={async (event) => {
+                      event.preventDefault();
+                      onUserChange(entry.user);
+                      setShowSuggestions(false);
+                      setTypedQuery(null);
+
+                      if (!entry.hasPassword) {
+                        return;
+                      }
+
+                      onPasswordChange(
+                        (await api.credentialHistory.getPassword(portal, entry.user)) || '',
+                      );
+                    }}
+                    className="flex w-full items-center justify-between px-3.5 py-2 text-left text-sm transition"
+                    style={{ color: 'var(--text-strong)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--bg-secondary)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span>{entry.user}</span>
+                    <span
+                      className="text-[10px]"
+                      style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
+                    >
+                      {formatRelative(entry.savedAt)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </label>
 
@@ -671,11 +771,14 @@ function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSave
       }
 
       if (section === 'ivirtual') {
+        await api.credentialHistory?.save({ portal: 'ivirtual', user, password });
         setPassword('');
         setHasPassword(true);
+        handleProfileSync();
       }
 
       if (section === 'cia') {
+        await api.credentialHistory?.save({ portal: 'cia', user: ciaUser, password: ciaPassword });
         setCiaPassword('');
         setHasCIAPassword(true);
       }

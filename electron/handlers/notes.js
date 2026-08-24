@@ -7,6 +7,10 @@ const { app, dialog, ipcMain, net, protocol } = require('electron');
 
 const VALID_COLORS = new Set(['neutral', 'vermillion', 'amber', 'green', 'cyan', 'purple']);
 const VALID_TYPES = new Set(['text', 'checklist']);
+// Estado de progreso — ortogonal a color (color = categoría, status = avance).
+// Default 'pendiente' para toda nota nueva y para toda nota vieja migrada.
+const VALID_STATUSES = new Set(['pendiente', 'en-progreso', 'terminada', 'idea']);
+const DEFAULT_STATUS = 'pendiente';
 const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOTE_IMG_SCHEME = 'dvpotro-note-img';
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
@@ -71,9 +75,16 @@ function writeJson(filePath, data) {
 function loadNotes() {
   const parsed = readJson(getNotesPath(), []);
   if (!Array.isArray(parsed)) return [];
-  // Migración silenciosa en lectura: notas viejas sin attachments toman []
-  // (default en memoria; se persiste recién si la nota se actualiza).
-  return parsed.map((note) => (Array.isArray(note?.attachments) ? note : { ...note, attachments: [] }));
+  // Migración silenciosa en lectura para notas anteriores al campo:
+  //   attachments  → [] si falta (F3 → F4).
+  //   status       → 'pendiente' si falta (F4 → F5).
+  // Los defaults viven en memoria; el JSON se toca recién al actualizar.
+  return parsed.map((note) => {
+    const withAttachments = Array.isArray(note?.attachments) ? note : { ...note, attachments: [] };
+    return VALID_STATUSES.has(withAttachments.status)
+      ? withAttachments
+      : { ...withAttachments, status: DEFAULT_STATUS };
+  });
 }
 
 function saveNotes(notes) {
@@ -143,6 +154,7 @@ function normalizeNote(input = {}) {
     pinned: Boolean(input.pinned),
     archived: Boolean(input.archived),
     trashed: Boolean(input.trashed),
+    status: VALID_STATUSES.has(input.status) ? input.status : DEFAULT_STATUS,
     createdAt: input.createdAt || now,
     updatedAt: now,
     deletedAt: input.deletedAt || null,
@@ -167,13 +179,17 @@ function matchesView(note, view) {
 }
 
 function matchesFilters(note, filters = {}) {
-  const { colors, labels, types, search } = filters;
+  const { colors, labels, types, statuses, search } = filters;
 
   if (Array.isArray(colors) && colors.length > 0 && !colors.includes(note.color)) {
     return false;
   }
 
   if (Array.isArray(types) && types.length > 0 && !types.includes(note.type)) {
+    return false;
+  }
+
+  if (Array.isArray(statuses) && statuses.length > 0 && !statuses.includes(note.status || DEFAULT_STATUS)) {
     return false;
   }
 
@@ -246,6 +262,7 @@ function updateNote(id, patch = {}) {
     type: VALID_TYPES.has(patch.type) ? patch.type : current.type,
     body: patch.body !== undefined ? sanitizeHtmlBackstop(patch.body) : current.body,
     color: patch.color !== undefined ? (VALID_COLORS.has(patch.color) ? patch.color : current.color) : current.color,
+    status: patch.status !== undefined ? (VALID_STATUSES.has(patch.status) ? patch.status : current.status) : (current.status || DEFAULT_STATUS),
     items: patch.items !== undefined ? sanitizeItems(patch.items) : current.items,
     attachments: patch.attachments !== undefined ? sanitizeAttachments(patch.attachments) : (current.attachments || []),
     labels: patch.labels !== undefined

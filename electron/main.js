@@ -1,6 +1,14 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, powerMonitor, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Chromium empaquetado en extraResources/ms-playwright/. En dev queda el default
+// (%LOCALAPPDATA%/ms-playwright). Debe setearse ANTES del primer require de un
+// handler que `require('playwright')`.
+if (app.isPackaged) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.resourcesPath, 'ms-playwright');
+}
+
 const { autoUpdater } = require('electron-updater');
 const { registerScraperHandlers } = require('./handlers/scraper');
 const { registerCIAHandlers } = require('./handlers/cia');

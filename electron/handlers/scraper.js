@@ -5,6 +5,16 @@ const { chromium } = require('playwright');
 const notificationCenter = require('./notification-center');
 const { SPANISH_MONTHS, parseDueDate } = require('../utils/dateParser');
 const { isTimeoutError, withTimeout } = require('../utils/withTimeout');
+const { buildInstructorIndex, lookupInstructor } = require('../utils/instructorLookup');
+// require perezoso del handler de horario para no forzar dependencia circular
+// en la carga inicial de main.js.
+function readHorarioCacheLazy() {
+  try {
+    return require('./horario').readHorarioCache();
+  } catch (_error) {
+    return null;
+  }
+}
 
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
@@ -719,9 +729,19 @@ async function scrapeIVirtualActivities(event, controller = {}) {
         ['pendiente', 'retrasada', 'cerrada'].includes(activity.estado),
     );
 
-    const cachePayload = writeActivitiesCache(validActivities);
+    // Enriquecer con `profesor` desde el cache del horario: iVirtual no expone
+    // instructor por assignment, así que la única fuente es PeopleSoft por
+    // nombre de materia. Si no hay cache del horario, el campo queda vacío y la
+    // card ya sabe ocultar la línea.
+    const instructorIndex = buildInstructorIndex(readHorarioCacheLazy());
+    const enrichedActivities = validActivities.map((activity) => ({
+      ...activity,
+      profesor: activity.profesor || lookupInstructor(instructorIndex, { nombre: activity.materia }),
+    }));
+
+    const cachePayload = writeActivitiesCache(enrichedActivities);
     return {
-      activities: validActivities,
+      activities: enrichedActivities,
       timestamp: cachePayload.timestamp,
       fromCache: false,
     };
@@ -752,8 +772,15 @@ async function getActivitiesWithCache(event) {
   const cached = readActivitiesCache();
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+    // Re-aplicar el lookup en cada lectura: si la cache es vieja y el horario
+    // se sincronizó después, ahora sí hay instructor que propagar.
+    const instructorIndex = buildInstructorIndex(readHorarioCacheLazy());
+    const activitiesWithProfesor = (cached.actividades || []).map((activity) => ({
+      ...activity,
+      profesor: activity.profesor || lookupInstructor(instructorIndex, { nombre: activity.materia }),
+    }));
     return {
-      activities: cached.actividades,
+      activities: activitiesWithProfesor,
       timestamp: cached.timestamp,
       fromCache: true,
     };

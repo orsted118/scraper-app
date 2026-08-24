@@ -6,6 +6,28 @@ const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
 const pdfjsLib = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
 const notificationCenter = require('./notification-center');
+const { buildInstructorIndex, lookupInstructor } = require('../utils/instructorLookup');
+// require perezoso del horario handler para evitar riesgo de ciclo en la carga.
+function readHorarioCacheLazy() {
+  try {
+    return require('./horario').readHorarioCache();
+  } catch (_error) {
+    return null;
+  }
+}
+
+// Match preferente por `codigo` de la boleta contra el código de PeopleSoft;
+// fallback por nombre normalizado. Se aplica en cada return (fresh o cache) para
+// que un horario sincronizado después llene los huecos sin re-scrapear el CIA.
+function enrichWithInstructors(materias) {
+  const index = buildInstructorIndex(readHorarioCacheLazy());
+  return (Array.isArray(materias) ? materias : []).map((materia) => ({
+    ...materia,
+    profesor:
+      materia.profesor ||
+      lookupInstructor(index, { codigo: materia.codigo || materia.clave, nombre: materia.nombre }),
+  }));
+}
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const REPORT_MANAGER_URL = 'http://smartweb3.itson.edu.mx:9500/psp/ITSONPRD_1/EMPLOYEE/PSFT_HR/c/REPORT_MANAGER.CONTENT_LIST.GBL?Page=CDM_CONTLIST&Action=U&';
@@ -595,7 +617,7 @@ async function getCalificacionesWithCache() {
 
   if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
     return {
-      materias: cached.materias,
+      materias: enrichWithInstructors(cached.materias),
       timestamp: cached.timestamp,
       fromCache: true,
     };
@@ -616,6 +638,7 @@ async function getCalificacionesWithCache() {
 
     return {
       ...response,
+      materias: enrichWithInstructors(response.materias),
       fromCache: false,
     };
   } catch (error) {

@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('scraperApp', {
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
   testConnection: (payload) => ipcRenderer.invoke('settings:test-connection', payload),
   clearCredentials: () => ipcRenderer.invoke('settings:clear-credentials'),
+  credentialHistory: {
+    list: (portal) => ipcRenderer.invoke('credential-history:list', portal),
+    getPassword: (portal, user) =>
+      ipcRenderer.invoke('credential-history:get-password', { portal, user }),
+    save: (payload) => ipcRenderer.invoke('credential-history:save', payload),
+  },
   getAutoSyncSettings: () => ipcRenderer.invoke('settings:get-auto-sync'),
   setAutoSyncSettings: (payload) => ipcRenderer.invoke('settings:set-auto-sync', payload),
   onPowerResume: (callback) => {

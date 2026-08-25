@@ -454,21 +454,64 @@ function extractClassNumber(value) {
   return bareMatch ? bareMatch[0] : '';
 }
 
-function inferModalidad(value) {
+// ---------------------------------------------------------------------------
+// Detección de modalidad a distancia.
+//
+// Un falso positivo acá es MUCHO más caro que un falso negativo: marcar remota
+// una clase presencial hace que el alumno se quede en casa y falte. Al revés
+// solo lo hace ir al campus de gusto. Por eso los patrones van en dos niveles.
+// ---------------------------------------------------------------------------
+
+// Nivel 1 — verificados contra el portal real. Es el nombre literal que
+// PeopleSoft/ITSON pone en la celda de una clase a distancia
+// ("Curso a distancia con herramientas de Internet"). Se aplican siempre.
+const REMOTE_FACILITY_PATTERNS = ['curso a distancia', 'herramientas de internet'];
+
+// Nivel 2 — formas plausibles que NO están confirmadas en este portal. Solo
+// cuentan si la celda no declara ADEMÁS un salón físico, porque varias de estas
+// palabras nombran aulas reales ("Aula Virtual LM0301", "Laboratorio Virtual").
+// Si hay código de salón, hay lugar físico y el indicio no alcanza.
+const REMOTE_HINT_PATTERNS = [
+  'a distancia',
+  'no presencial',
+  'en linea',
+  'remoto',
+  'remota',
+  'virtual',
+  'online',
+];
+
+// Deliberadamente FUERA de las listas: 'videoconferencia', 'zoom', 'teams',
+// 'meet'. Son salas físicas equipadas al menos tan seguido como etiquetas de
+// modalidad ("Sala de Videoconferencia"), y el costo de equivocarse es una
+// clase perdida.
+
+// Códigos de salón de ITSON: dos o tres letras seguidas de tres o cuatro
+// dígitos (LM0712, AM0224, AM0323).
+const ROOM_CODE_PATTERN = /[A-Z]{2,3}\d{3,4}/;
+
+function isRemoteFacilityText(value) {
   const normalized = normalizeForCompare(value);
 
-  if (
-    normalized.includes('curso a distancia con herramientas de internet') ||
-    normalized.includes('distancia con herramientas de internet') ||
-    normalized.includes('online') ||
-    normalized.includes('en linea') ||
-    normalized.includes('virtual') ||
-    normalized.includes('remoto')
-  ) {
-    return 'en_linea';
+  if (!normalized) {
+    return false;
   }
 
-  return 'presencial';
+  if (REMOTE_FACILITY_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return true;
+  }
+
+  // El código de salón se busca sobre el texto original: el patrón depende de
+  // las mayúsculas y normalizeForCompare las baja.
+  if (ROOM_CODE_PATTERN.test(String(value || ''))) {
+    return false;
+  }
+
+  return REMOTE_HINT_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
+function inferModalidad(value) {
+  return isRemoteFacilityText(value) ? 'en_linea' : 'presencial';
 }
 
 function extractDayTokens(text) {
@@ -1302,7 +1345,29 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
   ]);
   await waitForPeopleSoftNav(scheduleFrame.page(), SELECTOR_TIMEOUT_MS);
   const rawRows = await scheduleFrame
-    .evaluate(() => {
+    // Los patrones viajan como argumento en vez de duplicarse acá dentro: el
+    // callback se serializa al contexto de la página y no ve el scope del
+    // módulo. Dos listas separadas se desincronizan, que es justo el tipo de
+    // divergencia que hacía que la grilla detectara menos casos que
+    // inferModalidad.
+    .evaluate(({ facilityPatterns, hintPatterns, roomCodeSource }) => {
+      const roomCodeRegex = new RegExp(roomCodeSource);
+
+      const isRemoteText = (value) => {
+        const normalized = String(value || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!normalized) return false;
+        if (facilityPatterns.some((pattern) => normalized.includes(pattern))) return true;
+        // Con salón físico declarado, un indicio suelto no alcanza.
+        if (roomCodeRegex.test(String(value || ''))) return false;
+        return hintPatterns.some((pattern) => normalized.includes(pattern));
+      };
+
       const table = document.querySelector('#STDNT_CLASS_TIM\\$scroll\\$0');
       if (!table) return [];
 
@@ -1415,10 +1480,8 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
               !/^(Teoria|Laboratorio|Clase|Taller|Seminario)$/i.test(line),
           );
           const ubicacionText = ubicacionLines.join(' ').trim();
-          const esEnLinea = /curso a distancia|herramientas de internet/i.test(
-            ubicacionText,
-          );
-          const salonMatch = ubicacionText.match(/[A-Z]{2,3}\d{3,4}/);
+          const esEnLinea = isRemoteText(ubicacionText);
+          const salonMatch = ubicacionText.match(roomCodeRegex);
           const ubicacion = salonMatch
             ? salonMatch[0]
             : esEnLinea
@@ -1448,6 +1511,10 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       });
 
       return entries;
+    }, {
+      facilityPatterns: REMOTE_FACILITY_PATTERNS,
+      hintPatterns: REMOTE_HINT_PATTERNS,
+      roomCodeSource: ROOM_CODE_PATTERN.source,
     })
     .catch(() => []);
 
@@ -2706,6 +2773,8 @@ function registerHorarioHandlers() {
 
 module.exports = {
   clearHorarioCache,
+  inferModalidad,
+  isRemoteFacilityText,
   mergeWeeklyRows,
   getCachedHorario,
   getHorarioCachePath,

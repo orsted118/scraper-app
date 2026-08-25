@@ -1425,6 +1425,14 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
               ? 'Remoto'
               : ubicacionText || 'Aulas';
 
+          // La grilla de PeopleSoft emite celdas duplicadas para la misma clase,
+          // y algunas copias vienen SIN texto de ubicación. En esas, `esEnLinea`
+          // sale false solo porque no había texto donde buscar "curso a
+          // distancia" — no porque la clase sea presencial. Marcarlas para que
+          // el merge no las deje votar la modalidad: una clase remota traía
+          // copias vacías y terminaba clasificada como mixta.
+          const tieneEvidenciaModalidad = Boolean(ubicacionText);
+
           entries.push({
             codigoRaw,
             seccion,
@@ -1433,6 +1441,7 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
             horaFin,
             dias: uniqueDays,
             ubicacion,
+            tieneEvidenciaModalidad,
             esEnLinea,
           });
         });
@@ -1471,6 +1480,13 @@ function mergeWeeklyRows(rawRows, identifiers) {
     blocks.forEach((row) => {
       const rowDays = getFriendlyDayOrder(Array.isArray(row.dias) ? row.dias : []);
 
+      // Una fila sin texto de ubicación no aporta evidencia de modalidad: se
+      // suma a los días de una sesión existente pero nunca crea una nueva ni
+      // vota la modalidad de la materia.
+      const rowTieneEvidencia = row.tieneEvidenciaModalidad !== false;
+      const rowModalidad = row.esEnLinea ? 'en_linea' : 'presencial';
+      const rowUbicacion = row.esEnLinea ? 'Remoto' : row.ubicacion;
+
       if (!byCode.has(key)) {
         byCode.set(key, {
           codigoRaw: row.codigoRaw,
@@ -1480,17 +1496,21 @@ function mergeWeeklyRows(rawRows, identifiers) {
           dias: new Set(rowDays),
           horaInicio: row.horaInicio,
           horaFin: row.horaFin,
-          ubicacion: row.ubicacion,
-          modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
-          sesiones: [
-            {
-              dias: rowDays,
-              horaInicio: row.horaInicio,
-              horaFin: row.horaFin,
-              modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
-              ubicacion: row.esEnLinea ? 'Remoto' : row.ubicacion,
-            },
-          ],
+          ubicacion: rowUbicacion,
+          // Sin evidencia la materia arranca sin modalidad; la primera fila que
+          // sí la traiga la define.
+          modalidad: rowTieneEvidencia ? rowModalidad : null,
+          sesiones: rowTieneEvidencia
+            ? [
+                {
+                  dias: rowDays,
+                  horaInicio: row.horaInicio,
+                  horaFin: row.horaFin,
+                  modalidad: rowModalidad,
+                  ubicacion: rowUbicacion,
+                },
+              ]
+            : [],
         });
       }
 
@@ -1499,42 +1519,54 @@ function mergeWeeklyRows(rawRows, identifiers) {
       current.componentes.add(normalizeWhitespace(row.componente));
       rowDays.forEach((day) => current.dias.add(day));
 
-      // Modalidad a nivel materia: si las filas no coinciden entre sí, la
-      // materia es mixta. Antes `en_linea` pisaba a `presencial`, que era el
-      // origen del bug — una clase con un solo día remoto se marcaba entera
-      // como remota y el usuario no se presentaba a los días presenciales.
-      const rowModalidadForCourse = row.esEnLinea ? 'en_linea' : 'presencial';
-      if (current.modalidad !== 'mixta' && current.modalidad !== rowModalidadForCourse) {
-        current.modalidad = 'mixta';
+      // Modalidad a nivel materia: si las filas CON evidencia no coinciden
+      // entre sí, la materia es mixta. Antes `en_linea` pisaba a `presencial`,
+      // que era el origen del bug — una clase con un solo día remoto se marcaba
+      // entera como remota y el usuario no se presentaba a los días
+      // presenciales.
+      if (rowTieneEvidencia) {
+        if (!current.modalidad) {
+          current.modalidad = rowModalidad;
+        } else if (current.modalidad !== 'mixta' && current.modalidad !== rowModalidad) {
+          current.modalidad = 'mixta';
+        }
+
+        // Con modalidad mixta el "mejor salón" a nivel materia deja de tener
+        // sentido: cada sesión lleva el suyo. Se conserva el primero presencial
+        // como referencia para vistas que aún leen el campo plano.
+        if (!row.esEnLinea) {
+          current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, 'presencial');
+        } else if (current.modalidad === 'en_linea') {
+          current.ubicacion = 'Remoto';
+        }
       }
 
-      // Con modalidad mixta el "mejor salón" a nivel materia deja de tener
-      // sentido: cada sesión lleva el suyo. Se conserva el primero presencial
-      // como referencia para vistas que aún leen el campo plano.
-      if (!row.esEnLinea) {
-        current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, 'presencial');
-      } else if (current.modalidad === 'en_linea') {
-        current.ubicacion = 'Remoto';
-      }
+      // La identidad de una sesión es (horario, modalidad) — NO solo el horario.
+      // Una materia puede dar el mismo bloque horario presencial unos días y
+      // remoto otros (visto en 1148C Bases de Datos: Lun/Mié en LM0712, Vie a
+      // distancia). Agrupando solo por hora, esos días caían en la misma sesión
+      // y la modalidad del último ganaba.
+      //
+      // La ubicación NO entra en la identidad: es un atributo que se refina con
+      // pickBetterLocation. PeopleSoft emite copias de la misma celda con el
+      // salón vacío, y tratarlas como sesión aparte duplicaba todo el horario.
+      const matchesTime = (session) =>
+        minutesDiff(row.horaInicio, session.horaInicio) <= 120 &&
+        minutesDiff(row.horaFin, session.horaFin) <= 120;
 
-      // La identidad de una sesión es (horario, modalidad, ubicación) — NO solo
-      // el horario. Una materia puede dar el mismo bloque horario presencial
-      // unos días y remoto otros (visto en 1148C Bases de Datos: Lun/Mié en
-      // LM0712, Vie a distancia). Agrupando solo por hora, esos días caían en
-      // la misma sesión y la modalidad del último ganaba.
-      const rowModalidad = row.esEnLinea ? 'en_linea' : 'presencial';
-      const rowUbicacion = row.esEnLinea ? 'Remoto' : row.ubicacion;
-
-      const existingSession = (current.sesiones || []).find((session) => {
-        const startGap = minutesDiff(row.horaInicio, session.horaInicio);
-        const endGap = minutesDiff(row.horaFin, session.horaFin);
-        if (startGap > 120 || endGap > 120) return false;
-        if ((session.modalidad || 'presencial') !== rowModalidad) return false;
-        // Dos salones distintos a la misma hora también son sesiones distintas.
-        return normalizeForCompare(session.ubicacion || '') === normalizeForCompare(rowUbicacion || '');
-      });
+      const existingSession = rowTieneEvidencia
+        ? (current.sesiones || []).find(
+            (session) => matchesTime(session) && (session.modalidad || 'presencial') === rowModalidad,
+          )
+        : // Sin evidencia solo aporta días: se pega a cualquier sesión del mismo
+          // horario, sin importar su modalidad.
+          (current.sesiones || []).find(matchesTime);
 
       if (!existingSession) {
+        // Una fila sin evidencia no puede inaugurar una sesión: haría aparecer
+        // un bloque presencial fantasma en una materia enteramente remota.
+        if (!rowTieneEvidencia) return;
+
         current.sesiones.push({
           dias: rowDays,
           horaInicio: row.horaInicio,
@@ -1559,10 +1591,10 @@ function mergeWeeklyRows(rawRows, identifiers) {
         }
       }
 
-      // La sesión matcheada ya tiene la misma modalidad y ubicación (es parte
-      // de su clave de identidad), así que acá solo queda refinar el salón
-      // cuando la fila trae una etiqueta mejor.
-      if (!row.esEnLinea) {
+      // La sesión matcheada ya tiene la misma modalidad (es parte de su clave
+      // de identidad), así que acá solo queda refinar el salón cuando la fila
+      // trae una etiqueta mejor y realmente sabe algo.
+      if (!row.esEnLinea && rowTieneEvidencia) {
         existingSession.ubicacion = pickBetterLocation(
           existingSession.ubicacion,
           row.ubicacion,

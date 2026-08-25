@@ -99,18 +99,40 @@ check('modalidad presencial', ed.modalidad, 'presencial');
 check('una sola sesión', ed.sesiones.length, 1);
 check('ubicación LM0711', ed.sesiones[0].ubicacion, 'LM0711');
 
-// Control: mismo horario, dos salones presenciales distintos → dos sesiones.
-console.log('');
-console.log('== Dos salones presenciales distintos a la misma hora ==');
-const dosSalonesRows = [
-  { codigoRaw: 'C 9999C', seccion: '1000', componente: 'Teoria', horaInicio: '10:00', horaFin: '11:00', dias: ['Lunes'], ubicacion: 'AM0101', esEnLinea: false },
-  { codigoRaw: 'C 9999C', seccion: '1000', componente: 'Teoria', horaInicio: '10:00', horaFin: '11:00', dias: ['Martes'], ubicacion: 'LM0202', esEnLinea: false },
+// Regresión: PeopleSoft emite copias de la misma celda SIN texto de ubicación.
+// En esas el parser no puede detectar "curso a distancia", así que esEnLinea sale
+// false y la ubicación cae al placeholder 'Aulas'. Esas filas no dicen "es
+// presencial" — dicen "no sé". Si votan modalidad, una materia 100% remota
+// termina marcada como mixta con un bloque presencial fantasma.
+console.log('== 1190M con filas fantasma sin ubicación (caso real) ==');
+const conFantasmas = [
+  { codigoRaw: 'M 1190M', seccion: '1024', componente: 'Teoria', horaInicio: '16:00', horaFin: '18:00', dias: ['Lunes'], ubicacion: 'Remoto', esEnLinea: true, tieneEvidenciaModalidad: true },
+  { codigoRaw: 'M 1190M', seccion: '1024', componente: 'Teoria', horaInicio: '16:00', horaFin: '18:00', dias: ['Miércoles'], ubicacion: 'Remoto', esEnLinea: true, tieneEvidenciaModalidad: true },
+  { codigoRaw: 'M 1190M', seccion: '1024', componente: 'Teoria', horaInicio: '16:00', horaFin: '17:00', dias: ['Viernes'], ubicacion: 'Remoto', esEnLinea: true, tieneEvidenciaModalidad: true },
+  // Fantasmas: mismo horario, sin ubicación, esEnLinea=false por falta de texto.
+  { codigoRaw: 'M 1190M', seccion: '1024', componente: 'Teoria', horaInicio: '16:00', horaFin: '18:00', dias: ['Lunes'], ubicacion: 'Aulas', esEnLinea: false, tieneEvidenciaModalidad: false },
+  { codigoRaw: 'M 1190M', seccion: '1024', componente: 'Teoria', horaInicio: '16:00', horaFin: '18:00', dias: ['Miércoles'], ubicacion: 'Aulas', esEnLinea: false, tieneEvidenciaModalidad: false },
 ];
-const [dos] = mergeWeeklyRows(dosSalonesRows, [
-  { codigo: '9999C', nombre: 'Materia Dos Salones', seccion: '1000', numeroClase: '99999', dias: [] },
+const [mcF] = mergeWeeklyRows(conFantasmas, [
+  { codigo: '1190M', nombre: 'Matematicas Computacionales', seccion: '1024', numeroClase: '14750', dias: [] },
 ]);
-check('sigue siendo presencial', dos.modalidad, 'presencial');
-check('dos sesiones (una por salón)', dos.sesiones.length, 2);
+check('sigue siendo en_linea (no mixta)', mcF.modalidad, 'en_linea');
+check('una sola sesión, sin fantasma', mcF.sesiones.length, 1);
+check('ninguna sesión presencial', mcF.sesiones.some((s) => s.modalidad === 'presencial'), false);
+check('cubre los tres días', mcF.sesiones[0].dias, ['Lunes', 'Miércoles', 'Viernes']);
+
+// Y el caso mixto real debe seguir andando aunque haya fantasmas mezclados.
+console.log('');
+console.log('== 1148C mixta + filas fantasma ==');
+const bdConFantasmas = [
+  ...basesDeDatosRows.map((r) => ({ ...r, tieneEvidenciaModalidad: true })),
+  { codigoRaw: 'C 1148C', seccion: '1029', componente: 'Teoria', horaInicio: '15:00', horaFin: '16:00', dias: ['Lunes'], ubicacion: 'Aulas', esEnLinea: false, tieneEvidenciaModalidad: false },
+];
+const [bdF] = mergeWeeklyRows(bdConFantasmas, identifiers);
+check('sigue mixta', bdF.modalidad, 'mixta');
+check('dos sesiones (no tres)', bdF.sesiones.length, 2);
+check('presencial = Lun, Mié', bdF.sesiones.find((s) => s.modalidad === 'presencial')?.dias, ['Lunes', 'Miércoles']);
+check('remota = Vie', bdF.sesiones.find((s) => s.modalidad === 'en_linea')?.dias, ['Viernes']);
 
 console.log('');
 console.log(failures === 0 ? 'TODO OK' : `${failures} CHECKS FALLARON`);

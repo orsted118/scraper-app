@@ -1092,9 +1092,11 @@ async function collectIdentifiersFromListView(scheduleFrame) {
     const { codigo, nombre } = extractCourseFromContext(entry.containerText);
     const hora = parseTimeRange(entry.diasHoras);
     const days = parseDays(entry.diasHoras);
-    const modalidad = inferModalidad(
-      `${entry.ubicacion} ${entry.componente} ${entry.containerText}`,
-    );
+    // Solo la ubicación y el componente de ESTA fila. `containerText` es el
+    // bloque entero de la clase e incluye todas sus filas de reunión: si
+    // cualquiera dice "curso a distancia", meterlo acá marcaba remotas también
+    // a las filas presenciales.
+    const modalidad = inferModalidad(`${entry.ubicacion} ${entry.componente}`);
 
     let horaInicio = hora.horaInicio;
     let horaFin = hora.horaFin;
@@ -1193,9 +1195,12 @@ function combineScheduleRows(rows, identifiers) {
 
     const previous = merged.get(key);
     const days = new Set([...(previous.dias || []), ...(base.dias || [])]);
+    // Mismo criterio que en la vista semanal: modalidades distintas producen
+    // 'mixta', no 'en_linea'. Dejar ganar a en_linea marcaba como remota una
+    // materia con días presenciales.
     const modalidadCombinada =
-      previous.modalidad === 'en_linea' || base.modalidad === 'en_linea'
-        ? 'en_linea'
+      previous.modalidad && base.modalidad && previous.modalidad !== base.modalidad
+        ? 'mixta'
         : previous.modalidad || base.modalidad;
     merged.set(key, {
       ...previous,
@@ -1437,6 +1442,15 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
     })
     .catch(() => []);
 
+  return mergeWeeklyRows(rawRows, normalizedIdentifiers);
+}
+
+// Merge puro de las filas de la grilla semanal contra los identificadores del
+// listado de clases. Extraído de collectWeeklySchedule para poder testear la
+// resolución de modalidad sin levantar Playwright ni PeopleSoft.
+function mergeWeeklyRows(rawRows, identifiers) {
+  const normalizedIdentifiers = Array.isArray(identifiers) ? identifiers : [];
+
   if (!Array.isArray(rawRows) || rawRows.length === 0) {
     console.log('No se encontraron clases en la vista semanal de horario.');
     return normalizedIdentifiers;
@@ -1485,20 +1499,39 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       current.componentes.add(normalizeWhitespace(row.componente));
       rowDays.forEach((day) => current.dias.add(day));
 
-      if (row.esEnLinea) {
-        current.modalidad = 'en_linea';
+      // Modalidad a nivel materia: si las filas no coinciden entre sí, la
+      // materia es mixta. Antes `en_linea` pisaba a `presencial`, que era el
+      // origen del bug — una clase con un solo día remoto se marcaba entera
+      // como remota y el usuario no se presentaba a los días presenciales.
+      const rowModalidadForCourse = row.esEnLinea ? 'en_linea' : 'presencial';
+      if (current.modalidad !== 'mixta' && current.modalidad !== rowModalidadForCourse) {
+        current.modalidad = 'mixta';
       }
 
-      current.ubicacion = pickBetterLocation(
-        current.ubicacion,
-        row.esEnLinea ? 'Remoto' : row.ubicacion,
-        current.modalidad,
-      );
+      // Con modalidad mixta el "mejor salón" a nivel materia deja de tener
+      // sentido: cada sesión lleva el suyo. Se conserva el primero presencial
+      // como referencia para vistas que aún leen el campo plano.
+      if (!row.esEnLinea) {
+        current.ubicacion = pickBetterLocation(current.ubicacion, row.ubicacion, 'presencial');
+      } else if (current.modalidad === 'en_linea') {
+        current.ubicacion = 'Remoto';
+      }
+
+      // La identidad de una sesión es (horario, modalidad, ubicación) — NO solo
+      // el horario. Una materia puede dar el mismo bloque horario presencial
+      // unos días y remoto otros (visto en 1148C Bases de Datos: Lun/Mié en
+      // LM0712, Vie a distancia). Agrupando solo por hora, esos días caían en
+      // la misma sesión y la modalidad del último ganaba.
+      const rowModalidad = row.esEnLinea ? 'en_linea' : 'presencial';
+      const rowUbicacion = row.esEnLinea ? 'Remoto' : row.ubicacion;
 
       const existingSession = (current.sesiones || []).find((session) => {
         const startGap = minutesDiff(row.horaInicio, session.horaInicio);
         const endGap = minutesDiff(row.horaFin, session.horaFin);
-        return startGap <= 120 && endGap <= 120;
+        if (startGap > 120 || endGap > 120) return false;
+        if ((session.modalidad || 'presencial') !== rowModalidad) return false;
+        // Dos salones distintos a la misma hora también son sesiones distintas.
+        return normalizeForCompare(session.ubicacion || '') === normalizeForCompare(rowUbicacion || '');
       });
 
       if (!existingSession) {
@@ -1506,8 +1539,8 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
           dias: rowDays,
           horaInicio: row.horaInicio,
           horaFin: row.horaFin,
-          modalidad: row.esEnLinea ? 'en_linea' : 'presencial',
-          ubicacion: row.esEnLinea ? 'Remoto' : row.ubicacion,
+          modalidad: rowModalidad,
+          ubicacion: rowUbicacion,
         });
         return;
       }
@@ -1526,10 +1559,10 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
         }
       }
 
-      if (row.esEnLinea) {
-        existingSession.modalidad = 'en_linea';
-        existingSession.ubicacion = 'Remoto';
-      } else {
+      // La sesión matcheada ya tiene la misma modalidad y ubicación (es parte
+      // de su clave de identidad), así que acá solo queda refinar el salón
+      // cuando la fila trae una etiqueta mejor.
+      if (!row.esEnLinea) {
         existingSession.ubicacion = pickBetterLocation(
           existingSession.ubicacion,
           row.ubicacion,
@@ -1603,11 +1636,18 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
           }
         : null);
 
+    // Modalidad de la materia derivada de sus sesiones ya resueltas: si no
+    // todas coinciden, es 'mixta'. Nunca colapsar a 'en_linea' porque una sola
+    // sesión sea remota — eso oculta los días presenciales.
+    const sessionModalidades = new Set(sessions.map((session) => session.modalidad));
     const modalidad =
-      sessions.some((session) => session.modalidad === 'en_linea') ||
-      item.modalidad === 'en_linea'
-        ? 'en_linea'
-        : inferModalidad(`${item.ubicacion} ${fallbackName}`);
+      sessionModalidades.size > 1
+        ? 'mixta'
+        : sessionModalidades.size === 1
+          ? [...sessionModalidades][0]
+          : item.modalidad === 'en_linea'
+            ? 'en_linea'
+            : inferModalidad(`${item.ubicacion} ${fallbackName}`);
     const ubicacion =
       modalidad === 'en_linea'
         ? 'Remoto'
@@ -1618,15 +1658,23 @@ async function collectWeeklySchedule(scheduleFrame, identifiers) {
       (entry.dias || []).forEach((day) => daysSet.add(day));
     });
 
+    // Una sesión nunca hereda 'mixta': eso es un agregado de la materia, no una
+    // modalidad que una sesión concreta pueda tener. Sin modalidad propia cae a
+    // 'presencial', que es el default seguro (mandar al alumno al salón es
+    // recuperable; decirle "es remoto" y que falte, no).
+    const sessionFallbackModalidad = modalidad === 'mixta' ? 'presencial' : modalidad;
     const normalizedSessions = (firstSession ? [firstSession, ...sessions.slice(1)] : sessions).map(
-      (session) => ({
-        ...session,
-        modalidad: session.modalidad || modalidad,
-        ubicacion:
-          (session.modalidad || modalidad) === 'en_linea'
-            ? 'Remoto'
-            : pickBetterLocation('', session.ubicacion || ubicacion, session.modalidad || modalidad),
-      }),
+      (session) => {
+        const sessionModalidad = session.modalidad || sessionFallbackModalidad;
+        return {
+          ...session,
+          modalidad: sessionModalidad,
+          ubicacion:
+            sessionModalidad === 'en_linea'
+              ? 'Remoto'
+              : pickBetterLocation('', session.ubicacion || ubicacion, sessionModalidad),
+        };
+      },
     );
 
     return {
@@ -2626,6 +2674,7 @@ function registerHorarioHandlers() {
 
 module.exports = {
   clearHorarioCache,
+  mergeWeeklyRows,
   getCachedHorario,
   getHorarioCachePath,
   getHorarioWithCache,

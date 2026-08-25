@@ -16,6 +16,17 @@ const PX_PER_MIN = SLOT_PX / 30;
 const GUTTER_PX = 64;
 const DAY_KEYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
+// Una materia puede ser 'mixta' (unos días presencial, otros remota). En ese
+// caso la modalidad de la materia no dice nada útil sobre el bloque que el
+// usuario está mirando: manda la de la sesión. Si la sesión no la trae, se cae
+// a presencial antes que a 'mixta' — mandar al alumno al salón es recuperable,
+// decirle "es remoto" y que falte a una clase presencial no lo es.
+function sessionModalidad({ session, materia } = {}) {
+  if (session?.modalidad) return session.modalidad;
+  if (materia?.modalidad && materia.modalidad !== 'mixta') return materia.modalidad;
+  return 'presencial';
+}
+
 function normalizeActivities(entries = []) {
   return Array.isArray(entries) ? entries : [];
 }
@@ -201,13 +212,22 @@ function layoutDay(items) {
 }
 
 function getOnlineScheduleLabel(materia) {
-  const session = getMateriaSessions(materia)[0];
+  const sessions = getMateriaSessions(materia);
+  // En una materia mixta la primera sesión puede ser la presencial: acá solo
+  // interesan los días que efectivamente son en línea.
+  const onlineSessions = sessions.filter((session) => session.modalidad === 'en_linea');
+  const relevant = onlineSessions.length > 0 ? onlineSessions : sessions.slice(0, 1);
 
-  if (!session) {
+  if (relevant.length === 0) {
     return 'Días no disponibles';
   }
 
-  return `${session.dias.join(', ')} · ${format12h(session.horaInicio)}–${format12h(session.horaFin)}`;
+  return relevant
+    .map(
+      (session) =>
+        `${session.dias.join(', ')} · ${format12h(session.horaInicio)}–${format12h(session.horaFin)}`,
+    )
+    .join(' — ');
 }
 
 function ScheduleSkeleton() {
@@ -265,7 +285,13 @@ function Horario({
   }, []);
 
   const materias = normalizeActivities(horario?.materias);
-  const onlineMaterias = materias.filter((materia) => materia.modalidad === 'en_linea');
+  // Incluye las mixtas: tienen al menos una sesión remota que necesita link.
+  const onlineMaterias = materias.filter(
+    (materia) =>
+      materia.modalidad === 'en_linea' ||
+      (Array.isArray(materia.sesiones) &&
+        materia.sesiones.some((session) => session.modalidad === 'en_linea')),
+  );
   const days = useMemo(() => {
     const providedDays = Array.isArray(horario?.diasConClases) ? horario.diasConClases : [];
     if (providedDays.length > 0) {
@@ -436,7 +462,7 @@ function Horario({
 
   const renderBlock = (item, day) => {
     const { materia, session } = item;
-    const isOnline = (session?.modalidad || materia.modalidad) === 'en_linea';
+    const isOnline = sessionModalidad(item) === 'en_linea';
     const itemKey = getItemKey(materia, session);
     const isSelected = selectedKey === itemKey;
     const duration = item.end - item.start;
@@ -808,8 +834,9 @@ function Horario({
                 </p>
                 <p className="mt-1 text-sm" style={{ color: 'var(--text-normal)' }}>
                   {selectedItem.session.ubicacion ||
-                    selectedItem.materia.ubicacion ||
-                    (selectedItem.materia.modalidad === 'en_linea' ? 'Remoto' : 'Sin ubicación')}
+                    (sessionModalidad(selectedItem) === 'en_linea'
+                      ? 'Remoto'
+                      : selectedItem.materia.ubicacion || 'Sin ubicación')}
                 </p>
               </div>
               <div>
@@ -836,12 +863,12 @@ function Horario({
                     .filter(Boolean)
                     .join(' · ') || 'Sin código'}
                   {' · '}
-                  {selectedItem.materia.modalidad === 'en_linea' ? 'En línea' : 'Presencial'}
+                  {sessionModalidad(selectedItem) === 'en_linea' ? 'En línea' : 'Presencial'}
                 </p>
               </div>
             </div>
 
-            {selectedItem.materia.modalidad === 'en_linea' ? (
+            {sessionModalidad(selectedItem) === 'en_linea' ? (
               <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border-subtle)' }}>
                 {renderLinkControls(selectedItem.materia)}
               </div>

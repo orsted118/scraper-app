@@ -48,9 +48,18 @@ function getMateriaSessions(materia = {}) {
 function getSessionLocation(materia, session) {
   const meetLink = session?.meetLink || materia?.meetLink || null;
   const rawLocation = session?.ubicacion || materia?.ubicacion || '';
+
+  // La modalidad de la sesión manda: una materia mixta tiene días presenciales
+  // y días remotos, así que `materia.modalidad` no puede decidir por el bloque
+  // que se está mostrando. Solo se consulta cuando la sesión no trae la suya, y
+  // nunca cuando vale 'mixta'.
+  if (session?.modalidad) {
+    return session.modalidad === 'en_linea' ? 'En línea' : rawLocation || 'Sin salón';
+  }
+
   const isOnline =
     session?.esEnLinea ||
-    materia?.modalidad === 'en_linea' ||
+    (materia?.modalidad !== 'mixta' && materia?.modalidad === 'en_linea') ||
     Boolean(meetLink) ||
     /remoto|en l[ií]nea|curso a distancia|internet/i.test(rawLocation);
 

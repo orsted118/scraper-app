@@ -12,6 +12,20 @@ const IVIRTUAL_LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const IVIRTUAL_DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
 
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+// Versión del FORMATO de la caché del horario. El TTL responde "¿está vieja?";
+// esto responde "¿la generó una versión del código que producía datos
+// distintos?". Una caché de la versión anterior se descarta y se vuelve a
+// scrapear una sola vez, aunque el TTL todavía no haya vencido.
+//
+// SUBIR ESTE NÚMERO cada vez que cambie cómo se derivan las materias: modalidad,
+// sesiones, ubicaciones, días. Si no, los usuarios que ya tenían caché siguen
+// viendo los datos viejos hasta 24 h después y el arreglo parece no funcionar.
+//
+// 1 → formato original.
+// 2 → modalidad por sesión ('mixta' a nivel materia, sesiones separadas por
+//     modalidad) y filtrado de filas sin evidencia de modalidad.
+const HORARIO_CACHE_SCHEMA_VERSION = 2;
 const GLOBAL_TIMEOUT_MS = 4 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 20_000;
 const CIA_LOGIN_TIMEOUT_MS = 45_000;
@@ -184,6 +198,17 @@ function readHorarioCache() {
     return null;
   }
 
+  // Cachés sin versión son anteriores al versionado: se tratan como v1.
+  const cachedVersion = Number.isInteger(parsed.schemaVersion) ? parsed.schemaVersion : 1;
+
+  if (cachedVersion !== HORARIO_CACHE_SCHEMA_VERSION) {
+    console.log(
+      `Caché de horario en formato v${cachedVersion}, el código genera v${HORARIO_CACHE_SCHEMA_VERSION}: se descarta y se vuelve a extraer.`,
+    );
+    discardFile(getHorarioCachePath());
+    return null;
+  }
+
   return parsed;
 }
 
@@ -202,6 +227,7 @@ function writeHorarioCache(payload) {
     materias: Array.isArray(payload?.materias) ? payload.materias : [],
     diasConClases: Array.isArray(payload?.diasConClases) ? payload.diasConClases : [],
     timestamp: Date.now(),
+    schemaVersion: HORARIO_CACHE_SCHEMA_VERSION,
   };
 
   fs.writeFileSync(getHorarioCachePath(), JSON.stringify(nextPayload, null, 2), 'utf8');
@@ -307,6 +333,10 @@ function saveManualLink(numeroClase, link) {
           ? { ...materia, meetLink: normalizedLink, meetLinkLayer: 'MANUAL', linkManual: true }
           : materia,
       ),
+      // Explícito aunque el spread ya lo traiga: este es el otro camino que
+      // escribe el archivo, y sin el sello la próxima lectura lo descartaría
+      // como formato viejo y forzaría un re-scrape por guardar un link.
+      schemaVersion: HORARIO_CACHE_SCHEMA_VERSION,
     };
 
     fs.writeFileSync(getHorarioCachePath(), JSON.stringify(patched, null, 2), 'utf8');

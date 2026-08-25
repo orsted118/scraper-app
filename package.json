@@ -17,7 +17,8 @@
     "dist": "vite build && electron-builder --config electron-builder.config.js",
     "dist:dir": "vite build && electron-builder --config electron-builder.config.js --dir",
     "test:horario": "node scripts/test-horario-modalidad.cjs",
-    "test:modalidad": "node scripts/test-modalidad-deteccion.cjs"
+    "test:modalidad": "node scripts/test-modalidad-deteccion.cjs",
+    "test:cache": "node scripts/test-horario-cache-version.cjs"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

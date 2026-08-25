@@ -15,7 +15,8 @@
     "llm:doctor": "node scripts/llm-doctor.cjs",
     "start:demo": "node scripts/start-demo.cjs",
     "dist": "vite build && electron-builder --config electron-builder.config.js",
-    "dist:dir": "vite build && electron-builder --config electron-builder.config.js --dir"
+    "dist:dir": "vite build && electron-builder --config electron-builder.config.js --dir",
+    "test:horario": "node scripts/test-horario-modalidad.cjs"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

@@ -11,6 +11,14 @@ contextBridge.exposeInMainWorld('scraperApp', {
   clearCalendarioCache: () => ipcRenderer.invoke('calendario:clear-cache'),
   saveHorarioLink: (numeroClase, link) =>
     ipcRenderer.invoke('horario:save-link', { numeroClase, link }),
+  assignmentUpload: {
+    pickFiles: () => ipcRenderer.invoke('assignment:pick-files'),
+    getInfo: (url) => ipcRenderer.invoke('assignment:upload-info', url),
+    upload: (url, filePaths) => ipcRenderer.invoke('assignment:upload-files', { url, filePaths }),
+    removeDraftFile: (url, fileName) =>
+      ipcRenderer.invoke('assignment:remove-draft-file', { url, fileName }),
+    removeSubmission: (url) => ipcRenderer.invoke('assignment:remove-submission', url),
+  },
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
   testConnection: (payload) => ipcRenderer.invoke('settings:test-connection', payload),

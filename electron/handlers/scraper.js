@@ -19,6 +19,19 @@ function readHorarioCacheLazy() {
 const LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
 const DASHBOARD_URL = 'https://ivirtual.itson.edu.mx/my/';
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+// Versión del FORMATO de la caché de actividades. El TTL responde "¿está
+// vieja?"; esto responde "¿la generó un código que producía campos distintos?".
+// Una caché de versión anterior se descarta y se vuelve a extraer una sola vez,
+// aunque el TTL no haya vencido.
+//
+// SUBIR ESTE NÚMERO al agregar o cambiar campos de la actividad. Si no, el
+// usuario que ya tenía caché no ve la función nueva hasta que expire el TTL y
+// parece que no funciona.
+//
+// 1 → formato original.
+// 2 → campo `puedeEntregar`, que habilita el apartado de entrega en la card.
+const ACTIVITIES_CACHE_SCHEMA_VERSION = 2;
 const PAGE_TIMEOUT_MS = 20_000;
 const DASHBOARD_NAVIGATION_TIMEOUT_MS = 45_000;
 const COURSE_NAVIGATION_TIMEOUT_MS = 30_000;
@@ -164,6 +177,17 @@ function readActivitiesCache() {
       return null;
     }
 
+    // Cachés sin versión son anteriores al versionado: se tratan como v1.
+    const cachedVersion = Number.isInteger(parsed.schemaVersion) ? parsed.schemaVersion : 1;
+
+    if (cachedVersion !== ACTIVITIES_CACHE_SCHEMA_VERSION) {
+      console.log(
+        `[scraper] Caché de actividades en formato v${cachedVersion}, el código genera v${ACTIVITIES_CACHE_SCHEMA_VERSION}: se descarta y se vuelve a extraer.`,
+      );
+      discardActivitiesCache(cachePath);
+      return null;
+    }
+
     return parsed;
   } catch (error) {
     console.error('[scraper] Error leyendo caché de actividades:', error?.message || error);
@@ -176,6 +200,7 @@ function writeActivitiesCache(activities) {
   const cachePayload = {
     timestamp: Date.now(),
     actividades: activities,
+    schemaVersion: ACTIVITIES_CACHE_SCHEMA_VERSION,
   };
 
   fs.writeFileSync(

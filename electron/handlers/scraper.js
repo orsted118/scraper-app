@@ -682,6 +682,11 @@ async function scrapeIVirtualActivities(event, controller = {}) {
                       materia: details.materia,
                       modalidad: details.modalidad || 'individual',
                       nombre: assignment.title,
+                      // El portal ya nos dice si acepta entrega ahora: el botón
+                      // "Add submission" existe y está habilitado. Una actividad
+                      // vencida no lo muestra. Es más confiable que deducirlo de
+                      // la fecha límite, que no contempla prórrogas del profe.
+                      puedeEntregar: Boolean(details.submissionState?.hasSubmitAction),
                       rawGrade: assignment.grade,
                       rawSubmission: assignment.submission,
                       url: assignment.url,

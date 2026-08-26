@@ -15,6 +15,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ActivityAnalyzer from '../pages/actividades/ActivityAnalyzer';
 import ActivityCardMenu from './ActivityCardMenu';
+import ActivitySubmission from './ActivitySubmission';
 import { useState } from 'react';
 import { EASE } from '../utils/motion';
 import { getFileIcon } from './file-icons';
@@ -242,6 +243,7 @@ function ActivityCard({
   nombre,
   onHide,
   profesor,
+  puedeEntregar = false,
   estado,
   url,
 }) {
@@ -673,6 +675,8 @@ function ActivityCard({
                       ) : null}
                     </div>
                   </footer>
+
+                  <ActivitySubmission url={url} puedeEntregar={puedeEntregar} />
 
                   <ActivityAnalyzer
                     activity={{ id, nombre, instrucciones, materia, modalidad }}

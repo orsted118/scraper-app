@@ -16,6 +16,7 @@ const { registerFileHandlers } = require('./handlers/files');
 const { getCachedHorario, registerHorarioHandlers } = require('./handlers/horario');
 const { registerSettingsHandlers } = require('./handlers/settings');
 const { registerCredentialHistoryHandlers } = require('./handlers/credential-history');
+const { registerAssignmentUploadHandlers } = require('./handlers/assignment-upload');
 const { registerNotificationHandlers, startClassNotifier } = require('./handlers/notifications');
 const notificationCenter = require('./handlers/notification-center');
 const { registerNoticesHandlers } = require('./handlers/notices');
@@ -133,6 +134,7 @@ app.whenReady().then(() => {
   registerFileHandlers();
   registerSettingsHandlers();
   registerCredentialHistoryHandlers();
+  registerAssignmentUploadHandlers();
   registerNotificationHandlers();
   notificationCenter.registerNotificationCenter();
   registerNoticesHandlers();

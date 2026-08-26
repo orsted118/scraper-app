@@ -315,34 +315,105 @@ async function readSubmissionStatus(page) {
   });
 }
 
-async function attachFiles(page, filePaths) {
-  // Moodle no deja un <input type="file"> en el HTML: el filemanager lo crea
-  // cuando se abre el filepicker. Se abre, se elige el repositorio "Upload a
-  // file" y recién ahí existe el input al que Playwright puede adjuntar.
-  for (const filePath of filePaths) {
-    const addButton = page.locator('.fp-btn-add a, .fp-btn-add button, [title="Add..."]').first();
-    await addButton.click({ timeout: PAGE_TIMEOUT_MS });
+// Nombres tal como los muestra el filemanager en este momento.
+async function listFilemanagerFiles(page) {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.fp-filename'))
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter((name) => name && name.toLowerCase() !== 'files'),
+  );
+}
 
-    const uploadRepo = page
-      .locator('.fp-repo-name', { hasText: /upload a file|subir un archivo/i })
-      .first();
-    if (await uploadRepo.count()) {
-      await uploadRepo.click();
+// Adjunta UN archivo por el filepicker de Moodle.
+//
+// Moodle no deja un <input type="file"> en el HTML: el filemanager lo crea
+// cuando se abre el picker. Cada paso espera una CONDICIÓN REAL en vez de un
+// tiempo fijo — la primera versión usaba esperas de 800 ms y fallaba de forma
+// intermitente cuando el portal tardaba un poco más.
+async function attachSingleFile(page, filePath) {
+  const nombre = path.basename(filePath);
+
+  // El filemanager avisa que terminó de montarse con la clase fm-loaded.
+  await page.waitForSelector('.filemanager.fm-loaded, [data-fieldtype="filemanager"]', {
+    timeout: PAGE_TIMEOUT_MS,
+  });
+
+  await page.locator('.fp-btn-add a, .fp-btn-add button, [title="Add..."]').first().click({
+    timeout: PAGE_TIMEOUT_MS,
+  });
+
+  // Esperar el modal REAL, no un tiempo arbitrario. `.file-picker` matchea más
+  // de un nodo, así que se espera el que de verdad está visible.
+  await page.locator('.file-picker:visible').first().waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+
+  // El repositorio "Upload a file" no siempre viene preseleccionado.
+  const repo = page.locator('.fp-repo-name', { hasText: /upload a file|subir un archivo/i }).first();
+  if (await repo.count()) {
+    await repo.click({ timeout: PAGE_TIMEOUT_MS });
+  }
+
+  // El input aparece recién cuando el repositorio de subida está activo.
+  const fileInput = page.locator('.file-picker input[type="file"]').first();
+  await fileInput.waitFor({ state: 'attached', timeout: PAGE_TIMEOUT_MS });
+  await fileInput.setInputFiles(filePath, { timeout: PAGE_TIMEOUT_MS });
+
+  await page
+    .locator('.fp-upload-btn, button:has-text("Upload this file"), button:has-text("Subir este archivo")')
+    .first()
+    .click({ timeout: PAGE_TIMEOUT_MS });
+
+  // Si ya había un archivo con el mismo nombre, Moodle pregunta qué hacer.
+  // Sobrescribir es lo que espera quien vuelve a subir una corrección.
+  const overwrite = page.locator('button:has-text("Overwrite"), button:has-text("Sobrescribir")').first();
+  if (await overwrite.count().catch(() => 0)) {
+    await overwrite.click({ timeout: PAGE_TIMEOUT_MS }).catch(() => {});
+  }
+
+  // LA condición de éxito: el archivo figura en el filemanager. Esperar a que
+  // se cierre el modal no alcanza — se cierra antes de que el archivo aparezca.
+  await page
+    .waitForFunction(
+      (esperado) =>
+        Array.from(document.querySelectorAll('.fp-filename')).some((el) =>
+          (el.textContent || '').includes(esperado),
+        ),
+      nombre,
+      { timeout: UPLOAD_TIMEOUT_MS },
+    )
+    .catch(() => {
+      throw new Error(`El archivo "${nombre}" no apareció en iVirtual después de subirlo.`);
+    });
+}
+
+async function attachFiles(page, filePaths) {
+  for (const filePath of filePaths) {
+    const nombre = path.basename(filePath);
+    let ultimoError = null;
+
+    // Un reintento cubre los tropiezos transitorios del portal (JS del picker
+    // lento, un modal que no llegó a montarse). Más de dos vueltas solo alarga
+    // la espera de un fallo real.
+    for (let intento = 1; intento <= 2; intento += 1) {
+      try {
+        await attachSingleFile(page, filePath);
+        ultimoError = null;
+        break;
+      } catch (error) {
+        ultimoError = error;
+        log(`intento ${intento} fallido para "${nombre}":`, error?.message);
+
+        if (intento === 1) {
+          // Recargar deja el formulario en un estado conocido: un modal a medio
+          // abrir bloquea el siguiente intento.
+          await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+          await page.waitForTimeout(1500);
+        }
+      }
     }
 
-    const fileInput = page.locator('.file-picker input[type="file"]').first();
-    await fileInput.setInputFiles(filePath, { timeout: PAGE_TIMEOUT_MS });
-
-    const submitUpload = page
-      .locator('.fp-upload-btn, button:has-text("Upload this file")')
-      .first();
-    await submitUpload.click({ timeout: PAGE_TIMEOUT_MS });
-
-    // El filepicker cierra su modal cuando la subida terminó.
-    await page
-      .waitForSelector('.file-picker', { state: 'hidden', timeout: UPLOAD_TIMEOUT_MS })
-      .catch(() => {});
-    await page.waitForTimeout(800);
+    if (ultimoError) {
+      throw ultimoError;
+    }
   }
 }
 
@@ -383,20 +454,38 @@ async function uploadFiles(assignmentUrl, filePaths) {
 
     await attachFiles(page, filePaths);
 
+    // Guardar y esperar la navegación de verdad: sin esto el paso siguiente
+    // podía leer el estado de la página anterior y reportar cualquier cosa.
     const saveButton = page
       .locator('form button:has-text("Save changes"), form input[value="Save changes"]')
       .first();
-    await saveButton.click({ timeout: PAGE_TIMEOUT_MS });
-    await page.waitForLoadState('domcontentloaded', { timeout: NAV_TIMEOUT_MS }).catch(() => {});
-    await page.waitForTimeout(1500);
+
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => {}),
+      saveButton.click({ timeout: PAGE_TIMEOUT_MS }),
+    ]);
 
     // Releer el estado que quedó DE VERDAD. Con submissiondrafts=No este mismo
     // "Save changes" ya dejó la entrega enviada a calificar, así que no se puede
     // asumir "borrador" ni reportarlo sin mirar.
     const viewUrl = buildViewUrl(assignmentUrl);
     await page.goto(viewUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector('table.generaltable', { timeout: PAGE_TIMEOUT_MS }).catch(() => {});
     const status = await readSubmissionStatus(page);
+
+    // El portal manda: si el archivo no figura en la entrega, la subida no
+    // sirvió por más que los clicks hayan salido bien.
+    const nombresEsperados = filePaths.map((ruta) => path.basename(ruta));
+    const faltantes = nombresEsperados.filter(
+      (nombre) => !(status.archivos || []).some((subido) => subido.includes(nombre)),
+    );
+
+    if (faltantes.length > 0) {
+      return buildError(
+        'UPLOAD_NOT_CONFIRMED',
+        `iVirtual no muestra ${faltantes.join(', ')} en la entrega. Revisá en el portal antes de reintentar.`,
+      );
+    }
 
     return {
       success: true,
@@ -412,8 +501,9 @@ async function uploadFiles(assignmentUrl, filePaths) {
     if (error?.result) {
       return error.result;
     }
+    const detalle = String(error?.message || '').split(String.fromCharCode(10))[0].slice(0, 200);
     log('error subiendo archivos:', error?.message);
-    return buildError('UPLOAD_FAILED', 'No fue posible subir los archivos.');
+    return buildError('UPLOAD_FAILED', `No fue posible subir los archivos. ${detalle}`);
   }
 }
 
@@ -593,7 +683,17 @@ function registerAssignmentUploadHandlers() {
   }
 }
 
+// Solo para pruebas de fiabilidad: adjunta sin guardar, así el filepicker se
+// puede ejercitar repetidas veces sin tocar la entrega real del usuario.
+async function __attachOnly(assignmentUrl, filePaths) {
+  const { page } = await getSession();
+  await page.goto(buildEditUrl(assignmentUrl), { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+  await page.waitForSelector('.filemanager.fm-loaded, [data-fieldtype="filemanager"]', { timeout: PAGE_TIMEOUT_MS });
+  await attachFiles(page, filePaths);
+}
+
 module.exports = {
+  __attachOnly,
   buildEditUrl,
   buildViewUrl,
   closeSession,

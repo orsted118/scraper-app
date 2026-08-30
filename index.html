@@ -90,6 +90,43 @@ img { max-width: 100%; display: block; }
   outline-offset: 3px;
 }
 
+/* ---------- Rejilla de fondo ----------
+   Swiss expone la retícula en vez de esconderla. Son hairlines del mismo
+   token que separa las secciones, no una textura: la misma línea que
+   estructura la página, hecha visible. Se disuelve con una máscara para que
+   no compita con el contenido. */
+
+.grid-bg { position: relative; isolation: isolate; }
+
+.grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(to right,  var(--hairline) 0 1px, transparent 1px 88px),
+    repeating-linear-gradient(to bottom, var(--hairline) 0 1px, transparent 1px 88px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 78%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 78%);
+}
+
+.grid-bg--up::before {
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+  mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+}
+
+/* Icono junto a un rótulo de sección. Hereda el color del rótulo. */
+.kicker-icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  vertical-align: -2px;
+  margin-right: 8px;
+}
+
+.module__kicker { display: flex; align-items: center; }
+
 /* ---------- Rejilla base ---------- */
 
 .wrap {
@@ -530,9 +567,36 @@ p { margin: 0; }
   border-right: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
   padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--ink);
+  transition: background 180ms ease;
 }
 
+.stack__cell:hover { background: var(--ink-raised); }
+
+/* Las marcas viven en monocromo: nueve colores de terceros sueltos romperian
+   la regla de un solo acento que sostiene toda la pagina. El color real
+   aparece al pasar por encima, donde ya es informacion y no ruido. */
+.stack__icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--paper-mute);
+  transition: color 180ms ease;
+}
+
+.stack__cell:hover .stack__icon { color: var(--brand, var(--paper)); }
+
+.stack__icon svg { display: block; }
+
+.stack__text { display: block; min-width: 0; }
+
 .stack__name {
+  display: block;
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
@@ -541,6 +605,7 @@ p { margin: 0; }
 }
 
 .stack__role {
+  display: block;
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.13em;
@@ -625,6 +690,8 @@ p { margin: 0; }
 }
 
 .notice__h {
+  display: flex;
+  align-items: center;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -727,7 +794,7 @@ p { margin: 0; }
 <main id="top">
 
   <!-- ===================== HERO ===================== -->
-  <header class="hero wrap">
+  <header class="hero wrap grid-bg">
     <div class="hero__grid">
       <div>
         <p class="eyebrow eyebrow--hot">Aplicación de escritorio · Windows</p>
@@ -820,7 +887,7 @@ p { margin: 0; }
           </div>
         </figure>
         <div class="module__body">
-          <div class="module__kicker">Actividades · iVirtual</div>
+          <div class="module__kicker"><svg class="kicker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Actividades · iVirtual</div>
           <h2>La consigna completa, no el título</h2>
           <p>
             Cada actividad trae instrucciones íntegras, adjuntos descargables con la sesión del scraper y la fecha
@@ -842,7 +909,7 @@ p { margin: 0; }
           </div>
         </figure>
         <div class="module__body">
-          <div class="module__kicker">Horario · CIA + iVirtual</div>
+          <div class="module__kicker"><svg class="kicker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l4 2.5"/></svg>Horario · CIA + iVirtual</div>
           <h2>Presencial y remoto, por día</h2>
           <p>
             El horario sale de CIA; los enlaces de videollamada, de iVirtual. Una materia puede ser presencial lunes
@@ -864,7 +931,7 @@ p { margin: 0; }
           </div>
         </figure>
         <div class="module__body">
-          <div class="module__kicker">Notificaciones</div>
+          <div class="module__kicker"><svg class="kicker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M6 8.5a6 6 0 0 1 12 0c0 6.5 2.5 8.5 2.5 8.5H3.5S6 15 6 8.5"/><path d="M10.2 20.5a2 2 0 0 0 3.6 0"/></svg>Notificaciones</div>
           <h2>Una bandeja para todo lo que cambió</h2>
           <p>
             Calificación nueva, actividad que vence, clase que arranca, noticia institucional. Todo entra por el mismo
@@ -1035,15 +1102,69 @@ p { margin: 0; }
     <h2>Stack</h2>
 
     <div class="stack">
-      <div class="stack__cell"><div class="stack__name">Electron</div><div class="stack__role">Shell de escritorio · IPC</div></div>
-      <div class="stack__cell"><div class="stack__name">React 18</div><div class="stack__role">Renderer</div></div>
-      <div class="stack__cell"><div class="stack__name">Vite 5</div><div class="stack__role">Build y dev server</div></div>
-      <div class="stack__cell"><div class="stack__name">Playwright</div><div class="stack__role">Scraping de portales</div></div>
-      <div class="stack__cell"><div class="stack__name">Tailwind 3</div><div class="stack__role">Layout</div></div>
-      <div class="stack__cell"><div class="stack__name">electron-builder</div><div class="stack__role">Instalador NSIS</div></div>
-      <div class="stack__cell"><div class="stack__name">electron-updater</div><div class="stack__role">Auto-actualización</div></div>
-      <div class="stack__cell"><div class="stack__name">safeStorage · DPAPI</div><div class="stack__role">Cifrado de credenciales</div></div>
-      <div class="stack__cell"><div class="stack__name">lucide-react</div><div class="stack__role">Iconografía SVG</div></div>
+      <div class="stack__cell" style="--brand:#47848F;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12.0111 0c-.85 0-1.5392.6891-1.5392 1.5392 0 .8501.6891 1.5393 1.5392 1.5393.595 0 1.11-.338 1.3662-.832 2.2208 1.2675 3.847 5.4728 3.847 10.3623 0 2.0715-.2891 4.056-.825 5.7685a.3215.3215 0 0 0 .2107.403.322.322 0 0 0 .4033-.2111c.5558-1.7763.8542-3.8251.8542-5.9604 0-5.1927-1.7717-9.686-4.3206-11.0027.001-.0223.0035-.0443.0035-.0669 0-.85-.6891-1.5392-1.5393-1.5392zm0 .6432a.896.896 0 1 1 0 1.792.896.896 0 1 1 0-1.792zm-5.486 4.3052c-2.067.0074-3.6473.6646-4.3885 1.9485-.7375 1.2774-.5267 2.971.5113 4.7813a.3217.3217 0 0 0 .558-.32C2.271 9.7274 2.089 8.266 2.6938 7.2185c.821-1.422 3.033-1.9552 5.9321-1.4271a.3216.3216 0 0 0 .1153-.6329c-.784-.1428-1.5271-.2125-2.216-.21zm11.0522.0176a.3216.3216 0 0 0-.0084.6432c1.8337.0239 3.1556.5956 3.7502 1.6256.8192 1.419.1798 3.5947-1.7182 5.837a.322.322 0 0 0 .0377.4535.3215.3215 0 0 0 .4532-.0377c2.0535-2.426 2.7708-4.8661 1.7845-6.5744-.7257-1.257-2.26-1.9207-4.299-1.9472zm-2.6984.2924a.3225.3225 0 0 0-.0647.0072c-1.8568.3979-3.8333 1.1755-5.7314 2.2714-4.5699 2.6384-7.5924 6.4948-7.3601 9.3717-.4726.2628-.7928.7664-.7928 1.3455 0 .85.6892 1.5392 1.5393 1.5392.85 0 1.5392-.6891 1.5392-1.5392 0-.8501-.6891-1.5393-1.5392-1.5393-.038 0-.0754.003-.1128.0057-.1002-2.5597 2.7434-6.1412 7.048-8.6265 1.8413-1.063 3.7551-1.8163 5.5445-2.1997a.3217.3217 0 0 0-.07-.636zm-2.8787 6.2364a1.1192 1.1192 0 0 0-.2243.0255c-.6012.1301-.983.7225-.8533 1.3238.1302.6012.7226.9832 1.3238.8533.6012-.1302.9832-.7226.8533-1.3238-.1139-.526-.5816-.8844-1.0995-.8788zM4.532 13.341a.321.321 0 0 0-.2318.0835.3214.3214 0 0 0-.0214.4542c1.2682 1.3936 2.9157 2.701 4.7946 3.7857 4.4146 2.5489 9.1056 3.2849 11.5608 1.8392a1.53 1.53 0 0 0 .8966.2899c.8501 0 1.5392-.6891 1.5392-1.5392 0-.8501-.689-1.5393-1.5392-1.5393-.85 0-1.5392.6892-1.5392 1.5393 0 .276.0737.5344.201.7584-2.2448 1.214-6.631.5002-10.7976-1.9054-1.8228-1.0524-3.418-2.3181-4.6404-3.6614a.3206.3206 0 0 0-.2226-.1049zm-2.0628 4.0172a.896.896 0 1 1 0 1.792.896.896 0 1 1 0-1.792zm19.0616 0a.896.896 0 1 1 0 1.792.891.891 0 0 1-.5864-.2194c-.0025-.004-.0039-.0083-.0066-.0123a.3195.3195 0 0 0-.0957-.0914.896.896 0 0 1 .6887-1.4689zm-14.0045 1.368a.3215.3215 0 0 0-.3207.4296C8.2793 22.154 10.036 24 12.0111 24c1.4406 0 2.7735-.9822 3.8128-2.711a.3215.3215 0 0 0-.11-.4413.3219.3219 0 0 0-.4415.11c-.934 1.5537-2.0812 2.399-3.2613 2.399-1.6407 0-3.2075-1.6465-4.2-4.4179a.3216.3216 0 0 0-.2848-.2126z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">Electron</span>
+          <span class="stack__role">Shell de escritorio · IPC</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#61DAFB;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M14.23 12.004a2.236 2.236 0 0 1-2.235 2.236 2.236 2.236 0 0 1-2.236-2.236 2.236 2.236 0 0 1 2.235-2.236 2.236 2.236 0 0 1 2.236 2.236zm2.648-10.69c-1.346 0-3.107.96-4.888 2.622-1.78-1.653-3.542-2.602-4.887-2.602-.41 0-.783.093-1.106.278-1.375.793-1.683 3.264-.973 6.365C1.98 8.917 0 10.42 0 12.004c0 1.59 1.99 3.097 5.043 4.03-.704 3.113-.39 5.588.988 6.38.32.187.69.275 1.102.275 1.345 0 3.107-.96 4.888-2.624 1.78 1.654 3.542 2.603 4.887 2.603.41 0 .783-.09 1.106-.275 1.374-.792 1.683-3.263.973-6.365C22.02 15.096 24 13.59 24 12.004c0-1.59-1.99-3.097-5.043-4.032.704-3.11.39-5.587-.988-6.38-.318-.184-.688-.277-1.092-.278zm-.005 1.09v.006c.225 0 .406.044.558.127.666.382.955 1.835.73 3.704-.054.46-.142.945-.25 1.44-.96-.236-2.006-.417-3.107-.534-.66-.905-1.345-1.727-2.035-2.447 1.592-1.48 3.087-2.292 4.105-2.295zm-9.77.02c1.012 0 2.514.808 4.11 2.28-.686.72-1.37 1.537-2.02 2.442-1.107.117-2.154.298-3.113.538-.112-.49-.195-.964-.254-1.42-.23-1.868.054-3.32.714-3.707.19-.09.4-.127.563-.132zm4.882 3.05c.455.468.91.992 1.36 1.564-.44-.02-.89-.034-1.345-.034-.46 0-.915.01-1.36.034.44-.572.895-1.096 1.345-1.565zM12 8.1c.74 0 1.477.034 2.202.093.406.582.802 1.203 1.183 1.86.372.64.71 1.29 1.018 1.946-.308.655-.646 1.31-1.013 1.95-.38.66-.773 1.288-1.18 1.87-.728.063-1.466.098-2.21.098-.74 0-1.477-.035-2.202-.093-.406-.582-.802-1.204-1.183-1.86-.372-.64-.71-1.29-1.018-1.946.303-.657.646-1.313 1.013-1.954.38-.66.773-1.286 1.18-1.868.728-.064 1.466-.098 2.21-.098zm-3.635.254c-.24.377-.48.763-.704 1.16-.225.39-.435.782-.635 1.174-.265-.656-.49-1.31-.676-1.947.64-.15 1.315-.283 2.015-.386zm7.26 0c.695.103 1.365.23 2.006.387-.18.632-.405 1.282-.66 1.933-.2-.39-.41-.783-.64-1.174-.225-.392-.465-.774-.705-1.146zm3.063.675c.484.15.944.317 1.375.498 1.732.74 2.852 1.708 2.852 2.476-.005.768-1.125 1.74-2.857 2.475-.42.18-.88.342-1.355.493-.28-.958-.646-1.956-1.1-2.98.45-1.017.81-2.01 1.085-2.964zm-13.395.004c.278.96.645 1.957 1.1 2.98-.45 1.017-.812 2.01-1.086 2.964-.484-.15-.944-.318-1.37-.5-1.732-.737-2.852-1.706-2.852-2.474 0-.768 1.12-1.742 2.852-2.476.42-.18.88-.342 1.356-.494zm11.678 4.28c.265.657.49 1.312.676 1.948-.64.157-1.316.29-2.016.39.24-.375.48-.762.705-1.158.225-.39.435-.788.636-1.18zm-9.945.02c.2.392.41.783.64 1.175.23.39.465.772.705 1.143-.695-.102-1.365-.23-2.006-.386.18-.63.406-1.282.66-1.933zM17.92 16.32c.112.493.2.968.254 1.423.23 1.868-.054 3.32-.714 3.708-.147.09-.338.128-.563.128-1.012 0-2.514-.807-4.11-2.28.686-.72 1.37-1.536 2.02-2.44 1.107-.118 2.154-.3 3.113-.54zm-11.83.01c.96.234 2.006.415 3.107.532.66.905 1.345 1.727 2.035 2.446-1.595 1.483-3.092 2.295-4.11 2.295-.22-.005-.406-.05-.553-.132-.666-.38-.955-1.834-.73-3.703.054-.46.142-.944.25-1.438zm4.56.64c.44.02.89.034 1.345.034.46 0 .915-.01 1.36-.034-.44.572-.895 1.095-1.345 1.565-.455-.47-.91-.993-1.36-1.565z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">React 18</span>
+          <span class="stack__role">Renderer</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#9135FF;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M13.056 23.238a.57.57 0 0 1-1.02-.355v-5.202c0-.63-.512-1.143-1.144-1.143H5.148a.57.57 0 0 1-.464-.903l3.777-5.29c.54-.753 0-1.804-.93-1.804H.57a.574.574 0 0 1-.543-.746.6.6 0 0 1 .08-.157L5.008.78a.57.57 0 0 1 .467-.24h14.589a.57.57 0 0 1 .466.903l-3.778 5.29c-.54.755 0 1.806.93 1.806h5.745c.238 0 .424.138.513.322a.56.56 0 0 1-.063.603z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">Vite 5</span>
+          <span class="stack__role">Build y dev server</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#2EAD33;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><rect x="3" y="4" width="18" height="16"/><path d="M3 8.5h18"/><path d="M10 11.5l5.5 3.5L10 18.5z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">Playwright</span>
+          <span class="stack__role">Scraping de portales</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#06B6D4;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12.001,4.8c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 C13.666,10.618,15.027,12,18.001,12c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C16.337,6.182,14.976,4.8,12.001,4.8z M6.001,12c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 c1.177,1.194,2.538,2.576,5.512,2.576c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C10.337,13.382,8.976,12,6.001,12z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">Tailwind 3</span>
+          <span class="stack__role">Layout</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#9FEAF9;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M12 2.5l9 5v9l-9 5-9-5v-9z"/><path d="M3 7.5l9 5 9-5"/><path d="M12 12.5v9"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">electron-builder</span>
+          <span class="stack__role">Instalador NSIS</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#9FEAF9;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.5v5h-5"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">electron-updater</span>
+          <span class="stack__role">Auto-actualización</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#FF3D00;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><rect x="3.5" y="10.5" width="17" height="10.5"/><path d="M7.5 10.5V6.8a4.5 4.5 0 0 1 9 0v3.7"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">safeStorage · DPAPI</span>
+          <span class="stack__role">Cifrado de credenciales</span>
+        </span>
+      </div>
+      <div class="stack__cell" style="--brand:#F56565;">
+        <span class="stack__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M18.483 1.123a1.09 1.09 0 0 0-.752.362 1.09 1.09 0 0 0 .088 1.54 11.956 11.956 0 0 1 4 8.946 7.62 7.62 0 0 1-7.637 7.636 7.62 7.62 0 0 1-7.637-7.636 3.255 3.255 0 0 1 3.273-3.273c1.82 0 3.273 1.45 3.273 3.273a1.09 1.09 0 0 0 1.09 1.09 1.09 1.09 0 0 0 1.092-1.09c0-3-2.455-5.455-5.455-5.455s-5.454 2.455-5.454 5.455c0 5.408 4.408 9.818 9.818 9.818 5.41 0 9.818-4.41 9.818-9.818A14.16 14.16 0 0 0 19.272 1.4a1.09 1.09 0 0 0-.789-.277ZM9.818 2.15C4.408 2.151 0 6.561 0 11.97a14.16 14.16 0 0 0 4.8 10.637 1.09 1.09 0 0 0 1.54-.096 1.09 1.09 0 0 0-.095-1.54 11.957 11.957 0 0 1-4.063-9 7.62 7.62 0 0 1 7.636-7.637 7.62 7.62 0 0 1 7.637 7.636 3.256 3.256 0 0 1-3.273 3.273 3.256 3.256 0 0 1-3.273-3.273 1.09 1.09 0 0 0-1.09-1.09 1.09 1.09 0 0 0-1.092 1.09c0 3 2.455 5.455 5.455 5.455s5.454-2.455 5.454-5.455c0-5.408-4.408-9.818-9.818-9.818z"/></svg></span>
+        <span class="stack__text">
+          <span class="stack__name">lucide-react</span>
+          <span class="stack__role">Iconografía SVG</span>
+        </span>
+      </div>
     </div>
   </section>
 
@@ -1088,7 +1209,7 @@ p { margin: 0; }
   <hr class="rule">
 
   <!-- ===================== DESCARGA ===================== -->
-  <section class="wrap close" id="descargar">
+  <section class="wrap close grid-bg grid-bg--up" id="descargar">
     <img src="assets/logo.png" alt="" width="72" height="72" style="width:72px;height:72px;margin-bottom:28px;">
     <p class="eyebrow eyebrow--hot">Descargar</p>
     <h2>Probalo en tu equipo</h2>
@@ -1128,7 +1249,7 @@ p { margin: 0; }
     </div>
 
     <div class="notice">
-      <div class="notice__h">Antes de instalar</div>
+      <div class="notice__h"><svg class="kicker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M12 3.5 22 20.5H2z"/><path d="M12 10v4"/><path d="M12 17.2h.01"/></svg>Antes de instalar</div>
       <p>
         El instalador no tiene firma digital de código, así que <b>Windows va a mostrar una advertencia de
         SmartScreen</b>. Es lo normal en software independiente: firmar cuesta una licencia anual. Para continuar,

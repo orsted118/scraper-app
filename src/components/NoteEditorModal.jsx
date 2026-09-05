@@ -30,6 +30,30 @@ const IMPROVE_ERROR_COPY = {
   EMPTY_RESULT: 'La respuesta quedó vacía. Intentá de nuevo.',
 };
 
+// Modelo elegido a mano con click derecho en el botón de mejorar. Se guarda
+// entre sesiones porque es una preferencia de redacción, no del documento:
+// quien encontró el modelo que mejor le escribe no quiere reelegirlo cada vez.
+// localStorage y no settings.json: es preferencia de UI, igual que la paleta
+// reciente del ColorPicker.
+const IMPROVE_MODEL_KEY = 'dvpotro-improve-model';
+
+function readStoredModel() {
+  try {
+    return window.localStorage.getItem(IMPROVE_MODEL_KEY) || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function storeModel(model) {
+  try {
+    if (model) window.localStorage.setItem(IMPROVE_MODEL_KEY, model);
+    else window.localStorage.removeItem(IMPROVE_MODEL_KEY);
+  } catch (_error) {
+    // Sin persistencia la elección dura la sesión; no vale romper el flujo.
+  }
+}
+
 // Ventana para arrepentirse del reemplazo. Larga a propósito: el usuario tiene
 // que poder leer la versión nueva completa antes de decidir.
 const UNDO_TIMEOUT_MS = 8000;
@@ -97,7 +121,7 @@ function IconButton({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage, onToast }) {
+function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTrash, onCreateLabel, onExport, onAttachImage, onRemoveImage, onCopyImage, onDownloadImage, onToast }) {
   const reduced = useReducedMotion();
   const [draft, setDraft] = useState(note);
   const [showColors, setShowColors] = useState(false);
@@ -110,6 +134,8 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
   // permite volver atrás. No hay historial — solo el último reemplazo.
   const [improveBackup, setImproveBackup] = useState(null);
   const [improveToast, setImproveToast] = useState({ visible: false, backend: null });
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(readStoredModel);
   // RichTextEditor fija su innerHTML una sola vez al montar. Aceptar una mejora
   // cambia draft.body pero no volvería a entrar al DOM: bumpear la key lo
   // remonta con el HTML nuevo. Es el mismo mecanismo con el que el modal ya
@@ -188,6 +214,26 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
     if (onToast) onToast(message);
   };
 
+  // La lista sale de qué keys hay cargadas, así que se pide una vez al abrir el
+  // modal y no se cachea entre aperturas: el usuario puede haber tocado el .env.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const result = await window.scraperApp?.llm?.selectableBackends?.();
+      if (!cancelled && result?.ok) setModels(result.backends || []);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectModel = (model) => {
+    setSelectedModel(model);
+    storeModel(model);
+  };
+
   // El editor pasa su HTML vivo. La respuesta del LLM se sanea acá — el handler
   // de main la devuelve cruda a propósito, porque el sanitizer es DOM y vive en
   // el renderer. El reemplazo es directo: el seguro es el toast de deshacer.
@@ -195,7 +241,7 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
     setImproving(true);
 
     try {
-      const result = await window.scraperApp?.notes?.improve?.(html);
+      const result = await window.scraperApp?.notes?.improve?.(html, selectedModel);
 
       if (!result || result.error) {
         flash(improveErrorMessage(result));
@@ -334,8 +380,16 @@ function NoteEditorModal({ note, labels = [], onSave, onClose, onArchive, onTras
               placeholder="Escribe una nota..."
               onAttachImage={onAttachImage ? handleAttachImage : undefined}
               onRemoveImage={handleRemoveImageBySrc}
+              // Copiar y guardar solo necesitan el src del <img>, no la nota:
+              // pasan derecho sin envolver como sí hacen adjuntar y quitar, que
+              // tienen que resolver el draft a un id persistido.
+              onCopyImage={onCopyImage}
+              onDownloadImage={onDownloadImage}
               onImprove={handleImprove}
               improving={improving}
+              models={models}
+              selectedModel={selectedModel}
+              onSelectModel={selectModel}
             />
           ) : (
             <div className="mt-4 space-y-1">

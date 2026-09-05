@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import AttendancePanel from '../components/AttendancePanel';
 import { formatLastSync } from '../utils/formatLastSync';
 import { EASE } from '../utils/motion';
 
@@ -925,6 +926,11 @@ function Horario({
           </div>
         </div>
       ) : null}
+
+      {/* Asistencia arriba del horario: cuando hay una sesión abierta para
+          registrarse es lo más urgente de la pantalla, y la ventana se cierra
+          sola cuando el profe la cierra. */}
+      <AttendancePanel />
 
       {loadingHorario ? (
         <ScheduleSkeleton />

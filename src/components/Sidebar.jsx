@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Clock,
   Info,
+  Library,
   Loader2,
   Music,
   Settings,
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
   { id: 'musica', label: 'Música', icon: Music, target: 'musica' },
   { id: 'notas', label: 'Notas', icon: StickyNote, target: 'notas' },
+  { id: 'material', label: 'Material', icon: Library, target: 'material' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];
 

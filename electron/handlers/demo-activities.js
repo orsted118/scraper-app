@@ -40,6 +40,79 @@ const DEMO_ACTIVITIES = [
     rawSubmission: null,
     url: 'https://ivirtual.itson.mx/mod/assign/view.php?id=demo1',
   },
+  // Réplica del caso real que rompía la clasificación: grupal, sin fecha
+  // publicada, sin botón de entrega porque el profesor todavía no asigna
+  // equipos, con la consigna detrás de un enlace de Drive y la rúbrica en una
+  // tabla fuera de #intro. Antes caía en "cerradas" con las instrucciones
+  // aplanadas y sin rúbrica.
+  {
+    id: 'demo-tda',
+    nombre: 'Asignación 02 - Implementación de Tipos de Datos Abstractos',
+    materia: 'Estructuras de Datos',
+    profesor: 'Francisco Antonio Mejía Domínguez',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    ventana: 'abierta',
+    bloqueo: 'sin_equipo',
+    fechaLimite: 'Sin fecha visible',
+    fechaPublicacion: null,
+    instrucciones:
+      'Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos\n\n' +
+      'Construya los programas de la asignación, teniendo en cuenta los criterios establecidos en la rúbrica de la asignación.\n' +
+      'Subir el archivo comprimido a la plataforma de IVirtual.',
+    instruccionesMarkdown:
+      '[Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos](https://drive.google.com/file/d/1AbCdEf/view)\n\n' +
+      'Construya los programas de la asignación, teniendo en cuenta los criterios establecidos en la rúbrica de la asignación.\n\n' +
+      'Subir el archivo comprimido a la plataforma de [IVirtual](https://ivirtual.itson.edu.mx/mod/assign/view.php?id=1693675).',
+    enlaces: [
+      {
+        texto: 'Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos',
+        url: 'https://drive.google.com/file/d/1AbCdEf/view',
+        tipo: 'google',
+      },
+      {
+        texto: 'IVirtual',
+        url: 'https://ivirtual.itson.edu.mx/mod/assign/view.php?id=1693675',
+        tipo: 'itson',
+      },
+    ],
+    rubrica: {
+      titulo: 'Criterios de calificación',
+      encabezados: ['Criterio', 'No cumple', 'Parcial', 'Casi completo', 'Completo'],
+      filas: [
+        [
+          'Entrega de la asignación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple al menos con uno: archivo comprimido como se especificó, nombre correcto (3 puntos)',
+          'Cumple con 2: incluye el proyecto geometria_ID (7 puntos)',
+          'Cumple con todos: geometria_ID y bolsa_ID (10 puntos)',
+        ],
+        [
+          'Carrera',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple al menos 4 criterios: radio y altura, superficie y volumen (10 puntos)',
+          'Cumple al menos 8: excepción si el radio es negativo, bolsa vacía (20 puntos)',
+          'Cumple con todos: agrega, cuenta, busca, remueve, azar y limpia (30 puntos)',
+        ],
+        [
+          'Codificación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple con 2: métodos de Cilindro y PruebaGeometria (15 puntos)',
+          'Cumple con 3: métodos de Bolsa (25 puntos)',
+          'Cumple con todos: PruebaBolsa ejecuta todas las pruebas pedidas (40 puntos)',
+        ],
+        [
+          'Documentación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple con uno: las clases contienen encabezado (5 puntos)',
+          'Cumple con 2: los métodos están documentados (10 puntos)',
+          'Cumple con todos: documentación completa y consistente (20 puntos)',
+        ],
+      ],
+      markdown: '',
+    },
+    archivos: [],
+  },
   {
     id: 'demo-2',
     nombre: 'Entrega 2: prototipo funcional y documentación técnica',

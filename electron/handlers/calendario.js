@@ -661,7 +661,10 @@ async function run(options = {}) {
   );
   const cached = readCalendarioCache(calendarType);
 
-  if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+  // `force` lo manda una sync que el usuario pidió explícitamente. Sin esto el
+  // botón devolvía la caché y no se re-escaneaba nada: apretarlo dos veces
+  // dentro de la ventana de caché no traía nada nuevo del portal.
+  if (!options?.force && cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
     return {
       ...cached,
       fromCache: true,

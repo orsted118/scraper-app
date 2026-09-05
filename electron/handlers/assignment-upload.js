@@ -168,21 +168,86 @@ async function readSubmissionForm(page) {
     // contra la fecha límite (que no contempla prórrogas del profesor).
     const puedeEntregar = formButtons.some((label) => /save changes|guardar cambios/i.test(label));
 
-    const acceptedRaw = (html.match(/accepted_types"\s*:\s*(\[[^\]]*\])/) || [])[1];
-    let acceptedTypes = [];
-    try {
-      acceptedTypes = acceptedRaw ? JSON.parse(acceptedRaw) : [];
-    } catch (_error) {
-      acceptedTypes = [];
-    }
+    // El filemanager de la ENTREGA es el único que Moodle monta con
+    // M.form_filemanager.init. Los otros bloques de opciones de la página
+    // pertenecen al editor de texto enriquecido (sus pickers de imagen, media y
+    // subtítulos), y aparecen ANTES en el documento.
+    //
+    // Buscar accepted_types en todo el HTML agarraba el primero, que es el
+    // picker de imágenes del editor (.gif/.jpg/.png/.svg): la app creía que la
+    // entrega sólo aceptaba imágenes y rechazaba PDFs que el portal sí acepta.
+    // Medido en "Asignación 01 - Tipos de Datos Abstractos": 14 bloques en la
+    // página, 12 del editor, y el de la entrega acepta [.pdf, .doc, .docx].
+    const readFilemanagerOptions = () => {
+      const anchor = html.indexOf('M.form_filemanager.init');
+      if (anchor === -1) return null;
+
+      const start = html.indexOf('{', anchor);
+      if (start === -1) return null;
+
+      // Recorrido con conciencia de strings: las opciones traen HTML con
+      // comillas escapadas, así que contar llaves a secas corta de más.
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+
+      for (let i = start; i < html.length; i += 1) {
+        const char = html[i];
+
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          if (inString) escaped = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+
+        if (inString) continue;
+
+        if (char === '{') depth += 1;
+        else if (char === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            try {
+              return JSON.parse(html.slice(start, i + 1));
+            } catch (_error) {
+              return null;
+            }
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const fileManager = readFilemanagerOptions();
+
+    // Sin el bloque de la entrega no se adivina: se informa "sin restricción" y
+    // decide el portal. Bloquear por una lista que capaz es del editor es peor
+    // que dejar que iVirtual conteste con el motivo real.
+    const acceptedTypes = Array.isArray(fileManager?.accepted_types) ? fileManager.accepted_types : [];
+
+    const numberOf = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
 
     return {
       puedeEntregar,
       formButtons,
       aceptaArchivos: Boolean(main.querySelector('[data-fieldtype="filemanager"], .filemanager')),
       aceptaTexto: Boolean(main.querySelector('textarea[name*="onlinetext"]')),
-      maxBytes: pickNumber(/maxbytes"\s*:\s*"?(\d+)"?/),
-      maxFiles: pickNumber(/maxfiles"\s*:\s*"?(-?\d+)"?/),
+      // Mismo motivo que accepted_types: los límites del editor no son los de
+      // la entrega. Sólo se cae al regex global si no se encontró el bloque.
+      maxBytes: fileManager ? numberOf(fileManager.maxbytes) : pickNumber(/maxbytes"\s*:\s*"?(\d+)"?/),
+      maxFiles: fileManager ? numberOf(fileManager.maxfiles) : pickNumber(/maxfiles"\s*:\s*"?(-?\d+)"?/),
       // Lista vacía = sin restricción de extensión.
       acceptedTypes,
       requiereDeclaracion: Boolean(main.querySelector('input[type="checkbox"][name*="submissionstatement"]')),
@@ -224,6 +289,129 @@ async function getUploadInfo(assignmentUrl) {
 // Validación local — antes de tocar el portal
 // ---------------------------------------------------------------------------
 
+// `accepted_types` de Moodle admite cuatro sintaxis mezcladas en la misma lista:
+// extensiones (".pdf" o "pdf"), grupos ("document", "image"), mimetypes
+// ("application/pdf") y el comodín "*". El portal de ITSON expande los grupos a
+// extensiones antes de mandarlos, pero la sintaxis de grupo es válida y otras
+// instalaciones la emiten tal cual.
+//
+// Sólo se listan los grupos estables de Moodle. Uno que no esté acá se trata
+// como no interpretable a propósito: ver isExtensionRejected.
+const MOODLE_TYPE_GROUPS = {
+  archive: ['.7z', '.bdoc', '.cdoc', '.ddoc', '.gtar', '.tgz', '.gz', '.gzip', '.hqx', '.rar', '.sit', '.tar', '.zip'],
+  audio: ['.aac', '.aif', '.aiff', '.aifc', '.au', '.flac', '.m3u', '.m4a', '.mp3', '.oga', '.ogg', '.ra', '.ram', '.rm', '.wav', '.wma'],
+  document: ['.doc', '.docx', '.epub', '.gdoc', '.odt', '.oth', '.ott', '.pdf', '.rtf', '.txt'],
+  image: ['.bmp', '.cur', '.gif', '.ico', '.jpe', '.jpeg', '.jpg', '.png', '.svg', '.svgz', '.tif', '.tiff', '.webp'],
+  presentation: ['.gslides', '.odp', '.otp', '.pps', '.ppt', '.pptx'],
+  spreadsheet: ['.csv', '.gsheet', '.ods', '.ots', '.xls', '.xlsx'],
+  video: ['.3gp', '.asf', '.avi', '.dif', '.dv', '.f4v', '.flv', '.fmp4', '.m4v', '.mov', '.movie', '.mp4', '.mpe', '.mpeg', '.mpg', '.ogv', '.qt', '.rmvb', '.rv', '.ts', '.webm', '.wmv'],
+  web_file: ['.htm', '.html', '.xhtml'],
+  web_image: ['.gif', '.jpe', '.jpeg', '.jpg', '.png', '.svg', '.svgz'],
+};
+
+MOODLE_TYPE_GROUPS.media = [...MOODLE_TYPE_GROUPS.audio, ...MOODLE_TYPE_GROUPS.video];
+
+// Grupos que existen en Moodle pero cuya lista no se modela acá: o cambian entre
+// versiones ("sourcecode" son decenas de lenguajes) o dependen de qué formatos
+// soporte el navegador. Se nombran igual para NO confundirlos con extensiones:
+// sin esta lista, "sourcecode" pasaba por extensión ".sourcecode" y hacía que la
+// validación rechazara archivos que el portal acepta.
+const UNMODELED_TYPE_GROUPS = new Set([
+  'html_audio',
+  'html_track',
+  'html_video',
+  'optimised_image',
+  'sourcecode',
+  'web_audio',
+  'web_video',
+]);
+
+// Suficiente para los mimetypes que Moodle usa en entregas. No pretende ser la
+// tabla completa: lo que no esté acá cae en "no interpretable" y no bloquea.
+const MIME_EXTENSIONS = {
+  'application/pdf': ['.pdf'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.ms-powerpoint': ['.ppt'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+  'application/zip': ['.zip'],
+  'text/plain': ['.txt'],
+};
+
+// Devuelve las extensiones que representa un token, o null si no se sabe.
+function expandAcceptedType(token) {
+  const value = String(token || '').trim().toLowerCase();
+
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith('.')) {
+    return [value];
+  }
+
+  if (MOODLE_TYPE_GROUPS[value]) {
+    return MOODLE_TYPE_GROUPS[value];
+  }
+
+  if (UNMODELED_TYPE_GROUPS.has(value)) {
+    return null;
+  }
+
+  if (value.includes('/')) {
+    // Un mimetype con comodín ("image/*") no se puede acotar sin la tabla
+    // completa de Moodle: mejor no opinar.
+    return MIME_EXTENSIONS[value] || null;
+  }
+
+  // "pdf" sin punto: Moodle lo acepta como extensión.
+  if (/^[a-z0-9]+$/.test(value)) {
+    return [`.${value}`];
+  }
+
+  return null;
+}
+
+// Rechaza SÓLO cuando se entienden todos los tokens y ninguno matchea.
+//
+// El portal es la autoridad sobre qué acepta: esta validación existe para
+// ahorrarle al usuario un viaje al portal, no para vetar archivos. Ante un token
+// que no se sabe leer, se deja pasar y que conteste iVirtual con el motivo real
+// — bloquear de más fue justo lo que rompió la entrega de un PDF válido.
+function isExtensionRejected(ext, accepted) {
+  if (!ext) {
+    return false;
+  }
+
+  const expanded = [];
+
+  for (const token of accepted) {
+    if (String(token).trim() === '*') {
+      return false;
+    }
+
+    const extensions = expandAcceptedType(token);
+
+    if (!extensions) {
+      return false;
+    }
+
+    expanded.push(...extensions);
+  }
+
+  return expanded.length > 0 && !expanded.includes(ext);
+}
+
+// Los grupos se muestran ya expandidos: "document" no le dice nada al usuario.
+function describeAcceptedTypes(accepted) {
+  const expanded = accepted.flatMap((token) => expandAcceptedType(token) || [String(token)]);
+  const unicas = [...new Set(expanded)];
+
+  return unicas.length > 6 ? `${unicas.slice(0, 6).join(', ')} y otros` : unicas.join(', ');
+}
+
 function validateFiles(filePaths, info) {
   const problems = [];
   const accepted = Array.isArray(info.acceptedTypes) ? info.acceptedTypes : [];
@@ -263,9 +451,11 @@ function validateFiles(filePaths, info) {
     // Lista vacía significa "cualquier extensión", no "ninguna".
     if (accepted.length > 0) {
       const ext = path.extname(nombre).toLowerCase();
-      const permitido = accepted.some((tipo) => String(tipo).toLowerCase() === ext);
-      if (!permitido) {
-        problems.push(`"${nombre}" tiene extensión ${ext || 'desconocida'} y no está permitida.`);
+
+      if (isExtensionRejected(ext, accepted)) {
+        problems.push(
+          `"${nombre}" tiene extensión ${ext || 'desconocida'} y la entrega acepta ${describeAcceptedTypes(accepted)}.`,
+        );
       }
     }
   });
@@ -313,15 +503,6 @@ async function readSubmissionStatus(page) {
         .filter(Boolean),
     };
   });
-}
-
-// Nombres tal como los muestra el filemanager en este momento.
-async function listFilemanagerFiles(page) {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll('.fp-filename'))
-      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
-      .filter((name) => name && name.toLowerCase() !== 'files'),
-  );
 }
 
 // Adjunta UN archivo por el filepicker de Moodle.
@@ -697,6 +878,8 @@ module.exports = {
   buildEditUrl,
   buildViewUrl,
   closeSession,
+  describeAcceptedTypes,
+  isExtensionRejected,
   getUploadInfo,
   registerAssignmentUploadHandlers,
   removeDraftFile,

@@ -1,10 +1,17 @@
-import { Bold, ImagePlus, Italic, Rocket, Sparkles, Strikethrough, Type, Underline, X } from 'lucide-react';
+import { Bold, Check, Copy, Download, ImagePlus, Italic, Rocket, Sparkles, Strikethrough, Type, Underline, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { sanitizeNoteHtml } from '../utils/sanitizeNoteHtml';
 import { NOTE_COLORS } from '../utils/noteColors';
 
 const IMAGE_MIME = /^image\/(png|jpeg|webp|gif)$/;
+
+// Ancho de cada botón de la barra flotante sobre una imagen: ícono de 12px más
+// 4px de padding por lado. Hace falta el número para mantener la barra dentro
+// del editor: el cuerpo del modal es `overflow-y-auto` y recorta lo que sobresale,
+// así que un botón que se salga no solo se ve cortado — el click lo recibe el
+// fondo del modal, que cierra la nota.
+const IMAGE_BUTTON_PX = 20;
 
 // Escapa valores de atributo antes de armar HTML a mano — insertHTML no pasa por
 // el sanitizer DOM, así que un src/alt con <>&" rompería el markup o inyectaría.
@@ -17,14 +24,67 @@ const escAttr = (s) => (s || '')
 // Editor de texto enriquecido cero-dep: contentEditable + execCommand. Electron
 // es Chromium fijo, así que el "deprecated" de execCommand no muerde. El HTML se
 // sanitiza (allowlist DOM) al reportar cambios, al montar y al pegar.
-function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onRemoveImage, onImprove, improving = false }) {
+function RichTextEditor({
+  initialHtml,
+  onChange,
+  placeholder,
+  onAttachImage,
+  onRemoveImage,
+  onCopyImage,
+  onDownloadImage,
+  onImprove,
+  improving = false,
+  models = [],
+  selectedModel = null,
+  onSelectModel,
+}) {
   const reduced = useReducedMotion();
   const ref = useRef(null);
   const fileInputRef = useRef(null);
   const savedRangeRef = useRef(null);
+  const modelMenuRef = useRef(null);
   const [showColor, setShowColor] = useState(false);
+  const [showModels, setShowModels] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [hoverImg, setHoverImg] = useState(null); // { top, left, el }
+
+  const selected = models.find((model) => model.id === selectedModel) || null;
+  // El default del pool es el primero del orden de preferencia; el backend lo
+  // marca para no duplicar acá la lógica de cuál gana.
+  const autoHint = models.find((model) => model.isDefault)?.label || null;
+  const improveTitle = selected
+    ? `Mejorar con ${selected.label} — click derecho para cambiar`
+    : 'Mejorar con IA — click derecho para elegir modelo';
+
+  // Un menú que sólo se cierra eligiendo algo queda trabado si el usuario
+  // clickea al lado. Se escucha en captura para ganarle al onMouseDown del
+  // toolbar, que devuelve el foco al editor.
+  useEffect(() => {
+    if (!showModels) return undefined;
+
+    const close = (event) => {
+      if (!modelMenuRef.current?.contains(event.target)) setShowModels(false);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') setShowModels(false);
+    };
+
+    document.addEventListener('mousedown', close, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showModels]);
+
+  // La lista llega asincrónica: si el modelo guardado ya no está configurado
+  // (se sacó la key del .env), se vuelve a Automático en vez de fallar al
+  // primer intento con un error que el usuario no puede explicarse.
+  useEffect(() => {
+    if (selectedModel && models.length > 0 && !models.some((model) => model.id === selectedModel)) {
+      onSelectModel?.(null);
+    }
+  }, [models, selectedModel, onSelectModel]);
 
   // El innerHTML se fija UNA vez al montar (el modal remonta el editor por nota).
   useEffect(() => {
@@ -116,13 +176,34 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
     handleFiles(files);
   };
 
-  // Hover sobre una imagen inline → botón flotante X para quitarla.
+  // Hover sobre una imagen inline → barra flotante para copiarla, guardarla o
+  // quitarla. Se apoya en la esquina superior derecha de la imagen, pero el
+  // resultado se recorta al ancho del editor: sobre una imagen angosta o pegada
+  // a un borde, la barra de tres botones se salía y sus clicks caían en el fondo
+  // del modal.
   const handleMouseOver = (event) => {
     if (event.target.tagName === 'IMG' && ref.current) {
       const wrapRect = ref.current.getBoundingClientRect();
       const imgRect = event.target.getBoundingClientRect();
-      setHoverImg({ top: imgRect.top - wrapRect.top + 4, left: imgRect.right - wrapRect.left - 24, el: event.target });
+      const barWidth = IMAGE_BUTTON_PX * (1 + (onCopyImage ? 1 : 0) + (onDownloadImage ? 1 : 0));
+      const preferredLeft = imgRect.right - wrapRect.left - barWidth - 4;
+
+      setHoverImg({
+        top: imgRect.top - wrapRect.top + 4,
+        left: Math.max(0, Math.min(preferredLeft, wrapRect.width - barWidth)),
+        el: event.target,
+      });
     }
+  };
+
+  const copyHoveredImage = () => {
+    const img = hoverImg?.el;
+    if (img) onCopyImage?.(img.getAttribute('src'), img.getAttribute('alt'));
+  };
+
+  const downloadHoveredImage = () => {
+    const img = hoverImg?.el;
+    if (img) onDownloadImage?.(img.getAttribute('src'), img.getAttribute('alt'));
   };
 
   const removeHoveredImage = async () => {
@@ -174,34 +255,81 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
             Botón manual y no ToolbarButton: es el único del toolbar con ícono
             animado, y ToolbarButton solo acepta un componente de ícono. */}
         {onImprove ? (
-          <button
-            type="button"
-            onMouseDown={preserveSelection}
-            // El HTML vivo del DOM, no initialHtml: eso quedó congelado al montar.
-            onClick={() => onImprove(ref.current?.innerHTML || '')}
-            disabled={improving}
-            aria-label="Mejorar con IA"
-            aria-busy={improving}
-            title="Mejorar con IA"
-            className="p-1.5 disabled:cursor-default disabled:opacity-60"
-            style={{ color: improving ? 'var(--accent)' : 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
-          >
-            {improving ? (
-              // Cohete despegando: sube y se desvanece en loop. El recorrido es
-              // corto (6px) porque el botón mide 28px y con más se sale de caja.
-              // Con reduced motion queda quieto: el ícono distinto y el disabled
-              // ya comunican que está trabajando.
-              <motion.span
-                className="inline-flex"
-                animate={reduced ? {} : { y: [0, -6, 0], opacity: [1, 0.35, 1] }}
-                transition={{ duration: reduced ? 0 : 1.1, repeat: Infinity, ease: 'easeInOut' }}
+          <div className="relative">
+            <button
+              type="button"
+              onMouseDown={preserveSelection}
+              // El HTML vivo del DOM, no initialHtml: eso quedó congelado al montar.
+              onClick={() => onImprove(ref.current?.innerHTML || '')}
+              // Click derecho = elegir con qué modelo mejorar. Va acá y no en un
+              // ajuste aparte porque la elección es por nota y por intento: si un
+              // modelo redactó feo, se deshace y se reintenta con otro sin salir
+              // del editor.
+              onContextMenu={(event) => {
+                if (!models.length) return;
+                event.preventDefault();
+                setShowModels((visible) => !visible);
+              }}
+              disabled={improving}
+              aria-label="Mejorar con IA"
+              aria-busy={improving}
+              aria-haspopup={models.length > 0 ? 'menu' : undefined}
+              aria-expanded={models.length > 0 ? showModels : undefined}
+              title={improveTitle}
+              className="p-1.5 disabled:cursor-default disabled:opacity-60"
+              style={{ color: improving ? 'var(--accent)' : 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
+            >
+              {improving ? (
+                // Cohete despegando: sube y se desvanece en loop. El recorrido es
+                // corto (6px) porque el botón mide 28px y con más se sale de caja.
+                // Con reduced motion queda quieto: el ícono distinto y el disabled
+                // ya comunican que está trabajando.
+                <motion.span
+                  className="inline-flex"
+                  animate={reduced ? {} : { y: [0, -6, 0], opacity: [1, 0.35, 1] }}
+                  transition={{ duration: reduced ? 0 : 1.1, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Rocket className="h-4 w-4" strokeWidth={1.5} />
+                </motion.span>
+              ) : (
+                <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+              )}
+            </button>
+
+            {showModels ? (
+              <div
+                ref={modelMenuRef}
+                role="menu"
+                aria-label="Modelo para mejorar"
+                className="absolute right-0 top-full z-20 mt-1 min-w-[180px] border py-1"
+                style={{ borderColor: 'var(--border-normal)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
               >
-                <Rocket className="h-4 w-4" strokeWidth={1.5} />
-              </motion.span>
-            ) : (
-              <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-            )}
-          </button>
+                <ModelOption
+                  label="Automático"
+                  hint={autoHint}
+                  selected={!selectedModel}
+                  onSelect={() => {
+                    onSelectModel?.(null);
+                    setShowModels(false);
+                  }}
+                />
+
+                <div className="my-1 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+
+                {models.map((model) => (
+                  <ModelOption
+                    key={model.id}
+                    label={model.label}
+                    selected={selectedModel === model.id}
+                    onSelect={() => {
+                      onSelectModel?.(model.id);
+                      setShowModels(false);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -214,11 +342,16 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
         onChange={onFileInputChange}
       />
 
+      {/* El onMouseLeave vive acá y no en el contentEditable: la barra flotante
+          es hermana suya, no hija, así que mover el puntero de la imagen al
+          botón salía del editable y desmontaba la barra antes de que el click
+          llegara a registrarse. */}
       <div
         className="relative"
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
+        onMouseLeave={() => setHoverImg(null)}
       >
         <div
           ref={ref}
@@ -229,7 +362,6 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
           onBlur={() => { saveSelection(); report(); }}
           onPaste={handlePaste}
           onMouseOver={handleMouseOver}
-          onMouseLeave={() => setHoverImg(null)}
           data-placeholder={placeholder}
           className="note-rich-editor min-h-[8rem] w-full text-sm leading-6 outline-none"
           style={{ color: 'var(--text-normal)', fontFamily: 'var(--font-body, inherit)' }}
@@ -248,18 +380,47 @@ function RichTextEditor({ initialHtml, onChange, placeholder, onAttachImage, onR
         ) : null}
 
         {hoverImg ? (
-          <button
-            type="button"
-            onClick={removeHoveredImage}
-            aria-label="Quitar imagen"
-            className="absolute z-10 p-1"
-            style={{ top: `${hoverImg.top}px`, left: `${hoverImg.left}px`, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 'var(--radius-badge, 0px)' }}
+          <div
+            className="absolute z-10 flex items-center"
+            style={{
+              top: `${hoverImg.top}px`,
+              left: `${hoverImg.left}px`,
+              background: 'rgba(0,0,0,0.72)',
+              borderRadius: 'var(--radius-badge, 0px)',
+            }}
           >
-            <X className="h-3 w-3" strokeWidth={2} />
-          </button>
+            {onCopyImage ? (
+              <ImageActionButton icon={Copy} label="Copiar imagen" onClick={copyHoveredImage} />
+            ) : null}
+            {onDownloadImage ? (
+              <ImageActionButton icon={Download} label="Descargar imagen" onClick={downloadHoveredImage} />
+            ) : null}
+            <ImageActionButton icon={X} label="Quitar imagen" onClick={removeHoveredImage} />
+          </div>
         ) : null}
       </div>
     </div>
+  );
+}
+
+// Botón de la barra flotante sobre una imagen. Tinta blanca fija y no un token:
+// va sobre un fondo negro translúcido propio, que no cambia con el tema.
+function ImageActionButton({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      // El editor pierde el foco al clickear afuera y con él la selección
+      // guardada; ninguna de estas acciones escribe en el documento, así que se
+      // preserva igual que en el toolbar.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="p-1"
+      style={{ color: '#fff' }}
+    >
+      <Icon className="h-3 w-3" strokeWidth={2} />
+    </button>
   );
 }
 
@@ -275,6 +436,33 @@ function ToolbarButton({ icon: Icon, label, onMouseDown, onClick }) {
       style={{ color: 'var(--text-muted)', borderRadius: 'var(--radius-button, 0px)' }}
     >
       <Icon className="h-4 w-4" strokeWidth={1.5} />
+    </button>
+  );
+}
+
+// Fila del menú de modelos. El check ocupa lugar aunque no se muestre, para que
+// las etiquetas queden alineadas y la lista no salte al cambiar de selección.
+function ModelOption({ label, hint, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={selected}
+      // El toolbar usa onMouseDown para preservar la selección del editor; acá se
+      // frena para que el listener de "click afuera" no cierre el menú antes de
+      // que corra el onClick de esta misma fila.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSelect}
+      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs"
+      style={{ color: selected ? 'var(--accent)' : 'var(--text-normal)' }}
+    >
+      <Check className="h-3 w-3 shrink-0" strokeWidth={2} style={{ opacity: selected ? 1 : 0 }} />
+      <span className="flex-1 truncate">{label}</span>
+      {hint ? (
+        <span className="shrink-0 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          {hint}
+        </span>
+      ) : null}
     </button>
   );
 }

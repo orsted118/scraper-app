@@ -7,6 +7,7 @@ import {
   Columns3,
   EyeOff,
   LayoutGrid,
+  Link as LinkIcon,
   List,
   Paperclip,
   RefreshCw,
@@ -21,6 +22,7 @@ import { useMemo, useState } from 'react';
 import ActivityCard from '../components/ActivityCard';
 import useHiddenActivities from '../hooks/useHiddenActivities';
 import { formatLastSync } from '../utils/formatLastSync';
+import { diasHastaVencimiento, parseFechaPortal } from '../utils/fechas';
 import { EASE } from '../utils/motion';
 
 
@@ -50,14 +52,7 @@ const STATUS_ORDER = {
 };
 
 
-function parseSort(fechaLimite) {
-  if (!fechaLimite || fechaLimite === 'Sin fecha visible') {
-    return null;
-  }
-
-  const parsed = Date.parse(fechaLimite);
-  return Number.isNaN(parsed) ? null : parsed;
-}
+const parseSort = parseFechaPortal;
 
 function compareText(left = '', right = '') {
   return left.localeCompare(right, 'es', { sensitivity: 'base', numeric: true });
@@ -123,14 +118,23 @@ function getRemainingLabel(deadline) {
     return '';
   }
 
-  const dayMs = 24 * 60 * 60 * 1000;
-  const remainingDays = Math.ceil((deadline.getTime() - Date.now()) / dayMs);
+  // Días de calendario: con `ceil` sobre milisegundos, una entrega de hoy a las
+  // 23:00 vista a las 21:00 daba 1 y se anunciaba como "Falta 1 día".
+  const days = diasHastaVencimiento(deadline);
 
-  if (remainingDays <= 0) {
+  if (days === null) {
+    return '';
+  }
+
+  if (days <= 0) {
     return 'Vence hoy';
   }
 
-  return `Faltan ${remainingDays} día${remainingDays === 1 ? '' : 's'}`;
+  if (days === 1) {
+    return 'Vence mañana';
+  }
+
+  return `Faltan ${days} días`;
 }
 
 function getLateLabel(deadline) {
@@ -138,8 +142,11 @@ function getLateLabel(deadline) {
     return '';
   }
 
+  // floor y no ceil, igual que ActivityCard: Moodle cuenta días COMPLETOS
+  // vencidos. Con ceil las dos pantallas mostraban un día distinto del mismo
+  // retraso.
   const dayMs = 24 * 60 * 60 * 1000;
-  const lateDays = Math.max(1, Math.ceil((Date.now() - deadline.getTime()) / dayMs));
+  const lateDays = Math.max(1, Math.floor((Date.now() - deadline.getTime()) / dayMs));
   return `${lateDays} día${lateDays === 1 ? '' : 's'} de retraso`;
 }
 
@@ -548,6 +555,7 @@ function Actividades({
         const isExpanded = expandedId === anchorId;
         const tone = getStatusTone(activity.estado);
         const attachments = getActivityAttachments(activity);
+        const links = Array.isArray(activity.enlaces) ? activity.enlaces : [];
         const instructions = (activity.instrucciones || '').trim();
 
         return (
@@ -613,6 +621,29 @@ function Actividades({
                         Sin instrucciones visibles.
                       </p>
                     )}
+
+                    {links.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {links.map((link) => (
+                          <button
+                            key={link.url}
+                            type="button"
+                            title={link.url}
+                            onClick={() => window.scraperApp?.openExternal?.(link.url)}
+                            className="hov-accent inline-flex max-w-full items-center gap-2 border px-3 py-1.5 text-xs"
+                            style={{
+                              borderColor: 'var(--border-normal)',
+                              background: 'var(--bg-secondary)',
+                              color: 'var(--text-normal)',
+                              borderRadius: 'var(--radius-badge, 0px)',
+                            }}
+                          >
+                            <LinkIcon className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{link.texto}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
 
                     {attachments.length > 0 ? (
                       <div className="flex flex-wrap gap-2">

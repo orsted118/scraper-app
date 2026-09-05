@@ -1,7 +1,9 @@
 const { OpenAICompatibleBackend } = require('./base');
 
 const ENV_BASE = 'MISTRAL_API_KEY';
-const DEFAULT_MODEL = process.env.MISTRAL_MODEL || 'mistral-large-latest';
+// mistral-large-latest no responde en la free tier: se come el timeout entero
+// antes de rotar. small contesta el mismo prompt en ~1s.
+const DEFAULT_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest';
 
 class MistralBackend extends OpenAICompatibleBackend {
   constructor(slot) {

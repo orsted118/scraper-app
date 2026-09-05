@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('scraperApp', {
   clearCache: () => ipcRenderer.invoke('scraper:clear-cache'),
   runScraper: (payload) => ipcRenderer.invoke('scraper:run', payload),
   runCIA: () => ipcRenderer.invoke('cia:run'),
-  runHorario: () => ipcRenderer.invoke('horario:run'),
+  runHorario: (options) => ipcRenderer.invoke('horario:run', options || {}),
   runCalendario: (options) => ipcRenderer.invoke('calendario:run', options || {}),
   clearCIACache: () => ipcRenderer.invoke('cia:clear-cache'),
   clearHorarioCache: () => ipcRenderer.invoke('horario:clear-cache'),
@@ -174,17 +174,59 @@ contextBridge.exposeInMainWorld('scraperApp', {
     snoozeReminder: (id, minutes) => ipcRenderer.invoke('notes:snooze-reminder', { id, minutes }),
     duplicate: (id) => ipcRenderer.invoke('notes:duplicate', id),
     exportMarkdown: (id) => ipcRenderer.invoke('notes:export-markdown', id),
-    improve: (html) => ipcRenderer.invoke('notes:improve', { html }),
+    improve: (html, backend) => ipcRenderer.invoke('notes:improve', { html, backend }),
     bulkAction: (ids, action, payload) => ipcRenderer.invoke('notes:bulk-action', { ids, action, payload }),
     attachImage: (noteId, arrayBuffer, filename, mime) => ipcRenderer.invoke('notes:attach-image', { noteId, arrayBuffer, filename, mime }),
     removeAttachment: (noteId, attachmentId) => ipcRenderer.invoke('notes:remove-attachment', { noteId, attachmentId }),
+    copyImage: (src) => ipcRenderer.invoke('notes:copy-image', src),
+    saveImage: (src, filename) => ipcRenderer.invoke('notes:save-image', { src, filename }),
   },
   // Diagnóstico de los backends LLM. Solo lectura: nada de acá cambia el
   // routing ni expone el valor de las keys, apenas sus nombres de variable.
+  prompt: {
+    generate: (payload) => ipcRenderer.invoke('prompt:generate', payload),
+    getCached: (activityId, modo) => ipcRenderer.invoke('prompt:get-cached', { activityId, modo }),
+    modes: () => ipcRenderer.invoke('prompt:modes'),
+    // Reunir el contexto baja y parsea los adjuntos: sin progreso la UI queda
+    // muda mientras se descargan.
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on('prompt:progress', listener);
+      return () => ipcRenderer.removeListener('prompt:progress', listener);
+    },
+  },
+  attendance: {
+    getCached: () => ipcRenderer.invoke('attendance:get-cached'),
+    sync: () => ipcRenderer.invoke('attendance:sync'),
+    // Lee qué estados ofrece el portal para armar la confirmación. No marca.
+    peekOptions: (url) => ipcRenderer.invoke('attendance:peek-options', { url }),
+    // ÚNICO canal que escribe. Sale de un click explícito del usuario, nunca
+    // de una sync ni de un temporizador.
+    mark: (payload) => ipcRenderer.invoke('attendance:mark', payload),
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on('attendance:progress', listener);
+      return () => ipcRenderer.removeListener('attendance:progress', listener);
+    },
+  },
+  material: {
+    getCached: () => ipcRenderer.invoke('material:get-cached'),
+    sync: () => ipcRenderer.invoke('material:sync'),
+    download: (payload) => ipcRenderer.invoke('material:download', payload),
+    openExternal: (url) => ipcRenderer.invoke('material:open-external', url),
+    openFile: (filePath) => ipcRenderer.invoke('material:open-file', filePath),
+    // El scrape recorre curso por curso: sin progreso la UI queda 25s muda.
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on('material:progress', listener);
+      return () => ipcRenderer.removeListener('material:progress', listener);
+    },
+  },
   llm: {
     probeAll: (opts) => ipcRenderer.invoke('llm:probe-all', opts),
     usageStats: (opts) => ipcRenderer.invoke('llm:usage-stats', opts),
     currentOrder: () => ipcRenderer.invoke('llm:current-order'),
+    selectableBackends: () => ipcRenderer.invoke('llm:selectable-backends'),
   },
 });
 

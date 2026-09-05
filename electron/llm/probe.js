@@ -1,24 +1,13 @@
 // Health check de los backends: pega una request mínima contra cada key del
 // .env y reporta cuál responde. Es diagnóstico puro — NO toca los cooldowns del
 // key-pool, así que probar no saca keys de producción ni las revive.
-const { CerebrasBackend, ENV_BASE: CEREBRAS_ENV } = require('./backends/cerebras-backend');
-const { GitHubBackend, ENV_BASE: GITHUB_ENV } = require('./backends/github-backend');
-const { MistralBackend, ENV_BASE: MISTRAL_ENV } = require('./backends/mistral-backend');
-const { GeminiBackend, ENV_BASE: GEMINI_ENV } = require('./backends/gemini-backend');
-const { GroqBackend, ENV_BASE: GROQ_ENV } = require('./backends/groq-backend');
 const { discoverKeySlots, isCoolingDown } = require('./key-pool');
+const { REGISTRY } = require('./selector');
 const { logUsage } = require('./usage-log');
 
-// Mismo registro que selector.js. Se duplica a propósito: importar el selector
-// arrastraría su lógica de preferencia, que acá no aplica — el probe recorre
-// TODO, incluso los backends que el selector saltearía.
-const REGISTRY = {
-  cerebras: { envBase: CEREBRAS_ENV, Backend: CerebrasBackend },
-  github: { envBase: GITHUB_ENV, Backend: GitHubBackend },
-  mistral: { envBase: MISTRAL_ENV, Backend: MistralBackend },
-  gemini: { envBase: GEMINI_ENV, Backend: GeminiBackend },
-  groq: { envBase: GROQ_ENV, Backend: GroqBackend },
-};
+// El registro sale del selector en vez de duplicarse: cuando el registro estaba
+// copiado acá, agregar un backend y olvidarse de esta copia dejaba al probe
+// reportando "todo bien" sobre un proveedor que ni se probaba.
 
 // El prompt más corto que igual ejercita el camino completo (auth, modelo,
 // parseo).
@@ -49,6 +38,10 @@ async function probeSlot(backendName, slot, { skipLog = false } = {}) {
 
   if (!entry) {
     return { ...base, ok: false, latencyMs: null, error: `Backend desconocido: ${backendName}` };
+  }
+
+  if (entry.ready && !entry.ready()) {
+    return { ...base, ok: false, latencyMs: null, error: `${backendName}: falta configuración además de la key (revisá el .env).` };
   }
 
   const startedAt = Date.now();
@@ -97,8 +90,12 @@ function listSlots() {
   const out = [];
 
   for (const [name, entry] of Object.entries(REGISTRY)) {
+    // Un backend puede tener key y aun así estar incompleto (cloudflare sin
+    // account id). Se lista igual para que la UI lo muestre, con la razón.
+    const missingConfig = entry.ready && !entry.ready();
+
     for (const slot of discoverKeySlots(entry.envBase)) {
-      out.push({ name, slot });
+      out.push({ name, slot, missingConfig });
     }
   }
 
@@ -135,11 +132,12 @@ async function probeAllBackends({ parallel = 3, force = false, skipLog = false, 
 // Cuántas keys hay por backend sin gastar una sola request. Sirve para que la
 // UI dibuje la lista antes de que termine el probe.
 function listConfiguredSlots() {
-  return listSlots().map(({ name, slot }) => ({
+  return listSlots().map(({ name, slot, missingConfig }) => ({
     backend: name,
     keyEnvVar: slot.envVar,
     keyIndex: slot.index,
     coolingDown: isCoolingDown(slot),
+    missingConfig: Boolean(missingConfig),
   }));
 }
 

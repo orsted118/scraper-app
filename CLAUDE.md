@@ -35,6 +35,10 @@ npm run build                          # Build Vite (dist/)
 npm run dist                           # Build + electron-builder (NSIS + portable → release/)
 npm run dist:dir                       # Build sin empaquetar instalador (dir/)
 npm run report                         # Genera reporte incremental en reports/
+
+npm run test:clasificacion             # Estados pendiente/retrasada/cerrada (ventana de entrega)
+npm run test:fechas                    # Parseo de fechas ES/EN, main y renderer en sincronía
+npm run test:extraccion                # Enlaces, tablas y rúbrica contra un DOM real (Playwright)
 ```
 
 Node **20+**, npm **10+**.

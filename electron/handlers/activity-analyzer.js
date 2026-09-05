@@ -15,6 +15,7 @@ const MAX_SUBMISSION_CHARS = 16000;
 // Las consignas de Moodle a veces arrastran rúbricas enteras; sin techo, la
 // petición de extracción se come el contexto y el modelo devuelve JSON cortado.
 const MAX_INSTRUCTIONS_CHARS = 8000;
+const MAX_RUBRIC_CHARS = 6000;
 // Techo de requisitos: por encima de esto el checklist deja de ser accionable y
 // suele ser señal de que el modelo desglosó de más.
 const MAX_REQUIREMENTS = 20;
@@ -113,7 +114,20 @@ function getActivityTitle(activity) {
 }
 
 function getActivityInstructions(activity) {
-  return String(activity?.instrucciones || activity?.descripcion || '').trim();
+  // El markdown conserva enlaces y tablas de la consigna; el texto plano los
+  // aplanaba y el modelo perdía tanto el destino de los enlaces como la
+  // estructura de las tablas.
+  return String(
+    activity?.instruccionesMarkdown || activity?.instrucciones || activity?.descripcion || '',
+  ).trim();
+}
+
+// La rúbrica dice literalmente qué se evalúa y cuántos puntos vale cada cosa.
+// Sin ella el analizador deduce los requisitos de la consigna, que casi siempre
+// es más vaga que los criterios que el profesor va a usar para calificar.
+function getActivityRubric(activity) {
+  const markdown = String(activity?.rubrica?.markdown || '').trim();
+  return markdown ? markdown.slice(0, MAX_RUBRIC_CHARS) : '';
 }
 
 async function extractRequirements(activity) {
@@ -133,6 +147,7 @@ async function extractRequirements(activity) {
 
   const title = getActivityTitle(activity);
   const instructions = getActivityInstructions(activity);
+  const rubric = getActivityRubric(activity);
 
   if (!instructions && !title) {
     throw new Error('La actividad no tiene título ni instrucciones para analizar.');
@@ -148,6 +163,9 @@ async function extractRequirements(activity) {
     'Consigna:',
     trimmedInstructions || '(la actividad no trae instrucciones; deduce los requisitos del título)',
     instructions.length > MAX_INSTRUCTIONS_CHARS ? '\n(consigna recortada)' : null,
+    rubric ? '' : null,
+    rubric ? 'Criterios de calificación (rúbrica publicada por el profesor):' : null,
+    rubric || null,
   ]
     .filter((line) => line !== null)
     .join('\n');

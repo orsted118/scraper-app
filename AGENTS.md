@@ -116,11 +116,15 @@ scraper-app/
 - Recorre cursos desde `/my/`.
 - Recorre tareas por curso en `mod/assign/index.php?id=<courseId>`.
 - Extrae detalle por actividad en paralelo por chunks.
-- Clasifica estado final:
-  - `pendiente` = no entregada y abierta
-  - `retrasada` = no entregada, vencida y aún abierta
-  - `cerrada` = no entregada y cerrada definitivamente
+- Extrae de la consigna, además del texto plano: `instruccionesMarkdown` (conserva enlaces y tablas), `enlaces[]`, `tablas[]` y `rubrica` (los criterios de calificación, que viven fuera de `#intro`).
+- Clasifica sobre la **ventana de entrega**, que es distinta del estado de la propia entrega:
+  - `ventana` = `no_abierta` | `abierta` | `cerrada`, resuelta por `resolveSubmissionWindow()` a partir de la fecha de corte, la fecha de apertura y los avisos del portal.
+  - `pendiente` = no entregada y la ventana está abierta **o todavía no abre**
+  - `retrasada` = no entregada, vencida y la ventana sigue abierta
+  - `cerrada` = no entregada y la ventana ya cerró (fecha de corte vencida o aviso explícito)
   - entregadas: se excluyen del array final
+- `bloqueo` explica por qué no hay botón de entrega sin cambiar el estado. Hoy solo `sin_equipo` (tarea grupal sin equipo asignado todavía).
+- **No usar la columna "Submission" del índice para decidir cierre.** Dice si el alumno entregó, no si el portal acepta entregas: `"No submission"` es la definición de pendiente. Confundirlas enterraba en cerradas las tareas que aún no abrían y las grupales sin equipo.
 
 ### 2) CIA Horario (`electron/handlers/horario.js`)
 
@@ -234,7 +238,7 @@ Patrones visuales:
 
 | Módulo | Estado | Nota |
 |---|---|---|
-| Actividades iVirtual | ✅ | Clasificación pendiente/retrasada/cerrada + adjuntos |
+| Actividades iVirtual | ✅ | Clasificación por ventana de entrega + adjuntos, enlaces y rúbrica |
 | Horario CIA + links | ⚠️ | Funcional, pero dependiente de estabilidad de frames/estructura CIA |
 | Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |

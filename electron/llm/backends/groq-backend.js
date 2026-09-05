@@ -1,9 +1,12 @@
 const { OpenAICompatibleBackend } = require('./base');
 
-// Último recurso del orden de preferencia: en uso real dio cuelgues, TPM
-// restrictivo y respuestas cortadas. Sólo entra si los otros cuatro fallaron.
+// TPM restrictivo y respuestas cortadas en uso real, así que va tarde en el
+// orden de preferencia. Sólo entra si los proveedores previos fallaron.
 const ENV_BASE = 'GROQ_API_KEY';
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+// llama-3.3-70b-versatile fue retirado y devuelve 404 model_not_found. gpt-oss-120b
+// es el reemplazo verificado: razona antes de contestar pero respeta el formato
+// pedido (el 20b devuelve documentos HTML completos ignorando las instrucciones).
+const DEFAULT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
 class GroqBackend extends OpenAICompatibleBackend {
   constructor(slot) {

@@ -75,7 +75,7 @@ function hasOnlyImages(html) {
   return !hasVisibleText(html) && /<img\b/i.test(String(html || ''));
 }
 
-async function improveNote(html) {
+async function improveNote(html, backend = null) {
   const input = typeof html === 'string' ? html : '';
 
   if (!hasVisibleText(input) || hasOnlyImages(input)) {
@@ -94,7 +94,11 @@ async function improveNote(html) {
       ],
       // temperature más alta que la extracción pura: queremos que reescriba la
       // prosa, no que copie. Por encima de esto empieza a inventar contenido.
-      { task: 'extraction', maxTokens: 2000, temperature: 0.4, handler: 'note-improver' },
+      //
+      // backend null = pool con failover (el default). Con uno elegido a mano no
+      // hay relevo: si falla, se le dice al usuario cuál falló para que pueda
+      // cambiar de modelo en vez de quedarse sin saber qué pasó.
+      { task: 'extraction', maxTokens: 2000, temperature: 0.4, handler: 'note-improver', backend },
     );
 
     return { improved: response.content, backend: response.model };
@@ -107,7 +111,21 @@ async function improveNote(html) {
     if (message.startsWith('No hay ningún backend LLM')) {
       return {
         error: 'NO_BACKEND',
-        message: 'No hay IA configurada. Agregá una key (por ejemplo CEREBRAS_API_KEY o GEMINI_API_KEY) al .env.',
+        message: 'No hay IA configurada. Agregá una key (por ejemplo CLOUDFLARE_API_KEY o GEMINI_API_KEY) al .env.',
+      };
+    }
+
+    // Modelo elegido a mano que no está configurado: pasa si la UI quedó con
+    // una selección vieja y después se sacó la key del .env.
+    if (message.includes('no está configurado')) {
+      return { error: 'BACKEND_UNAVAILABLE', message };
+    }
+
+    if (message.startsWith('El backend "')) {
+      console.error('[note-improver] el backend elegido falló:', message);
+      return {
+        error: 'BACKEND_FAILED',
+        message: `${backend} no respondió. Probá con otro modelo o volvé a Automático.`,
       };
     }
 
@@ -127,7 +145,7 @@ async function improveNote(html) {
 function registerNoteImproverHandlers() {
   // Nunca tira: un throw acá viaja al renderer como "Error invoking remote
   // method" y la UI no puede distinguir falta de key de un 429.
-  ipcMain.handle('notes:improve', async (_event, payload) => improveNote(payload?.html));
+  ipcMain.handle('notes:improve', async (_event, payload) => improveNote(payload?.html, payload?.backend || null));
 }
 
 module.exports = {

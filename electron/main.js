@@ -37,6 +37,9 @@ const { registerMusicPlaylistsHandlers } = require('./handlers/music-playlists')
 const { registerNotesHandlers, registerNoteImageScheme } = require('./handlers/notes');
 const { registerNoteImproverHandlers } = require('./handlers/note-improver');
 const { registerLlmStatusHandlers } = require('./handlers/llm-status');
+const { registerMaterialHandlers } = require('./handlers/material');
+const { registerAttendanceHandlers } = require('./handlers/attendance');
+const { registerPromptBuilderHandlers } = require('./handlers/prompt-builder');
 const calendarioHandler = require('./handlers/calendario');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -129,6 +132,9 @@ function registerMediaKeys() {
 app.whenReady().then(() => {
   app.setName('DVPotro');
   registerScraperHandlers();
+  registerMaterialHandlers();
+  registerAttendanceHandlers();
+  registerPromptBuilderHandlers();
   registerCIAHandlers();
   registerHorarioHandlers();
   registerFileHandlers();

@@ -473,17 +473,6 @@ function extractSection(value) {
   return '';
 }
 
-function extractClassNumber(value) {
-  const text = normalizeWhitespace(value);
-  const classMatch = text.match(/(?:n[uú]mero\s*de\s*clase|class\s*number|class\s*nbr|nro\.?\s*clase)\s*[:#-]?\s*(\d{4,7})/i);
-  if (classMatch) {
-    return classMatch[1];
-  }
-
-  const bareMatch = text.match(/\b\d{5,7}\b/);
-  return bareMatch ? bareMatch[0] : '';
-}
-
 // ---------------------------------------------------------------------------
 // Detección de modalidad a distancia.
 //
@@ -555,59 +544,6 @@ function extractDayTokens(text) {
   });
 
   return DAY_ORDER.filter((day) => days.has(day));
-}
-
-function parsePeopleSoftDays(value) {
-  const normalized = normalizeWhitespace(value);
-
-  if (!normalized) {
-    return [];
-  }
-
-  const tokenPart = normalized
-    .split(/\d/)[0]
-    .replace(/[^A-Za-zÁÉÍÓÚáéíóúñÑ]/g, '');
-
-  const compact = normalizeForCompare(tokenPart).replace(/[^a-z]/g, '');
-  const days = new Set();
-
-  for (let index = 0; index < compact.length; ) {
-    const slice = compact.slice(index);
-
-    if (slice.startsWith('mi')) {
-      days.add('Miércoles');
-      index += 2;
-      continue;
-    }
-
-    if (slice.startsWith('ma')) {
-      days.add('Martes');
-      index += 2;
-      continue;
-    }
-
-    const char = compact[index];
-
-    if (char === 'l') {
-      days.add('Lunes');
-    } else if (char === 'j') {
-      days.add('Jueves');
-    } else if (char === 'v') {
-      days.add('Viernes');
-    } else if (char === 's') {
-      days.add('Sábado');
-    } else if (char === 'd') {
-      days.add('Domingo');
-    }
-
-    index += 1;
-  }
-
-  if (days.size > 0) {
-    return DAY_ORDER.filter((day) => days.has(day));
-  }
-
-  return extractDayTokens(normalized);
 }
 
 function parseDays(raw = '') {
@@ -817,45 +753,6 @@ function isScheduleAccessBlockedText(value = '') {
 async function isScheduleAccessBlocked(frame) {
   const bodyText = await readFrameBodyText(frame);
   return isScheduleAccessBlockedText(bodyText);
-}
-
-async function clickFirstLinkInFrame(frame, patterns) {
-  const links = await frame
-    .locator('a')
-    .evaluateAll((anchors) =>
-      anchors
-        .map((anchor, index) => ({
-          href: anchor.href || '',
-          index,
-          text: (anchor.textContent || '').replace(/\s+/g, ' ').trim(),
-        }))
-        .filter((item) => item.text),
-    )
-    .catch(() => []);
-
-  const target = links.find((link) => {
-    const normalizedText = normalizeForCompare(link.text);
-    const normalizedHref = normalizeForCompare(link.href);
-
-    return patterns.some((pattern) => {
-      if (pattern instanceof RegExp) {
-        return pattern.test(link.text) || pattern.test(link.href);
-      }
-
-      const normalizedPattern = normalizeForCompare(pattern);
-      return (
-        normalizedText.includes(normalizedPattern) ||
-        normalizedHref.includes(normalizedPattern)
-      );
-    });
-  });
-
-  if (!target) {
-    return false;
-  }
-
-  await frame.locator('a').nth(target.index).click({ force: true }).catch(() => {});
-  return true;
 }
 
 async function switchScheduleView(frame, viewPatterns) {
@@ -1199,119 +1096,6 @@ async function collectIdentifiersFromListView(scheduleFrame) {
     (entry) => entry.numeroClase || `${entry.codigo}-${entry.seccion}-${entry.horaInicio || 'na'}`,
   );
   return uniqueEntries;
-}
-
-function combineScheduleRows(rows, identifiers) {
-  const identifierIndex = new Map();
-
-  identifiers.forEach((item) => {
-    const keyCandidates = [
-      item.numeroClase,
-      item.codigo,
-      item.nombre,
-      item.codigo && item.seccion ? `${item.codigo}-${item.seccion}` : '',
-    ]
-      .map((value) => normalizeForCompare(value))
-      .filter(Boolean);
-
-    keyCandidates.forEach((key) => {
-      if (!identifierIndex.has(key)) {
-        identifierIndex.set(key, item);
-      }
-    });
-  });
-
-  const merged = new Map();
-
-  rows.forEach((row) => {
-    const rowKeys = [
-      row.numeroClase,
-      row.codigo,
-      row.nombre,
-      row.codigo && row.seccion ? `${row.codigo}-${row.seccion}` : '',
-    ]
-      .map((value) => normalizeForCompare(value))
-      .filter(Boolean);
-
-    let matched = null;
-
-    for (const key of rowKeys) {
-      if (identifierIndex.has(key)) {
-        matched = identifierIndex.get(key);
-        break;
-      }
-    }
-
-    const base = {
-      codigo: row.codigo || matched?.codigo || '',
-      nombre: row.nombre || matched?.nombre || row.codigo || 'Materia sin nombre',
-      seccion: row.seccion || matched?.seccion || '',
-      numeroClase: row.numeroClase || matched?.numeroClase || '',
-      dias: Array.isArray(row.dias) ? row.dias : [],
-      horaInicio: row.horaInicio || null,
-      horaFin: row.horaFin || null,
-      modalidad: row.modalidad || inferModalidad(row.rawText || ''),
-      ubicacion:
-        row.ubicacion ||
-        ((row.modalidad || inferModalidad(row.rawText || '')) === 'en_linea' ? 'Remoto' : ''),
-      instructor: row.instructor || '',
-      meetLink: row.meetLink || null,
-      linkManual: false,
-    };
-
-    const key = base.numeroClase || `${base.codigo}-${base.seccion}-${base.horaInicio}-${base.horaFin}`;
-
-    if (!merged.has(key)) {
-      merged.set(key, base);
-      return;
-    }
-
-    const previous = merged.get(key);
-    const days = new Set([...(previous.dias || []), ...(base.dias || [])]);
-    // Mismo criterio que en la vista semanal: modalidades distintas producen
-    // 'mixta', no 'en_linea'. Dejar ganar a en_linea marcaba como remota una
-    // materia con días presenciales.
-    const modalidadCombinada =
-      previous.modalidad && base.modalidad && previous.modalidad !== base.modalidad
-        ? 'mixta'
-        : previous.modalidad || base.modalidad;
-    merged.set(key, {
-      ...previous,
-      ...base,
-      dias: DAY_ORDER.filter((day) => days.has(day)),
-      instructor: previous.instructor || base.instructor,
-      ubicacion:
-        modalidadCombinada === 'en_linea'
-          ? previous.ubicacion || base.ubicacion || 'Remoto'
-          : previous.ubicacion || base.ubicacion,
-      modalidad: modalidadCombinada,
-      meetLink: previous.meetLink || base.meetLink || null,
-    });
-  });
-
-  return [...merged.values()];
-}
-
-function convertTo24h(timeStr) {
-  const normalized = normalizeWhitespace(timeStr).toUpperCase();
-  const match = normalized.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!match) {
-    return parseTimeTo24h(normalized) || '00:00';
-  }
-
-  let hours = Number.parseInt(match[1], 10);
-  const minutes = match[2];
-  const period = match[3].toUpperCase();
-
-  if (period === 'PM' && hours !== 12) {
-    hours += 12;
-  }
-
-  if (period === 'AM' && hours === 12) {
-    hours = 0;
-  }
-
-  return `${String(hours).padStart(2, '0')}:${minutes}`;
 }
 
 function normalizeWeeklyCode(raw = '') {
@@ -1980,15 +1764,6 @@ function scoreCourseNameMatch(left, right) {
     overlap.length / Math.min(leftTokens.length, rightTokens.length);
 
   return Math.max(coverage, normalizedDistanceBonus * 0.75);
-}
-
-function areNamesRelated(left, right) {
-  const score = scoreCourseNameMatch(left, right);
-  if (score >= 0.3) {
-    return true;
-  }
-
-  return false;
 }
 
 async function collectCourseLinks(dashboardPage) {
@@ -2724,7 +2499,7 @@ async function scrapeHorario(controller = {}) {
 
 let activeHorarioController = null;
 
-async function getHorarioWithCache() {
+async function getHorarioWithCache({ force = false } = {}) {
   if (activeHorarioController) {
     console.log('Intento de extracción concurrentes bloqueado.');
     return { error: 'Ya hay un escaneo de horario en progreso. Espera a que termine.' };
@@ -2732,7 +2507,10 @@ async function getHorarioWithCache() {
 
   const cached = readHorarioCache();
 
-  if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+  // `force` lo manda una sync que el usuario pidió explícitamente. Sin esto el
+  // botón devolvía la caché y no se re-escaneaba nada: apretarlo dos veces
+  // dentro de la ventana de caché no traía nada nuevo del portal.
+  if (!force && cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
     console.log('Sirviendo horario desde la caché.');
     const cachedWithManualLinks = applyManualLinks(cached);
     updateCachedHorarioMaterias(cachedWithManualLinks);
@@ -2794,7 +2572,7 @@ function registerHorarioHandlers() {
     return;
   }
 
-  ipcMain.handle('horario:run', async () => getHorarioWithCache());
+  ipcMain.handle('horario:run', async (_event, options) => getHorarioWithCache(options || {}));
   ipcMain.handle('horario:clear-cache', async () => clearHorarioCache());
   ipcMain.handle('horario:save-link', async (_event, payload = {}) =>
     saveManualLink(payload.numeroClase, payload.link),

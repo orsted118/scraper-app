@@ -29,6 +29,26 @@ const os = require('os');
 const path = require('path');
 
 // ---------------------------------------------------------------------------
+// Blindaje de stdout — va PRIMERO, antes de que se cargue nada más
+// ---------------------------------------------------------------------------
+//
+// stdout es el canal del protocolo MCP: un solo byte ajeno corrompe la sesión y
+// el cliente se desconecta sin decir por qué. Este servidor carga código que no
+// controla (los handlers de la app loguean con console.log, dotenv imprime un
+// banner), así que no alcanza con tener cuidado: se secuestra stdout.
+//
+// Se guarda el write REAL para el protocolo y se reemplaza el público por uno
+// que manda todo a stderr. A partir de acá, escriba quien escriba, lo único que
+// llega a stdout es lo que pase por `enviar()`.
+const escribirProtocolo = process.stdout.write.bind(process.stdout);
+
+process.stdout.write = (chunk, encoding, callback) => process.stderr.write(chunk, encoding, callback);
+
+['log', 'info', 'warn', 'debug', 'trace'].forEach((nivel) => {
+  console[nivel] = (...args) => console.error(...args);
+});
+
+// ---------------------------------------------------------------------------
 // Acceso a los datos
 // ---------------------------------------------------------------------------
 
@@ -184,6 +204,22 @@ function vacio(value) {
 
 const oNada = (value) => (vacio(value) ? null : String(value).trim());
 
+// El alumno puede ocultar actividades en la app (las que no le corresponden, o
+// ruido del profe). Listarlas igual es contradecir una decisión suya explícita.
+function idsOcultos() {
+  const res = readJson('hidden-activities.json');
+  return new Set(res.data?.ids || []);
+}
+
+// `equipo` viene corrupto en varias actividades: el scraper a veces se trae un
+// fragmento de la consigna en vez del nombre del equipo ("s arriba, 4 abajo, y
+// un servidor..."). Un nombre de equipo real es corto y sin puntuación de prosa.
+function equipoLegible(valor) {
+  const limpio = oNada(valor);
+  if (!limpio || limpio.length > 40 || /[.,;:]/.test(limpio)) return null;
+  return limpio;
+}
+
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
@@ -295,7 +331,9 @@ tool(
     const res = cargar('actividades-cache.json', 'Sincronizá Actividades en DVPotro.');
     if (res.fallo) return res.fallo;
 
-    let items = res.data.actividades || [];
+    const ocultos = idsOcultos();
+    let items = (res.data.actividades || []).filter((a) => !ocultos.has(String(a.id)));
+    const nOcultas = (res.data.actividades || []).length - items.length;
 
     if (!estado || estado === 'todas') {
       if (!estado) items = items.filter((a) => a.estado === 'pendiente' || a.estado === 'retrasada');
@@ -326,7 +364,9 @@ tool(
         .join('\n');
     });
 
-    return `${res.cabecera}\n${items.length} actividades\n\n${lista(filas)}\n\nPara la consigna completa de una: dvpotro_actividad con su id.`;
+    const nota = nOcultas ? ` (${nOcultas} ocultas por vos en la app, no se listan)` : '';
+
+    return `${res.cabecera}\n${items.length} actividades${nota}\n\n${lista(filas)}\n\nPara la consigna completa de una: dvpotro_actividad con su id.`;
   },
 );
 
@@ -362,7 +402,7 @@ tool(
       '',
       `# ${a.nombre}`,
       `${a.materia}${a.profesor ? ` · ${a.profesor}` : ''}`,
-      `estado: ${a.estado} · modalidad: ${a.modalidad}${a.equipo ? ` (${a.equipo})` : ''} · ventana: ${a.ventana}`,
+      `estado: ${a.estado} · modalidad: ${a.modalidad}${equipoLegible(a.equipo) ? ` (equipo ${equipoLegible(a.equipo)})` : ''} · ventana: ${a.ventana}`,
       `fecha límite: ${a.fechaLimite}`,
       oNada(a.fechaPublicacion) ? `publicada: ${a.fechaPublicacion}` : null,
       oNada(a.fechaCierre) ? `cierre: ${a.fechaCierre}` : null,
@@ -492,7 +532,17 @@ tool(
             const filas = recursos.map((r) => {
               const destino = r.destino || r.urlModulo || '';
               const archivos = (r.archivos || []).map((f) => f.nombre).join(', ');
-              return `   - [${r.tipo}] ${r.nombre}${archivos ? ` → ${archivos}` : ''}${destino ? `\n     ${destino}` : ''}`;
+              const partes = [`   - [${r.tipo}] ${r.nombre}${archivos ? ` → ${archivos}` : ''}`];
+
+              if (oNada(r.descripcion)) partes.push(`     ${extracto(r.descripcion, 200)}`);
+              if (destino) partes.push(`     ${destino}`);
+
+              // Un recurso `pagina` es en realidad una LISTA de enlaces. Sin
+              // esto se ve el título del apunte y se pierden los diez temas de
+              // Drive que contiene, que son el material de verdad.
+              (r.links || []).forEach((l) => partes.push(`     · ${l.texto} → ${l.url}`));
+
+              return partes.join('\n');
             });
 
             return `  ${s.titulo}\n${filas.join('\n')}`;
@@ -527,7 +577,9 @@ tool(
         return [
           `${m.materia}`,
           `   ${m.resumen?.porcentaje || '—'} · ${m.resumen?.tomadas || '?'} tomadas · ${m.resumen?.puntos || '—'}`,
-          m.sesionAbierta ? '   HAY UNA SESIÓN ABIERTA para registrar' : null,
+          m.permiteAutoRegistro && (m.sesiones || []).some((s) => s.pendiente)
+            ? '   HAY UNA SESIÓN PENDIENTE de registrar — marcala vos en la app, DVPotro nunca la marca solo'
+            : null,
           ...sesiones,
         ]
           .filter(Boolean)
@@ -689,6 +741,437 @@ tool(
   },
 );
 
+tool(
+  'dvpotro_perfil',
+  'Datos del alumno: nombre completo como figura en el sistema, matrícula, correo institucional y programa. Sirve para llenar portadas y encabezados de entregas sin tener que preguntárselos.',
+  SIN_ARGS,
+  () => {
+    const res = readJson(path.join('profile-cache', 'profile.json'));
+
+    if (res.falta) return 'No hay perfil cacheado. Abrí Ajustes → Perfil en DVPotro para traerlo del Portal de Sistemas.';
+    if (res.error) return res.error;
+
+    const p = res.data;
+
+    return [
+      `nombre:    ${p.fullName || '—'}`,
+      `matrícula: ${p.studentId || '—'}`,
+      `correo:    ${p.email || '—'}`,
+      `programa:  ${p.acadProg || '—'}`,
+      p.cachedAt ? `[traído ${edad(p.cachedAt)}]` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  },
+);
+
+tool(
+  'dvpotro_requisitos',
+  'Los requisitos que DVPotro ya extrajo de una consigna con IA, y el resultado de la última verificación de la entrega contra ellos. NO llama a ningún modelo: devuelve análisis ya cacheados, cuesta cero. Ideal para responder "¿qué me falta para entregar esto?".',
+  {
+    type: 'object',
+    properties: { id: { type: 'string', description: 'Id de la actividad, el de dvpotro_actividades.' } },
+    required: ['id'],
+  },
+  ({ id }) => {
+    // Misma convención de nombre que `activity-analyzer.js` al guardar.
+    const archivo = path.join('activity-analysis', `${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
+    const res = readJson(archivo);
+
+    if (res.falta) {
+      return `La actividad ${id} todavía no fue analizada. Abrila en DVPotro y usá el analizador — este tool solo lee resultados ya calculados, no llama al modelo.`;
+    }
+
+    if (res.error) return res.error;
+
+    const a = res.data;
+    const bloques = [
+      `[analizado ${a.requirementsAt ? edad(a.requirementsAt) : '?'} con ${a.requirementsModel || 'modelo desconocido'}]`,
+      '',
+      `## Requisitos (${(a.requirements || []).length})`,
+      ...(a.requirements || []).map((r) => `- [${r.type}] ${r.description}${r.criteria ? `\n    criterio: ${r.criteria}` : ''}`),
+    ];
+
+    const ultima = (a.verifications || [])[a.verifications.length - 1];
+
+    if (ultima) {
+      const cumple = (ultima.results || []).filter((r) => r.met === 'yes').length;
+      const total = (ultima.results || []).length;
+      const mapa = new Map((a.requirements || []).map((r) => [r.id, r.description]));
+
+      bloques.push(
+        '',
+        `## Última verificación — ${cumple}/${total} cumplidos`,
+        `[${ultima.model || '?'} · ${ultima.at ? edad(ultima.at) : '?'}${ultima.meta ? ` · ${ultima.meta.extension || ''} ${ultima.meta.wordCount || '?'} palabras` : ''}]`,
+        ...(ultima.results || []).map(
+          (r) => `- ${r.met.toUpperCase().padEnd(7)} ${mapa.get(r.requirementId) || r.requirementId}${r.notes ? `\n    ${r.notes}` : ''}`,
+        ),
+      );
+    } else {
+      bloques.push('', '(todavía no se verificó ninguna entrega contra estos requisitos)');
+    }
+
+    return bloques.join('\n');
+  },
+);
+
+tool(
+  'dvpotro_agenda',
+  'Un solo eje temporal ordenado con lo que viene: clases del horario, vencimientos de actividades y eventos del calendario escolar, mezclados por fecha. Reemplaza tener que llamar a horario, actividades y calendario por separado y ordenarlos a mano.',
+  {
+    type: 'object',
+    properties: { dias: { type: 'number', description: 'Ventana hacia adelante. Por defecto 7.' } },
+  },
+  ({ dias = 7 }) => {
+    const { parseDueDate, daysUntilDue } = require(path.join(REPO, 'electron', 'utils', 'dateParser.js'));
+
+    const eventos = [];
+    const ocultos = idsOcultos();
+
+    const act = readJson('actividades-cache.json');
+    (act.data?.actividades || [])
+      .filter((a) => !ocultos.has(String(a.id)) && a.estado !== 'entregada')
+      .forEach((a) => {
+        const ms = parseDueDate(a.fechaLimite);
+        const d = daysUntilDue(ms);
+
+        if (d === null || d < 0 || d > dias) return;
+
+        eventos.push({ ms, dias: d, texto: `ENTREGA  ${a.nombre} — ${a.materia}${a.estado === 'retrasada' ? ' (RETRASADA)' : ''}` });
+      });
+
+    const cal = readJson('calendario-cache.json');
+    (cal.data?.events || []).forEach((e) => {
+      const ms = new Date(e.inicio).getTime();
+      const d = daysUntilDue(ms);
+
+      if (d === null || d < 0 || d > dias) return;
+
+      eventos.push({ ms, dias: d, texto: `ITSON    ${e.titulo}${e.categoria ? ` [${e.categoria}]` : ''}` });
+    });
+
+    // Las clases son semanales, no tienen fecha: se proyectan sobre la ventana.
+    const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const hor = readJson('horario-cache.json');
+    const hoy = new Date();
+
+    for (let salto = 0; salto <= dias; salto += 1) {
+      const fecha = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + salto);
+      const nombreDia = DIAS[fecha.getDay()];
+
+      (hor.data?.materias || []).forEach((m) => {
+        (m.sesiones?.length ? m.sesiones : [m]).forEach((s) => {
+          if (!(s.dias || []).some((d) => incluye(d, nombreDia))) return;
+
+          const [hh, mm] = String(s.horaInicio || '00:00').split(':').map(Number);
+          const donde = s.modalidad === 'en_linea' ? (oNada(m.meetLink) || 'en línea') : (s.ubicacion || 'aula sin dato');
+
+          eventos.push({
+            ms: new Date(fecha).setHours(hh || 0, mm || 0, 0, 0),
+            dias: salto,
+            texto: `CLASE    ${m.nombre}  ${s.horaInicio}–${s.horaFin}  ${donde}`,
+          });
+        });
+      });
+    }
+
+    if (!eventos.length) return `Nada agendado en los próximos ${dias} días.`;
+
+    eventos.sort((a, b) => a.ms - b.ms);
+
+    // Agrupado por día: una lista plana de treinta líneas con la fecha repetida
+    // se lee mucho peor que seis bloques con encabezado.
+    const porDia = new Map();
+    eventos.forEach((e) => {
+      const clave = new Date(e.ms).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' });
+      if (!porDia.has(clave)) porDia.set(clave, { dias: e.dias, items: [] });
+      porDia.get(clave).items.push(e);
+    });
+
+    const bloques = [...porDia.entries()].map(([dia, { dias: d, items }]) => {
+      const cuando = d === 0 ? 'HOY' : d === 1 ? 'MAÑANA' : `en ${d} días`;
+      return `${dia.toUpperCase()} · ${cuando}\n${items.map((i) => `  ${i.texto}`).join('\n')}`;
+    });
+
+    return `Próximos ${dias} días\n\n${bloques.join('\n\n')}`;
+  },
+);
+
+tool(
+  'dvpotro_novedades',
+  'Qué cambió desde la última vez: actividades nuevas, fechas límite movidas, cambios de aula o de enlace de clase, y avisos del portal. Sale del historial de notificaciones que DVPotro ya calculó comparando sincronizaciones.',
+  {
+    type: 'object',
+    properties: {
+      horas: { type: 'number', description: 'Ventana hacia atrás. Por defecto 72.' },
+      categoria: {
+        type: 'string',
+        enum: ['nueva', 'cambio', 'proximidad', 'error', 'info', 'todas'],
+        description: 'Por defecto muestra nueva y cambio, que es lo que de verdad cambió.',
+      },
+    },
+  },
+  ({ horas = 72, categoria }) => {
+    const res = cargar('notifications.json', 'Usá DVPotro un rato para que detecte cambios.');
+    if (res.fallo) return res.fallo;
+
+    const desde = Date.now() - horas * 3600_000;
+    const quiere = categoria && categoria !== 'todas' ? [categoria] : ['nueva', 'cambio'];
+
+    const items = (res.data.items || [])
+      .filter((n) => new Date(n.timestamp).getTime() >= desde)
+      .filter((n) => (categoria === 'todas' ? true : quiere.includes(n.category)))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if (!items.length) return `Sin novedades en las últimas ${horas} horas.`;
+
+    const porFuente = new Map();
+    items.forEach((n) => {
+      if (!porFuente.has(n.source)) porFuente.set(n.source, []);
+      porFuente.get(n.source).push(n);
+    });
+
+    const bloques = [...porFuente.entries()].map(([fuente, lista]) =>
+      `${fuente.toUpperCase()} (${lista.length})\n${lista
+        .map((n) => `  · ${n.title}${n.body ? `\n      ${extracto(n.body, 150)}` : ''}`)
+        .join('\n')}`,
+    );
+
+    return `Últimas ${horas} h · ${items.length} novedades\n\n${bloques.join('\n\n')}`;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Sincronización — la única parte que NO es de solo lectura
+// ---------------------------------------------------------------------------
+
+const REPO = path.join(__dirname, '..');
+
+// Los handlers de la app son módulos de Electron. Corren igual en Node pelado
+// si se les da un `electron` de mentira ANTES de requerirlos: solo usan
+// `app.getPath` para ubicar userData y tocan `session` para sincronizar cookies.
+//
+// Se cargan PEREZOSAMENTE: requerir Playwright y los handlers en el arranque
+// haría lento cada inicio del servidor, y las 11 tools de lectura no los
+// necesitan para nada.
+let handlersListos = false;
+
+function prepararHandlers() {
+  if (handlersListos) return;
+
+  const dotenv = path.join(REPO, 'node_modules', 'dotenv');
+
+  // Las credenciales viven en el repo durante desarrollo y en userData cuando
+  // la app está empaquetada. Se prueban las dos, sin pisar lo que ya esté en
+  // el entorno.
+  for (const envPath of [path.join(REPO, '.env'), path.join(USER_DATA, '.env')]) {
+    if (fs.existsSync(envPath)) {
+      // `quiet` porque dotenv imprime un banner a stdout, que es el canal del
+      // protocolo. El secuestro de arriba ya lo contendría, pero silenciarlo en
+      // su propia API evita el ruido en stderr en cada sync.
+      require(dotenv).config({ path: envPath, quiet: true });
+    }
+  }
+
+  require.cache[require.resolve('electron')] = {
+    id: require.resolve('electron'),
+    filename: require.resolve('electron'),
+    loaded: true,
+    exports: {
+      app: {
+        // `getPath('temp')` tiene que ser el temp real: `calendario.js` baja ahí
+        // el ICS y devolverle userData le ensucia la carpeta de datos.
+        getPath: (key) => (key === 'temp' ? os.tmpdir() : USER_DATA),
+        on: () => {},
+        getVersion: () => 'mcp',
+        // isPackaged: true NO ES COSMÉTICO. `settings.js:getEnvFilePath()` lo
+        // consulta para decidir dónde vive el .env, y `scrapeHorario` termina
+        // llamando a `saveStudentName` cuando lee el nombre del alumno en CIA.
+        // Con `undefined` toma la rama de desarrollo y REESCRIBE el .env del
+        // repo — el archivo con todas las claves. Forzando true escribe en
+        // userData, que es el archivo propio de la app.
+        isPackaged: true,
+      },
+      ipcMain: { handle: () => {}, removeHandler: () => {} },
+      BrowserWindow: { getAllWindows: () => [] },
+      shell: {},
+      dialog: {},
+      protocol: { handle: () => {}, registerSchemesAsPrivileged: () => {} },
+      // El scraper copia sus cookies a la sesión de Electron para que el
+      // renderer pueda bajar adjuntos. Sin renderer no hay a dónde copiarlas.
+      session: { defaultSession: { cookies: { set: async () => {} } } },
+    },
+  };
+
+  handlersListos = true;
+}
+
+// LISTA BLANCA. El módulo pedido se busca en este objeto y nunca se arma un
+// nombre de función a partir del argumento del cliente.
+//
+// Regla dura del proyecto: LA ASISTENCIA NUNCA SE MARCA SOLA. Acá no entra
+// ninguna función que escriba en el portal — ni marcar asistencia, ni subir
+// entregas, ni guardar enlaces. Sincronizar es traer, nunca mandar.
+const SINCRONIZABLES = {
+  actividades: {
+    descripcion: 'consignas, rúbricas, adjuntos y estado de entrega de iVirtual',
+    credenciales: ['IVIRTUAL_USER', 'IVIRTUAL_PASS'],
+    segundos: 45,
+    ejecutar: async () => {
+      const scraper = require(path.join(REPO, 'electron', 'handlers', 'scraper.js'));
+      const res = await scraper.getActivitiesWithCache(null, { force: true });
+
+      if (res?.error) return { error: res.error };
+
+      const items = res.activities || res.actividades || [];
+      const porEstado = items.reduce((acc, a) => ({ ...acc, [a.estado]: (acc[a.estado] || 0) + 1 }), {});
+
+      return { resumen: `${items.length} actividades (${Object.entries(porEstado).map(([k, v]) => `${v} ${k}`).join(', ')})` };
+    },
+  },
+  material: {
+    descripcion: 'presentaciones, apuntes y enlaces publicados por los profesores',
+    credenciales: ['IVIRTUAL_USER', 'IVIRTUAL_PASS'],
+    segundos: 40,
+    ejecutar: async () => {
+      const material = require(path.join(REPO, 'electron', 'handlers', 'material.js'));
+
+      // `scrapeMaterial` devuelve el objeto pero NO lo persiste: el diff contra
+      // la caché anterior y la escritura los hace el handler IPC. Se replica su
+      // secuencia exacta en vez de escribir el archivo a mano, o el sync desde
+      // acá dejaría el módulo sin las novedades que la UI muestra arriba.
+      const anterior = material.readCache();
+      const res = await material.scrapeMaterial({});
+
+      if (res?.error) return { error: res.error };
+
+      const novedades = material.diffMaterial(anterior, res);
+      material.writeCache({ ...res, novedades });
+
+      const recursos = (res.materias || []).reduce((sum, m) => sum + (m.totalRecursos || 0), 0);
+      return {
+        resumen: `${res.materias?.length || 0} materias, ${recursos} recursos`
+          + (novedades.length ? ` · ${novedades.length} recurso(s) nuevo(s)` : ''),
+      };
+    },
+  },
+
+  horario: {
+    descripcion: 'horario semanal de CIA y los enlaces de videollamada de iVirtual',
+    credenciales: ['CIA_USER', 'CIA_PASS'],
+    segundos: 60,
+    ejecutar: async () => {
+      const horario = require(path.join(REPO, 'electron', 'handlers', 'horario.js'));
+      const res = await horario.getHorarioWithCache({ force: true });
+
+      if (res?.error) return { error: res.error };
+
+      return { resumen: `${res.materias?.length || 0} materias` };
+    },
+  },
+  calendario: {
+    descripcion: 'calendario escolar del ITSON (pagina publica, no pide credenciales)',
+    credenciales: [],
+    segundos: 20,
+    ejecutar: async () => {
+      const calendario = require(path.join(REPO, 'electron', 'handlers', 'calendario.js'));
+      const res = await calendario.run({ force: true });
+
+      if (res?.error) return { error: res.error };
+
+      return { resumen: `${res.events?.length || 0} eventos` };
+    },
+  },
+  asistencia: {
+    descripcion: 'asistencia tomada por materia — SOLO LECTURA, nunca marca presencia',
+    credenciales: ['IVIRTUAL_USER', 'IVIRTUAL_PASS'],
+    segundos: 40,
+    ejecutar: async () => {
+      const attendance = require(path.join(REPO, 'electron', 'handlers', 'attendance.js'));
+
+      // `scrapeAttendance` solo LEE el modulo de asistencia. La funcion que
+      // marca presencia es `markAttendance` y no se referencia en ningun lado
+      // de este archivo, a proposito: la regla del proyecto es que la
+      // asistencia jamas se marca de forma automatica.
+      const res = await attendance.scrapeAttendance({});
+
+      if (res?.error) return { error: res.error };
+
+      attendance.writeCache(res);
+
+      const pendientes = (res.materias || []).filter((m) => (m.sesiones || []).some((x) => x.pendiente)).length;
+
+      return {
+        resumen: `${res.materias?.length || 0} materias`
+          + (pendientes ? ` · ${pendientes} con sesiones pendientes (marcalas vos en la app)` : ''),
+      };
+    },
+  },
+  calificaciones: {
+    descripcion: 'boleta y promedios de CIA',
+    credenciales: ['CIA_USER', 'CIA_PASS'],
+    segundos: 120,
+    ejecutar: async () => {
+      const cia = require(path.join(REPO, 'electron', 'handlers', 'cia.js'));
+      const res = await cia.getCalificacionesWithCache();
+
+      if (res?.error) return { error: res.error };
+
+      return { resumen: `${res.materias?.length || 0} materias` };
+    },
+  },
+};
+
+tool(
+  'dvpotro_sync',
+  'Trae datos frescos del portal y actualiza la caché. LENTO: abre un navegador y navega iVirtual, entre 40 y 60 segundos por módulo. Usalo solo cuando la caché esté vieja o falte algo — dvpotro_estado dice qué tan vieja está. Solo LEE del portal: nunca marca asistencia ni sube entregas.',
+  {
+    type: 'object',
+    properties: {
+      modulo: {
+        type: 'string',
+        enum: Object.keys(SINCRONIZABLES),
+        description: 'Qué sincronizar. Obligatorio: se pide de a uno para no encadenar minutos de espera.',
+      },
+    },
+    required: ['modulo'],
+  },
+  async ({ modulo }) => {
+    const spec = SINCRONIZABLES[modulo];
+
+    // El módulo se busca en la lista blanca; nunca se arma un nombre de función
+    // con lo que mandó el cliente.
+    if (!spec) {
+      return `Módulo desconocido. Disponibles: ${Object.keys(SINCRONIZABLES).join(', ')}`;
+    }
+
+    prepararHandlers();
+
+    const faltan = (spec.credenciales || []).filter((v) => !process.env[v]);
+
+    if (faltan.length) {
+      return `Faltan credenciales para sincronizar ${modulo}: ${faltan.join(', ')}. Configuralas en Ajustes de DVPotro.`;
+    }
+
+    const inicio = Date.now();
+    let res;
+
+    try {
+      res = await spec.ejecutar();
+    } catch (error) {
+      return `El scrape de ${modulo} falló: ${error?.message || error}`;
+    }
+
+    const segundos = Math.round((Date.now() - inicio) / 1000);
+
+    if (res.error) {
+      return `El scrape de ${modulo} falló: ${res.error}`;
+    }
+
+    return `Sincronizado ${modulo} en ${segundos}s — ${res.resumen}\nLa caché quedó fresca; las tools de lectura ya devuelven lo nuevo.`;
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Transporte MCP (JSON-RPC 2.0 por stdio, mensajes separados por \n)
 // ---------------------------------------------------------------------------
@@ -699,7 +1182,9 @@ tool(
 const log = (...args) => console.error('[dvpotro-mcp]', ...args);
 
 function enviar(mensaje) {
-  process.stdout.write(`${JSON.stringify(mensaje)}\n`);
+  // El write REAL, capturado antes del secuestro: `process.stdout.write` ahora
+  // apunta a stderr para que nada ajeno contamine el canal.
+  escribirProtocolo(`${JSON.stringify(mensaje)}\n`);
 }
 
 function responder(id, result) {
@@ -748,18 +1233,23 @@ function manejar(msg) {
       return;
     }
 
-    try {
-      const texto = tool.handler(params.arguments || {});
-      responder(id, { content: [{ type: 'text', text: String(texto) }] });
-    } catch (error) {
-      // Se responde como resultado con isError y no como error de JSON-RPC: así
-      // el cliente ve QUÉ falló en vez de un error de transporte opaco.
-      log('fallo en', params?.name, error?.stack || error);
-      responder(id, {
-        content: [{ type: 'text', text: `Error ejecutando ${params?.name}: ${error?.message || error}` }],
-        isError: true,
+    // Los handlers de lectura son síncronos, pero `dvpotro_sync` tarda ~40s
+    // scrapeando. `Promise.resolve` cubre los dos casos sin bloquear el bucle:
+    // mientras un scrape corre, el servidor sigue contestando otras llamadas.
+    Promise.resolve()
+      .then(() => tool.handler(params.arguments || {}))
+      .then((texto) => {
+        responder(id, { content: [{ type: 'text', text: String(texto) }] });
+      })
+      .catch((error) => {
+        // Se responde como resultado con isError y no como error de JSON-RPC:
+        // así el cliente ve QUÉ falló en vez de un error de transporte opaco.
+        log('fallo en', params?.name, error?.stack || error);
+        responder(id, {
+          content: [{ type: 'text', text: `Error ejecutando ${params?.name}: ${error?.message || error}` }],
+          isError: true,
+        });
       });
-    }
 
     return;
   }

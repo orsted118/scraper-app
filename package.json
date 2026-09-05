@@ -29,6 +29,7 @@
     "test:prompt": "node scripts/test-prompt-builder.cjs",
     "test:clasificacion": "node scripts/test-clasificacion.cjs",
     "test:fechas": "node scripts/test-fechas.cjs",
+    "mcp": "node mcp/dvpotro-mcp.js",
     "test:notes-images": "electron scripts/test-notes-image-actions.cjs",
     "test:extraccion": "node scripts/test-extraccion-contenido.cjs",
     "test:scrape": "node scripts/test-scrape-timing.cjs"

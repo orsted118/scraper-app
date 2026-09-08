@@ -1,20 +1,48 @@
 // Puente del renderer hacia el diagnóstico de los backends LLM. Solo lectura:
 // nada de acá cambia el routing ni toca las keys.
 const { ipcMain } = require('electron');
-const { getPreferenceOrder } = require('../llm/selector');
+const { REGISTRY, getPreferenceOrder, isConfigured } = require('../llm/selector');
 const { discoverKeySlots } = require('../llm/key-pool');
 const { listConfiguredSlots, probeAllBackends } = require('../llm/probe');
 const { aggregateUsage, getLogPath, readRecentUsage } = require('../llm/usage-log');
 
-// Mismo mapeo de nombre → variable base que usa el selector. Se necesita para
-// filtrar el orden a los backends que realmente tienen key cargada.
-const ENV_BASES = {
-  cerebras: 'CEREBRAS_API_KEY',
-  github: 'GITHUB_TOKEN',
-  mistral: 'MISTRAL_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-  groq: 'GROQ_API_KEY',
+// Se deriva del registry en vez de listarse a mano: la copia manual dejaba los
+// backends nuevos fuera del filtro y no aparecían en la UI.
+const ENV_BASES = Object.fromEntries(
+  Object.entries(REGISTRY).map(([name, entry]) => [name, entry.envBase]),
+);
+
+// Nombres para mostrar. El id técnico ("cloudflare") no le dice nada al usuario
+// y el modelo real vive dentro del backend, así que se nombra el modelo.
+const BACKEND_LABELS = {
+  cloudflare: 'Llama 3.3 70B',
+  gemini: 'Gemini 2.5 Flash',
+  mistral: 'Mistral Small',
+  groq: 'GPT-OSS 120B',
+  openrouter: 'OpenRouter',
+  scaleway: 'Scaleway',
+  cerebras: 'Cerebras',
+  github: 'GitHub Models',
 };
+
+// Lista para el selector de modelo de la UI. Sólo lo que se puede usar YA: un
+// backend sin key no se ofrece, porque elegirlo daría un error garantizado.
+function listSelectableBackends() {
+  return getPreferenceOrder()
+    .filter(isConfigured)
+    .map((name, index) => {
+      const slots = discoverKeySlots(ENV_BASES[name] || '');
+
+      return {
+        id: name,
+        label: BACKEND_LABELS[name] || name,
+        // El primero del orden es el que usa "Automático": la UI lo marca para
+        // que se entienda qué pasa si no se elige nada.
+        isDefault: index === 0,
+        keyCount: slots.length,
+      };
+    });
+}
 
 // availableBackends() del selector filtra sobre PREFERENCE_ORDER y por eso
 // ignora el override de LLM_BACKEND. Acá se parte de getPreferenceOrder(), que
@@ -60,6 +88,15 @@ function registerLlmStatusHandlers() {
     }
   });
 
+  ipcMain.handle('llm:selectable-backends', async () => {
+    try {
+      return { ok: true, backends: listSelectableBackends() };
+    } catch (error) {
+      console.error('[llm-status] selectable-backends falló:', error?.message);
+      return { ok: false, error: error?.message || 'No fue posible listar los modelos.' };
+    }
+  });
+
   ipcMain.handle('llm:current-order', async () => {
     try {
       return { ok: true, ...currentOrder() };
@@ -70,4 +107,4 @@ function registerLlmStatusHandlers() {
   });
 }
 
-module.exports = { currentOrder, registerLlmStatusHandlers };
+module.exports = { BACKEND_LABELS, currentOrder, listSelectableBackends, registerLlmStatusHandlers };

@@ -14,7 +14,11 @@
 const TRANSIENT_ERROR_RE =
   /\b(429|503)\b|quota|rate.?limit|tokens? per (minute|day)|overloaded|resource.?exhausted|too many requests|model is saturated|try again later|UNAVAILABLE|timeout|aborted/i;
 
-const REQUEST_TIMEOUT_MS = 90 * 1000;
+// 30s y no 90: con el failover encadenando proveedores, un backend colgado no
+// puede quedarse con el presupuesto de tiempo de toda la llamada. Las respuestas
+// buenas medidas van de 0.5s a 15s, así que 30s deja margen y corta rápido lo
+// que ya no va a contestar.
+const REQUEST_TIMEOUT_MS = Number(process.env.LLM_REQUEST_TIMEOUT_MS) || 30 * 1000;
 
 function isTransientMessage(message) {
   return TRANSIENT_ERROR_RE.test(String(message || ''));
@@ -61,6 +65,19 @@ function classifyError(providerName, status, bodyText) {
   }
 
   return new Error(message);
+}
+
+// El pool pasa lo que queda de su presupuesto total. Se toma el menor de los
+// dos: ni un intento puede pasarse del techo por request, ni estirarse más allá
+// de lo que la llamada entera tiene de vida.
+function resolveTimeout(timeoutMs) {
+  const requested = Number(timeoutMs);
+
+  if (!Number.isFinite(requested) || requested <= 0) {
+    return REQUEST_TIMEOUT_MS;
+  }
+
+  return Math.min(requested, REQUEST_TIMEOUT_MS);
 }
 
 async function fetchWithTimeout(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -133,7 +150,7 @@ class OpenAICompatibleBackend extends LlmBackendBase {
   }
 
   async chat(messages, opts = {}) {
-    const { maxTokens = 2000, temperature = 0.2, jsonSchema = null } = opts;
+    const { maxTokens = 2000, temperature = 0.2, jsonSchema = null, timeoutMs } = opts;
 
     const response = await fetchWithTimeout(this.url, {
       method: 'POST',
@@ -144,7 +161,7 @@ class OpenAICompatibleBackend extends LlmBackendBase {
         ...this.extraHeaders,
       },
       body: JSON.stringify(this.buildBody(messages, { maxTokens, temperature, jsonSchema })),
-    });
+    }, resolveTimeout(timeoutMs));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
@@ -179,6 +196,7 @@ module.exports = {
   fetchWithTimeout,
   isTransientMessage,
   parseSuggestedRetrySeconds,
+  resolveTimeout,
   stripCodeFence,
   transientError,
 };

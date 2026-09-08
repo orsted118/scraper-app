@@ -1040,7 +1040,7 @@ function Ajustes({ error, lastSyncAt, loading, onAutoSyncChanged, onSettingsSave
             title="iVirtual"
             note="Actividades, cursos y enlaces de videollamada (Moodle)."
             userLabel="ID de usuario"
-            userPlaceholder="Ej. 00000000000"
+            userPlaceholder="Ej. 00000123456"
             user={user}
             onUserChange={setUser}
             password={password}

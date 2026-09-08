@@ -8,33 +8,26 @@ import {
   ChevronUp,
   Clock,
   Download,
+  ExternalLink,
+  Link as LinkIcon,
+  ListChecks,
   Loader2,
   Paperclip,
   Users,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ActivityAnalyzer from '../pages/actividades/ActivityAnalyzer';
+import PromptGenerator from '../pages/actividades/PromptGenerator';
 import ActivityCardMenu from './ActivityCardMenu';
+import ActivityInstructions from './ActivityInstructions';
 import ActivitySubmission from './ActivitySubmission';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { EASE } from '../utils/motion';
+import { diasHastaVencimiento, parseFechaPortalDate } from '../utils/fechas';
 import { getFileIcon } from './file-icons';
 
 
-function parseDate(value) {
-  if (!value || typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue || trimmedValue === 'Sin fecha visible') {
-    return null;
-  }
-
-  const parsed = Date.parse(trimmedValue.replace(/\s+/g, ' ').trim());
-  return Number.isNaN(parsed) ? null : new Date(parsed);
-}
+const parseDate = parseFechaPortalDate;
 
 function capitalize(value = '') {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
@@ -89,7 +82,10 @@ function getTimeContext(estado, fechaLimite) {
     }
 
     const lateMs = Math.max(0, Date.now() - deadline.getTime());
-    const daysLate = Math.max(1, Math.ceil(lateMs / (24 * 60 * 60 * 1000)));
+    // floor, no ceil: Moodle cuenta días COMPLETOS vencidos ("atrasada por: 8
+    // días"). Con ceil, 8 días y media hora se mostraban como 9 y la app
+    // contradecía al portal en la misma pantalla.
+    const daysLate = Math.max(1, Math.floor(lateMs / (24 * 60 * 60 * 1000)));
 
     return {
       label: `${daysLate} ${daysLate === 1 ? 'día' : 'días'} retrasada`,
@@ -107,16 +103,25 @@ function getTimeContext(estado, fechaLimite) {
     return { label: '', level: null };
   }
 
-  const diffMs = deadline.getTime() - Date.now();
-  const oneDayMs = 24 * 60 * 60 * 1000;
+  // Días de calendario, no ventana de 24h: la card muestra la fecha límite al
+  // lado de esta etiqueta, así que "Vence hoy" sobre un "4 Sep" se lee como un
+  // bug aunque falten menos de 24 horas. El rojo queda reservado para hoy.
+  const days = diasHastaVencimiento(deadline);
 
-  if (diffMs <= oneDayMs) {
+  if (days === null) {
+    return { label: '', level: null };
+  }
+
+  if (days <= 0) {
     return { label: 'Vence hoy', level: 'critical' };
   }
 
-  if (diffMs <= 3 * oneDayMs) {
-    const days = Math.max(1, Math.ceil(diffMs / oneDayMs));
-    return { label: `En ${days} ${days === 1 ? 'día' : 'días'}`, level: 'warning' };
+  if (days === 1) {
+    return { label: 'Vence mañana', level: 'warning' };
+  }
+
+  if (days <= 3) {
+    return { label: `En ${days} días`, level: 'warning' };
   }
 
   return { label: '', level: null };
@@ -232,20 +237,55 @@ function getTimeContextIcon(level) {
   return null;
 }
 
+// Por qué no se puede entregar ahora. Antes estas dos situaciones terminaban en
+// la pestaña de cerradas y el alumno no tenía forma de saber que la actividad
+// seguía viva ni qué le faltaba para poder entregar.
+function getAvailabilityNotice({ bloqueo, ventana, fechaPublicacion, publicationDate }) {
+  if (bloqueo === 'sin_equipo') {
+    return {
+      title: 'Sin equipo asignado',
+      detail:
+        'Es una entrega en equipo y el portal todavía no te ubica en uno. Hasta que el profesor arme los equipos no aparece el botón de entrega.',
+      Icon: Users,
+    };
+  }
+
+  if (ventana === 'no_abierta') {
+    const cuando = publicationDate ? formatShortDate(publicationDate) : fechaPublicacion || '';
+
+    return {
+      title: 'Todavía no abre',
+      detail: cuando
+        ? `El portal empieza a aceptar entregas el ${cuando}.`
+        : 'El portal todavía no acepta entregas para esta actividad.',
+      Icon: Clock,
+    };
+  }
+
+  return null;
+}
+
 function ActivityCard({
   archivos = [],
+  bloqueo = null,
+  driveFiles = null,
+  enlaces = [],
+  equipo = null,
   fechaLimite,
   fechaPublicacion,
   id,
   instrucciones,
+  instruccionesMarkdown,
   materia,
   modalidad = 'individual',
   nombre,
   onHide,
   profesor,
   puedeEntregar = false,
+  rubrica = null,
   estado,
   url,
+  ventana = 'abierta',
 }) {
   const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
@@ -254,6 +294,9 @@ function ActivityCard({
   const [downloadingKey, setDownloadingKey] = useState('');
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [rubricExpanded, setRubricExpanded] = useState(false);
+  const [linkError, setLinkError] = useState('');
+  const [driveError, setDriveError] = useState('');
 
   const theme = getCardTheme(estado, modalidad);
   const edge = getCardEdge(estado);
@@ -267,11 +310,74 @@ function ActivityCard({
   const extraFilesCount = Math.max(0, archivos.length - 3);
   const topBadgeVisible = Boolean(theme.pillLabel);
   const TimeBadgeIcon = getTimeContextIcon(timeContext.level);
+  const availability = getAvailabilityNotice({ bloqueo, ventana, fechaPublicacion, publicationDate });
+  const rubricRows = rubrica?.filas || [];
+  const visibleRubricRows = rubricExpanded ? rubricRows : rubricRows.slice(0, 3);
 
   const resolvedDeadline = deadlineDate ? formatShortDate(deadlineDate) : fechaLimite || 'Sin fecha visible';
   const resolvedDeadlineTime = deadlineDate ? formatTime(deadlineDate) : '';
   const footerPublication = publicationDate ? formatShortDate(publicationDate) : fechaPublicacion || '';
   const footerClosed = deadlineDate ? `${formatShortDate(deadlineDate)}${resolvedDeadlineTime ? ` a las ${resolvedDeadlineTime}` : ''}` : fechaLimite || '';
+
+  // Se abre en el navegador del sistema a propósito. Un Drive o un Forms exige
+  // sesión de Google, y esa sesión ya vive en el navegador del alumno: pedirle
+  // la contraseña de Google a la app sería guardar una credencial que no
+  // necesitamos para nada más.
+  const handleOpenLink = async (enlace) => {
+    setLinkError('');
+
+    try {
+      if (typeof window === 'undefined' || !window.scraperApp?.openExternal) {
+        setLinkError('Abrir enlaces solo está disponible dentro de la app.');
+        return;
+      }
+
+      await window.scraperApp.openExternal(enlace.url);
+    } catch (_error) {
+      setLinkError('No fue posible abrir el enlace.');
+    }
+  };
+
+  // Un enlace de Drive que la app ya resolvió deja de ser un enlace: es un PDF
+  // en disco. Se parte acá, al renderizar, para no tocar la caché de actividades
+  // ni agregarle un campo que después habría que mantener sincronizado.
+  const { documentos, enlacesSueltos } = useMemo(() => {
+    if (!driveFiles?.size) return { documentos: [], enlacesSueltos: enlaces };
+
+    const documentosResueltos = [];
+    const restantes = [];
+
+    for (const enlace of enlaces) {
+      const archivo = driveFiles.get(enlace.url);
+
+      if (archivo?.estado === 'ok') {
+        documentosResueltos.push({ ...archivo, etiqueta: enlace.texto || archivo.etiqueta });
+        continue;
+      }
+
+      restantes.push(enlace);
+    }
+
+    return { documentos: documentosResueltos, enlacesSueltos: restantes };
+  }, [driveFiles, enlaces]);
+  // El PDF ya está en disco: abrirlo es abrir un archivo local, no volver a
+  // pedírselo a Google. Se reusa material.openFile, que ya chequea que exista
+  // antes de mandárselo al shell.
+  const handleOpenDriveFile = async (archivo) => {
+    setDriveError('');
+
+    try {
+      if (typeof window === 'undefined' || !window.scraperApp?.material?.openFile) {
+        setDriveError('Abrir archivos solo está disponible dentro de la app.');
+        return;
+      }
+
+      const resultado = await window.scraperApp.material.openFile(archivo.ruta);
+      if (resultado?.error) setDriveError('El archivo ya no está en disco. Se vuelve a bajar en la próxima sincronización.');
+    } catch (_error) {
+      setDriveError('No fue posible abrir el archivo.');
+    }
+  };
 
   const handleDownload = async (archivo) => {
     setDownloadingKey(archivo.url);
@@ -401,7 +507,23 @@ function ActivityCard({
               >
                 <Users className="h-3 w-3" style={{ color: 'var(--text-muted)' }} />
                 {modalidad === 'equipo' ? 'En equipo' : 'Individual'}
+                {equipo ? ` · ${equipo}` : ''}
               </span>
+
+              {availability ? (
+                <span
+                  className="inline-flex items-center gap-2 border px-2 py-0.5 text-xs"
+                  style={{
+                    borderColor: 'var(--retrasada-border)',
+                    background: 'var(--retrasada-bg)',
+                    color: 'var(--retrasada-text)',
+                    borderRadius: 'var(--radius-badge, 0px)',
+                  }}
+                >
+                  <availability.Icon className="h-3 w-3" />
+                  {availability.title}
+                </span>
+              ) : null}
 
               {fechaPublicacion ? (
                 <span
@@ -514,12 +636,21 @@ function ActivityCard({
                         </h4>
                       </div>
 
-                      <p
-                        className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed sm:text-sm ${instructionsClampClass}`}
-                        style={{ color: 'var(--text-normal)' }}
-                      >
-                        {instructionsText}
-                      </p>
+                      {/* Con markdown se renderiza la estructura real (tablas,
+                          imágenes, listas); el texto plano queda de respaldo
+                          para actividades cacheadas antes de que se extrajera. */}
+                      {instruccionesMarkdown ? (
+                        <div className={instructionsClampClass}>
+                          <ActivityInstructions markdown={instruccionesMarkdown} />
+                        </div>
+                      ) : (
+                        <p
+                          className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed sm:text-sm ${instructionsClampClass}`}
+                          style={{ color: 'var(--text-normal)' }}
+                        >
+                          {instructionsText}
+                        </p>
+                      )}
 
                       {instructionsText.length > 140 ? (
                         <button
@@ -528,6 +659,221 @@ function ActivityCard({
                           className="link-accent mt-2 text-sm font-medium"
                         >
                           {instructionsExpanded ? 'Ver menos' : 'Ver más'}
+                        </button>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {availability ? (
+                    <section
+                      className="border px-3 py-2"
+                      style={{
+                        borderColor: 'var(--retrasada-border)',
+                        background: 'var(--retrasada-bg)',
+                        borderRadius: 'var(--radius-card, 0px)',
+                      }}
+                    >
+                      <div className="flex items-center gap-2" style={{ color: 'var(--retrasada-text)' }}>
+                        <availability.Icon className="h-4 w-4" />
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">{availability.title}</h4>
+                      </div>
+
+                      <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--text-normal)' }}>
+                        {availability.detail}
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {documentos.length > 0 ? (
+                    <section>
+                      <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                        <Paperclip className="h-4 w-4" />
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">Documentos de la consigna</h4>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                        {documentos.map((documento) => {
+                          const { Icon: DocIcon, label: docLabel } = getFileIcon(documento.nombre);
+
+                          return (
+                            <div
+                              key={documento.fileId}
+                              className="flex items-center gap-3 border px-3 py-2"
+                              style={{
+                                borderColor: 'var(--border-subtle)',
+                                background: 'var(--bg-card)',
+                                borderRadius: 'var(--radius-card, 0px)',
+                              }}
+                            >
+                              <div
+                                className="flex h-9 w-9 shrink-0 items-center justify-center border"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                              >
+                                <DocIcon className="h-5 w-5 shrink-0" />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  title={documento.nombre}
+                                  className="truncate text-xs font-medium"
+                                  style={{ color: 'var(--text-strong)' }}
+                                >
+                                  {documento.nombre}
+                                </p>
+                                <p className="mt-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                                  {docLabel}{documento.palabras ? ` · ${documento.palabras} palabras` : ''}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDriveFile(documento)}
+                                className="hov-accent inline-flex h-8 w-8 shrink-0 items-center justify-center border"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  color: 'var(--text-normal)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                                aria-label={`Abrir ${documento.nombre}`}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {driveError ? (
+                        <p className="mt-2 text-xs" style={{ color: 'var(--error-text)' }}>
+                          {driveError}
+                        </p>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {enlacesSueltos.length > 0 ? (
+                    <section>
+                      <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                        <LinkIcon className="h-4 w-4" />
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">Enlaces de la consigna</h4>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {enlacesSueltos.map((enlace) => (
+                          <button
+                            key={enlace.url}
+                            type="button"
+                            onClick={() => handleOpenLink(enlace)}
+                            title={enlace.url}
+                            className="hov-accent inline-flex max-w-full items-center gap-2 border px-3 py-1.5 text-xs"
+                            style={{
+                              borderColor: 'var(--border-normal)',
+                              background: 'var(--bg-secondary)',
+                              color: 'var(--text-normal)',
+                              borderRadius: 'var(--radius-badge, 0px)',
+                            }}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--text-muted)' }} />
+                            <span className="truncate">{enlace.texto}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {linkError ? (
+                        <p className="mt-2 text-xs" style={{ color: 'var(--error-text)' }}>
+                          {linkError}
+                        </p>
+                      ) : null}
+
+                      {enlacesSueltos.some((enlace) => enlace.tipo === 'google') ? (
+                        <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Se abren en tu navegador, donde ya tienes la sesión de Google iniciada.
+                        </p>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {rubricRows.length > 0 ? (
+                    <section>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                          <ListChecks className="h-4 w-4" />
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">
+                            {rubrica.titulo || 'Criterios de calificación'}
+                          </h4>
+                        </div>
+
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {rubricRows.length} criterio{rubricRows.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      <div
+                        className="mt-2 overflow-x-auto border"
+                        style={{ borderColor: 'var(--border-subtle)', borderRadius: 'var(--radius-card, 0px)' }}
+                      >
+                        <table className="w-full border-collapse text-left text-xs">
+                          {rubrica.encabezados?.length > 0 ? (
+                            <thead>
+                              <tr>
+                                {rubrica.encabezados.map((celda, index) => (
+                                  <th
+                                    key={`head-${index}`}
+                                    className="border-b px-3 py-2 align-top font-semibold"
+                                    style={{
+                                      borderColor: 'var(--border-subtle)',
+                                      background: 'var(--bg-tertiary)',
+                                      color: 'var(--text-strong)',
+                                    }}
+                                  >
+                                    {celda}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                          ) : null}
+
+                          <tbody>
+                            {visibleRubricRows.map((fila, filaIndex) => (
+                              <tr key={`fila-${filaIndex}`}>
+                                {fila.map((celda, celdaIndex) => (
+                                  <td
+                                    key={`celda-${filaIndex}-${celdaIndex}`}
+                                    className="border-b px-3 py-2 align-top leading-relaxed"
+                                    style={{
+                                      borderColor: 'var(--border-subtle)',
+                                      // La primera columna nombra el criterio; el resto son
+                                      // los niveles de desempeño y se leen como cuerpo.
+                                      color: celdaIndex === 0 ? 'var(--text-strong)' : 'var(--text-normal)',
+                                      minWidth: celdaIndex === 0 ? '9rem' : '11rem',
+                                    }}
+                                  >
+                                    {celda}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {rubricRows.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setRubricExpanded((value) => !value)}
+                          className="link-accent mt-2 text-sm font-medium"
+                        >
+                          {rubricExpanded
+                            ? 'Ver menos criterios'
+                            : `Ver los ${rubricRows.length} criterios`}
                         </button>
                       ) : null}
                     </section>
@@ -679,7 +1025,14 @@ function ActivityCard({
                   <ActivitySubmission url={url} puedeEntregar={puedeEntregar} />
 
                   <ActivityAnalyzer
-                    activity={{ id, nombre, instrucciones, materia, modalidad }}
+                    activity={{ id, nombre, instrucciones, instruccionesMarkdown, rubrica, materia, modalidad }}
+                  />
+
+                  {/* Recibe MÁS campos que el analizador a propósito: el prompt
+                      se arma con todo lo que la card sabe — profesor, fechas y
+                      los adjuntos del profe, que son de donde sale la rúbrica. */}
+                  <PromptGenerator
+                    activity={{ id, nombre, instrucciones, instruccionesMarkdown, enlaces, rubrica, materia, modalidad, profesor, estado, fechaLimite, fechaPublicacion, archivos }}
                   />
                 </div>
               </div>

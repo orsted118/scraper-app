@@ -42,6 +42,7 @@ scraper-app/
 │     ├─ cia.js                    # Scraper CIA calificaciones (PDF boleta)
 │     ├─ settings.js               # settings:get/settings:save (.env dev/prod)
 │     ├─ files.js                  # Descarga de adjuntos via sesión Electron
+│     ├─ drive.js                  # Resuelve los Drive de la consigna a un PDF local (anónimo)
 │     └─ notifications.js          # Notificaciones nativas de pendientes/retrasadas
 ├─ src/
 │  ├─ main.jsx                     # Entry renderer
@@ -62,6 +63,8 @@ scraper-app/
 │  │  ├─ Calificaciones.jsx
 │  │  └─ Ajustes.jsx
 │  └─ design-backups/v1/           # Backup local visual (ignorado por git)
+├─ mcp/
+│  └─ dvpotro-mcp.js               # Servidor MCP sobre las cachés (stdio, sin deps)
 ├─ scripts/
 │  ├─ generate-icon.js             # Convierte PNG a ICO
 │  ├─ debug-horario.js             # Diagnóstico manual de CIA horario
@@ -98,6 +101,9 @@ scraper-app/
 | `settings:save` | `settings.js` | `{ user, password, ciaUser, ciaPassword }` | `{ success }` o `{ success:false,error }` |
 | `notifications:check` | `notifications.js` | `activities[]` | resumen `{ delayedCount, expiringCount, supported, success }` |
 | `files:download` | `files.js` | `{ url, name }` | `{ success, path? , error? }` |
+| `drive:get-cached` | `drive.js` | — | `{ ok, data }` — índice de PDFs de Drive resueltos |
+| `drive:resolve` | `drive.js` | `{ urls[], actividadId?, forzar? }` | `{ ok, resueltos, total, data }` |
+| `drive:read-text` | `drive.js` | `fileId` | `{ ok, texto, nombre }` o `{ ok:false, error }` |
 | `files:inspect` | `files.js` | payload libre | response base placeholder |
 | `files:parse` | `files.js` | payload libre | response base placeholder |
 | `shell:open-external` | `main.js` | `url` | abre en navegador externo (sin payload rico) |
@@ -105,6 +111,7 @@ scraper-app/
 ### Evento renderer
 
 - `scraper:progress` (emitido por `scraper.js`) con `{ current, total, curso }`.
+- `drive:progress` (emitido por `drive.js`) con `{ done, total, fileId, nombre, estado }`. Canal propio y no `scraper:progress`: ese payload es `{current, total, curso}` y reusarlo haría que la barra de materias se recargue desde cero después de llegar a 100%.
 
 ---
 
@@ -116,11 +123,15 @@ scraper-app/
 - Recorre cursos desde `/my/`.
 - Recorre tareas por curso en `mod/assign/index.php?id=<courseId>`.
 - Extrae detalle por actividad en paralelo por chunks.
-- Clasifica estado final:
-  - `pendiente` = no entregada y abierta
-  - `retrasada` = no entregada, vencida y aún abierta
-  - `cerrada` = no entregada y cerrada definitivamente
+- Extrae de la consigna, además del texto plano: `instruccionesMarkdown` (conserva enlaces y tablas), `enlaces[]`, `tablas[]` y `rubrica` (los criterios de calificación, que viven fuera de `#intro`).
+- Clasifica sobre la **ventana de entrega**, que es distinta del estado de la propia entrega:
+  - `ventana` = `no_abierta` | `abierta` | `cerrada`, resuelta por `resolveSubmissionWindow()` a partir de la fecha de corte, la fecha de apertura y los avisos del portal.
+  - `pendiente` = no entregada y la ventana está abierta **o todavía no abre**
+  - `retrasada` = no entregada, vencida y la ventana sigue abierta
+  - `cerrada` = no entregada y la ventana ya cerró (fecha de corte vencida o aviso explícito)
   - entregadas: se excluyen del array final
+- `bloqueo` explica por qué no hay botón de entrega sin cambiar el estado. Hoy solo `sin_equipo` (tarea grupal sin equipo asignado todavía).
+- **No usar la columna "Submission" del índice para decidir cierre.** Dice si el alumno entregó, no si el portal acepta entregas: `"No submission"` es la definición de pendiente. Confundirlas enterraba en cerradas las tareas que aún no abrían y las grupales sin equipo.
 
 ### 2) CIA Horario (`electron/handlers/horario.js`)
 
@@ -136,6 +147,46 @@ scraper-app/
 - Flujo Boleta + Report Manager.
 - Descarga PDF de boleta y parsea texto/posiciones.
 - Construye materias con `clave`, `nombre`, `calificaciones[]`, `promedio`, `estado`.
+
+---
+
+## Servidor MCP — catálogo de tools
+
+`mcp/dvpotro-mcp.js` expone la caché de la app por MCP. **Si la pregunta es sobre datos
+académicos, contestala con estas tools en vez de leer los JSON de `userData` a mano.**
+Arquitectura y reglas en `CLAUDE.md`.
+
+| Tool | Devuelve | Lee |
+|---|---|---|
+| `dvpotro_estado` | qué módulos tienen caché y qué tan vieja está — **llamarla primero** | todas |
+| `dvpotro_materias` | vista de conjunto del ciclo: profesor, material, tareas por estado, asistencia | material + actividades + attendance + horario |
+| `dvpotro_actividades` | listado resumido, filtrable; por defecto solo pendientes y retrasadas | `actividades-cache.json` |
+| `dvpotro_actividad` | UNA con consigna en markdown, rúbrica, adjuntos, enlaces y tablas | `actividades-cache.json` |
+| `dvpotro_horario` | horario semanal con aula o enlace de videollamada; filtra por día | `horario-cache.json` |
+| `dvpotro_material` | recursos por materia y sección; sin filtro devuelve solo conteos | `material.json` |
+| `dvpotro_asistencia` | porcentaje, puntos y detalle de sesiones | `attendance.json` |
+| `dvpotro_calificaciones` | boleta: parciales, promedio, estado y componentes de laboratorio | `cia-cache.json` |
+| `dvpotro_notas` | notas personales tipo Keep | `notes.json` |
+| `dvpotro_calendario` | calendario escolar del ITSON en una ventana de días | `calendario-cache.json` |
+| `dvpotro_buscar` | un texto a la vez en actividades, material, notas y calendario | varias |
+| `dvpotro_notificaciones` | avisos que la app generó | `notifications.json` |
+| `dvpotro_novedades` | qué cambió: actividades nuevas, fechas movidas, cambios de aula | `notifications.json` |
+| `dvpotro_agenda` | clases + entregas + calendario en un solo eje temporal ordenado | horario + actividades + calendario |
+| `dvpotro_perfil` | nombre, matrícula, correo y programa — para portadas | `profile-cache/profile.json` |
+| `dvpotro_requisitos` | requisitos ya extraídos de una consigna y la última verificación | `activity-analysis/<id>.json` |
+| `dvpotro_prompts` | prompts que la app ya armó por actividad | `prompt-cache.json` |
+| `dvpotro_adjuntos` | **baja archivos**: adjuntos e imágenes de la consigna de UNA actividad a disco, con el texto de los .pdf/.docx. ~10-20 s la primera vez, 0 s después | `actividades-cache.json` |
+| `dvpotro_sync` | **escribe caché**: sale al portal y la refresca. 40-120 s por módulo | — |
+
+Notas de uso:
+
+- `dvpotro_adjuntos` existe porque las URLs de `pluginfile.php` necesitan la cookie de sesión: sin ella devuelven la pantalla de login. Cuando el profesor no escribe consigna en Moodle, la tarea entera está adentro de ese `.docx` —o dibujada en la imagen que pegó en el editor— y esta tool es la única forma de leerla. Guarda en `userData/adjuntos/<idActividad>/`, con un sidecar `.txt` por archivo; las imágenes van a `imagenes/` aparte, numeradas, porque Moodle las nombra `blobid0.png` a todas y se pisarían. Baja todo lo que la actividad liste en `archivos`, que incluye lo que el alumno ya entregó.
+
+- Las listas devuelven resúmenes y el detalle se pide de a uno, a propósito: volcar `actividades-cache.json` entero son ~75.000 tokens.
+- `dvpotro_actividades`, `dvpotro_materias`, `dvpotro_buscar` y `dvpotro_agenda` **descuentan las actividades que el alumno ocultó** en la app (`hidden-activities.json`). `dvpotro_actividad` por id igual las resuelve.
+- La búsqueda de actividades barre nombre, consigna, **rúbrica**, tablas, enlaces y adjuntos: en iVirtual la consigna suele ser solo un enlace a Drive y los entregables concretos viven en la rúbrica.
+- `dvpotro_requisitos` y `dvpotro_prompts` **leen caché, no llaman a ningún modelo**: cuestan cero.
+- Toda respuesta trae un encabezado con la frescura del dato. Si dice días, avisarlo antes de responder como si fuera de hoy.
 
 ---
 
@@ -234,8 +285,9 @@ Patrones visuales:
 
 | Módulo | Estado | Nota |
 |---|---|---|
-| Actividades iVirtual | ✅ | Clasificación pendiente/retrasada/cerrada + adjuntos |
+| Actividades iVirtual | ✅ | Clasificación por ventana de entrega + adjuntos, enlaces y rúbrica |
 | Horario CIA + links | ⚠️ | Funcional, pero dependiente de estabilidad de frames/estructura CIA |
 | Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
+| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 19 tools; 17 de lectura + `dvpotro_adjuntos` + `dvpotro_sync`. Registrado en `.mcp.json` del repo y a nivel usuario |

@@ -154,6 +154,11 @@ npm run test:horario     # 26 checks — merge de modalidad por día
 npm run test:modalidad   # 27 checks — detección remoto/presencial
 npm run test:cache       # 9 checks  — versionado de cache
 npm run test:upload      # 18 checks — validación local y URLs
+npm run test:accepted-types  # 22 checks — extensiones aceptadas, contra HTML real
+npm run test:material    # 24 checks — clasificación de recursos y novedades
+npm run test:force-resync  # 13 checks — el botón de sync re-escanea siempre
+npm run test:attendance  # 26 checks — parseo de sesiones y guardas del registro
+npm run test:prompt      # 27 checks — contexto y presupuesto del generador de prompts
 ```
 
 Todos en verde al cierre de la sesión.
@@ -164,7 +169,9 @@ Todos en verde al cierre de la sesión.
 
 ### Entrega a iVirtual — falta más data
 Con **una sola actividad abierta** no se pudo observar:
-- Entrega con restricción de extensión (`acceptedTypes` no vacío)
+- ~~Entrega con restricción de extensión (`acceptedTypes` no vacío)~~ —
+  observado el 2026-08-28 en "Asignación 01 - Tipos de Datos Abstractos"
+  (`[.pdf, .doc, .docx]`). Destapó el bug de los múltiples `accepted_types`.
 - Assignment con declaración obligatoria (`submissionstatement`)
 - **Entrega grupal**
 - Entrega de texto en línea (`onlinetext`)
@@ -202,12 +209,79 @@ Advertencias para él:
 
 ## 🧠 Cosas no obvias del proyecto
 
+- **El material NO son archivos subidos a Moodle.** En los 5 cursos medidos hubo
+  CERO módulos `resource`. Lo que hay son cuatro formas: `folder` (PDFs en
+  `pluginfile.php`, descargables), `url`→Drive (Redes publica TODOS sus temas
+  así), `page` (HTML dentro de Moodle) y `url`→Meet/WhatsApp (no es material,
+  son las herramientas de la materia).
+- **El generador de prompts vive o muere por el presupuesto de tokens.** La
+  consigna (8k), los adjuntos (40k c/u) y el material juntos no entran en el
+  contexto del modelo más chico del pool. El recorte es por PRIORIDAD, no por
+  concat: consigna entera > adjuntos recortados y repartidos entre sí > material
+  sólo por TÍTULO. Y todo lo que se recorta o no se pudo leer se declara en el
+  contexto, para que el modelo no escriba un prompt apoyado en algo que nunca
+  vio.
+- **Asistencia (`mod_attendance`) sólo se puede marcar mientras el profe tiene
+  la sesión abierta.** El link `attendance.php?sessid=…` no existe fuera de esa
+  ventana, y ése es el estado normal. Una sesión futura aparece con estado `?`.
+  El remark **"Self-recorded"** es la prueba de que el curso permite
+  auto-registro (2 de 3 materias lo tienen).
+- **El registro de asistencia NUNCA se automatiza.** Marcar es afirmar que
+  estuviste en clase. No hay auto-marcado por timer, ni en la sync, ni al abrir
+  la app: el único camino a `markAttendance` es el botón + confirmación. El test
+  `test:attendance` verifica que ningún camino automático lo alcance.
+- **El registro clickea el form real, no arma un POST.** Los nombres de campo de
+  `mod_attendance` cambian entre versiones del plugin, y un POST inventado
+  contra un registro académico es peor que no hacer nada. Si el form no está
+  donde se espera, se aborta y se reporta.
+- **La URL del form se valida contra el host.** Sale de scrapear la página del
+  curso, o sea contenido que no controlamos: un link plantado hacia otro dominio
+  se llevaría la cookie de sesión de Moodle. `isSessionUrl` exige https + host
+  exacto + path exacto + `sessid`.
+- **Ojo con `startsWith` en el parseo de totales.** "Percentage over taken
+  sessions" contiene "taken sessions": un test suelto metía el porcentaje en el
+  contador de sesiones. Los patrones van anclados al inicio.
+- **Mucho material NO es un módulo con página propia.** El profe lo pega dentro
+  de un `mod_label` — HTML suelto que Moodle renderiza en la portada. Un label
+  no tiene link a `/mod/`, así que un scraper que filtre por "módulo con
+  nombre" lo descarta y se lleva TODO su contenido. Estructuras de Datos tenía
+  6 PDFs de Drive así. Por eso el barrido de links es sobre la sección entera.
+- **Word parte un link en varios `<a>`.** "Fundamentos de las Estructuras de
+  Datos" quedó como dos anchors a archivos DISTINTOS, el segundo con el texto
+  `s`. Y "Enlace a la" tenía el resto del nombre fuera del `<a>`.
+- **Cuidado al derivar ids de una URL por prefijo.** La primera versión de
+  `resourceId` recortaba un base64 del href a 20 chars — sólo ~15 bytes — y
+  todos los Drive empiezan con `https://drive.g`: colisionaban en el mismo id y
+  el dedup se comía 5 de 6. Se hashea la URL completa.
+- **`force` en los scrapers cacheados.** Actividades cachea 6 h, horario y
+  calendario 24 h. Sin `force`, apretar "Sincronizar todo" una segunda vez
+  devolvía la caché y no se re-escaneaba nada. Las cargas automáticas (`silent`)
+  sí usan caché; las que pide el usuario, no.
+- **Los Drive del portal NO se pueden bajar automáticamente.** Verificado: sin
+  la sesión de Google del alumno redirigen a `accounts.google.com`. Por eso el
+  módulo los abre en el navegador del sistema en vez de prometer una descarga.
+- **Moodle repite el foro de avisos en varios contenedores** de la portada del
+  curso: el mismo módulo aparece hasta 4 veces. Se deduplica por cmid, no por
+  nombre (dos foros distintos pueden llamarse "Avisos").
 - **`submissiondrafts` de Moodle** decide si guardar deja borrador o entrega
   final. No se puede saber de antemano sin guardar.
 - **El filemanager de Moodle se monta por JavaScript.** No hay
   `<input type="file">` en el HTML estático, y los límites viven en el JSON de
   configuración del filepicker, no en atributos `data-*`.
 - **`accepted_types: []`** significa *cualquier extensión*, no *ninguna*.
+- **La página de entrega trae VARIOS bloques `accepted_types`.** Medido en
+  "Asignación 01": 14 bloques, y 12 son del editor de texto enriquecido (sus
+  pickers de imagen, media y subtítulos), que además aparecen *antes* en el
+  documento. Sólo el bloque de `M.form_filemanager.init` es el de la entrega.
+  Buscar el primero del HTML leía `web_image` y la app rechazaba PDFs que el
+  portal sí acepta. Lo mismo aplica a `maxbytes` y `maxfiles`.
+- **`accepted_types` mezcla cuatro sintaxis**: extensiones (`.pdf` o `pdf`),
+  grupos (`document`, `image`), mimetypes (`application/pdf`) y `*`. ITSON manda
+  los grupos ya expandidos, pero las otras formas son válidas en Moodle.
+- **La validación local es una conveniencia, no una autoridad.** Ante un token
+  que no se sabe interpretar NO se bloquea: contesta el portal con el motivo
+  real. Bloquear de más impide una entrega válida; dejar pasar de más sólo
+  cuesta un viaje al portal.
 - **`isPlaying` de MusicPlayerContext** es state de React seteado a mano, **no**
   derivado de eventos del `<audio>`. Un harness que manipula el `<audio>`
   directo no dispara la persistencia y da falsos negativos.

@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, ipcMain } = require('electron');
-const { SPANISH_MONTHS, parseDueDate } = require('../utils/dateParser');
+const { SPANISH_MONTHS, daysUntilDue, parseDueDate } = require('../utils/dateParser');
 
 const MAX_NOTIFICATIONS = 500;
 const ERROR_DEDUPE_MS = 6 * 60 * 60 * 1000;
@@ -630,11 +630,19 @@ function checkClassReminders(log, now) {
   }
 }
 
+// YYYY-MM-DD en hora local, para claves de dedupe que no salten de día a media
+// tarde como sí hace `toISOString()`.
+function toLocalDateKey(value) {
+  const date = new Date(value);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function checkActivityReminders(log, now) {
   const cache = readJson(path.join(getUserDataPath(), 'actividades-cache.json'));
   const activities = Array.isArray(cache?.actividades) ? cache.actividades : [];
   const nowMs = now.getTime();
-  const todayISO = now.toISOString().slice(0, 10);
 
   for (const activity of activities) {
     if (activity?.estado !== 'pendiente') {
@@ -648,10 +656,14 @@ function checkActivityReminders(log, now) {
     }
 
     const activityKey = getActivityKey(activity);
-    const dueDate = new Date(dueMs);
-    const isToday = dueDate.toISOString().slice(0, 10) === todayISO;
+    // `toISOString()` es UTC: en UTC-7 toda entrega posterior a las 17:00 local
+    // caía en el día siguiente, así que lo que vencía esa misma noche se
+    // anunciaba como "Vence en menos de 24h". El día se compara en local, y la
+    // clave de dedupe también — si no, el mismo aviso se repetía al cruzar la
+    // medianoche UTC (las 17:00 de acá).
+    const isToday = daysUntilDue(dueMs, nowMs) === 0;
     const window = isToday ? 'hoy' : '24h';
-    const key = `rem-act-${window}-${activityKey}-${dueDate.toISOString().slice(0, 10)}`;
+    const key = `rem-act-${window}-${activityKey}-${toLocalDateKey(dueMs)}`;
 
     if (wasEmitted(log, key)) {
       continue;

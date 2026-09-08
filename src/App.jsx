@@ -10,6 +10,7 @@ import Horario from './pages/Horario';
 import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Notificaciones from './pages/Notificaciones';
+import Material from './pages/Material';
 import Musica from './pages/Musica';
 import Notas from './pages/Notas';
 import Ajustes from './pages/Ajustes';
@@ -52,6 +53,11 @@ const pageRegistry = {
     title: 'Notas',
     description: 'Captura ideas, listas y pendientes al estilo Keep.',
     component: Notas,
+  },
+  material: {
+    title: 'Material',
+    description: 'Presentaciones, apuntes y enlaces de cada materia, traídos de iVirtual.',
+    component: Material,
   },
   settings: {
     title: 'Ajustes',
@@ -294,7 +300,9 @@ function App() {
         }
       }
 
-      response = await api.runScraper();
+      // force cuando la sync la pidió el usuario. Las cargas automáticas
+      // (silent) sí pueden servirse de la caché.
+      response = await api.runScraper({ force: !silent });
 
       if (response?.error) {
         if (!silent) {
@@ -477,7 +485,7 @@ function App() {
         }
       }
 
-      response = await api.runHorario();
+      response = await api.runHorario({ force: !silent });
 
       if (response?.error) {
         if (!silent) {
@@ -554,7 +562,7 @@ function App() {
         await api.clearCalendarioCache();
       }
 
-      const result = await api.runCalendario({ calendarType });
+      const result = await api.runCalendario({ calendarType, force: !silent });
 
       if (result?.error) {
         setCalendarData({
@@ -602,15 +610,25 @@ function App() {
     addSyncingModule('activities');
     addSyncingModule('horario');
     addSyncingModule('calendario');
+    addSyncingModule('material');
+    addSyncingModule('attendance');
     if (hasFinales) {
       addSyncingModule('calificaciones');
     }
 
     try {
+      // force: true en todos. Actividades cachea 6 h y horario/calendario 24 h,
+      // así que sin esto apretar "Sincronizar todo" una segunda vez devolvía la
+      // caché y no se re-escaneaba nada del portal.
       const calls = [
-        { id: 'activities', promise: scraperApi.runScraper?.() },
-        { id: 'horario', promise: scraperApi.runHorario?.() },
-        { id: 'calendario', promise: scraperApi.runCalendario?.({}) },
+        { id: 'activities', promise: scraperApi.runScraper?.({ force: true }) },
+        { id: 'horario', promise: scraperApi.runHorario?.({ force: true }) },
+        { id: 'calendario', promise: scraperApi.runCalendario?.({ force: true }) },
+        { id: 'material', promise: scraperApi.material?.sync?.() },
+        // Sólo LEE el estado de asistencia. Registrar es otro canal
+        // (attendance:mark) y sale de que el usuario apriete el botón: una sync
+        // jamás debe marcar presencia por su cuenta.
+        { id: 'attendance', promise: scraperApi.attendance?.sync?.() },
       ];
 
       if (hasFinales) {
@@ -629,6 +647,13 @@ function App() {
         }
 
         const response = result.value;
+
+        // El módulo de material responde { ok, error } en vez de tirar el error
+        // arriba como los otros scrapers.
+        if (moduleId === 'material' || moduleId === 'attendance') {
+          if (!response?.ok) hasErrors = true;
+          return;
+        }
 
         if (response?.error) {
           hasErrors = true;
@@ -706,6 +731,8 @@ function App() {
       setSyncState((current) => ({ ...current, status: 'error' }));
       setTimeout(() => setSyncState((current) => ({ ...current, status: 'idle' })), 4000);
     } finally {
+      removeSyncingModule('attendance');
+      removeSyncingModule('material');
       removeSyncingModule('activities');
       removeSyncingModule('horario');
       removeSyncingModule('calendario');

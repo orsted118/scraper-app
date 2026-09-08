@@ -35,9 +35,72 @@ npm run build                          # Build Vite (dist/)
 npm run dist                           # Build + electron-builder (NSIS + portable → release/)
 npm run dist:dir                       # Build sin empaquetar instalador (dir/)
 npm run report                         # Genera reporte incremental en reports/
+
+npm run test:clasificacion             # Estados pendiente/retrasada/cerrada (ventana de entrega)
+npm run test:fechas                    # Parseo de fechas ES/EN, main y renderer en sincronía
+npm run test:extraccion                # Enlaces, tablas y rúbrica contra un DOM real (Playwright)
+
+npm run test:drive                     # Normalización y clasificación de links de Drive (sin red)
+npm run test:drive:red                 # Descarga real contra ids reales, DENTRO de Electron (con red)
+npm run test:drive:llm                 # El texto del PDF llegando al prompt y al extractor de requisitos
+npm run test:mcp-drive                 # El MCP sirviendo lo resuelto (JSON-RPC contra el server real)
+npm run drive:resolve                  # Corre la cola de Drive una vez contra la caché real
 ```
 
 Node **20+**, npm **10+**.
+
+---
+
+## Servidor MCP (`mcp/dvpotro-mcp.js`)
+
+Expone la caché de la app a Claude Code. Registrado en dos lados: en `.mcp.json` del repo
+(para quien lo clone) y a **nivel usuario** en `~/.claude.json`, que es lo que lo hace
+cargar desde cualquier carpeta. `REPO` se resuelve con `__dirname`, así que el `cwd` de la
+sesión no importa.
+
+**Cuando la pregunta es sobre datos académicos —qué actividades hay, qué vence, horario,
+calificaciones, material, asistencia— usar las tools `mcp__dvpotro__*`, no leer los JSON
+a mano.** Para eso existe el server: `actividades-cache.json` son ~300 KB (unos 75.000
+tokens) y volcarlo entero quema la ventana de contexto. El valor del server es FILTRAR.
+
+### Arquitectura
+
+- **Sin dependencias.** Habla JSON-RPC 2.0 por stdio a mano, delimitado por `\n`. Meter el SDK oficial (ESM) en un proyecto CommonJS costaba más que las ~60 líneas de transporte.
+- **Lee los JSON de `userData` directo**, no habla con la app por IPC ni HTTP. Un puerto abierto con la matrícula y las calificaciones del alumno detrás no agrega ningún dato y sí agrega superficie. Por stdio no hace falta que la app esté corriendo.
+- **`stdout` está secuestrado** al arrancar: es el canal del protocolo y un solo `console.log` ajeno corrompe la sesión. El `write` real se guarda para `enviar()` y todo lo demás se redirige a stderr. Si agregás código que loguea, ya está cubierto — pero no escribas a stdout a propósito.
+- **`readJson` reintenta 3 veces.** El `writeJson` de la app no es atómico; si sincroniza justo mientras leemos agarramos un JSON cortado.
+- **`SCHEMA`** declara qué versión de cada caché sabe leer. Si bumpeás `schemaVersion`/`version` en un handler, **actualizá también `SCHEMA`** o el server empieza a avisar que puede faltar información.
+- **`DVPOTRO_USER_DATA`** pisa la ruta de `userData` — sirve para probar contra un sandbox sin tocar la instalación real.
+
+### Solo lectura, con dos excepciones acotadas
+
+Las 17 tools de consulta no escriben nada. Las dos que salen a la red cargan los handlers
+de Electron en Node pelado con un `electron` de mentira:
+
+- **`dvpotro_sync`** corre el scrape y refresca la caché. Tiene lista blanca de módulos —
+  **nunca** se arma un nombre de función con lo que mandó el cliente.
+- **`dvpotro_adjuntos`** inicia sesión en iVirtual y baja los adjuntos de una actividad —y
+  las imágenes de la consigna, a `imagenes/`— a `userData/adjuntos/<idActividad>/`. Las
+  URLs salen de la caché, nunca del cliente: la tool recibe un id de actividad, no una URL.
+  Moodle contesta la pantalla de login con **200**, así que se verifica que el cuerpo no
+  empiece con HTML antes de guardarlo, o el login se archivaría con extensión `.docx`.
+  Las imágenes se numeran al guardarlas: Moodle llama `blobid0.png` a todas las que se
+  pegan en el editor, así que sin el índice la segunda pisa a la primera.
+
+Las dos llaman `prepararHandlers()` **antes** de chequear credenciales: esa función es la
+que carga el `.env`, y al revés las credenciales siempre parecen faltar.
+
+Regla dura: **la asistencia jamás se marca sola.** `markAttendance` no se referencia en
+ningún lado de ese archivo, a propósito. Sincronizar es traer, nunca mandar.
+
+`isPackaged: true` en el `app` falso **no es cosmético**: `settings.js:getEnvFilePath()`
+lo consulta, y con `undefined` el scrape de horario termina reescribiendo el `.env` del
+repo — el archivo con todas las claves.
+
+### Cómo testearlo
+
+Spawneá el proceso y hablale JSON-RPC (`initialize` → `tools/list` → `tools/call`).
+**No hagas `require()` del archivo**: arranca el listener de stdin y cuelga el proceso.
 
 ---
 

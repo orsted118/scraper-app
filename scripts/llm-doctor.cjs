@@ -12,14 +12,13 @@ require(path.join(ROOT, 'node_modules/dotenv')).config({ path: path.join(ROOT, '
 const { probeAllBackends } = require(path.join(ROOT, 'electron/llm/probe'));
 const { getPreferenceOrder } = require(path.join(ROOT, 'electron/llm/selector'));
 const { discoverKeySlots } = require(path.join(ROOT, 'electron/llm/key-pool'));
+const { REGISTRY } = require(path.join(ROOT, 'electron/llm/selector'));
 
-const ENV_BASES = {
-  cerebras: 'CEREBRAS_API_KEY',
-  github: 'GITHUB_TOKEN',
-  mistral: 'MISTRAL_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-  groq: 'GROQ_API_KEY',
-};
+// Se deriva del registry en vez de listarse a mano: la copia manual dejaba a los
+// backends nuevos sin etiqueta y fuera del conteo de "configurados".
+const ENV_BASES = Object.fromEntries(
+  Object.entries(REGISTRY).map(([name, entry]) => [name, entry.envBase]),
+);
 
 const pad = (value, width) => String(value ?? '').padEnd(width);
 
@@ -34,7 +33,7 @@ function formatKeyLabel(result) {
 
   if (configured.length === 0) {
     console.log('\nNo hay ninguna key configurada en .env.');
-    console.log('Agregá al menos una: CEREBRAS_API_KEY, GITHUB_TOKEN, MISTRAL_API_KEY, GEMINI_API_KEY o GROQ_API_KEY.\n');
+    console.log(`Agregá al menos una: ${Object.values(ENV_BASES).join(', ')}.`);
     process.exit(1);
   }
 

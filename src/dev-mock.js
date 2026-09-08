@@ -10,7 +10,135 @@ function iso(offsetDays, hour = 23, minute = 59) {
   return date.toISOString();
 }
 
+// Diagrama de mentira como data URI: el renderer necesita una imagen que
+// cargue sin sesion ni red para poder verse en el navegador.
+// PNG y NO svg a propósito: `ActivityInstructions` rechaza data:image/svg+xml
+// igual que el sanitizer de Notas, porque un SVG ejecuta script. Sirve para
+// comprobar que la imagen se pinta sin depender de sesión ni de red.
+const MOCK_DIAGRAM =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
 const MOCK_ACTIVITIES = [
+  // Entregadas: no se muestran en las pestanas de Actividades (esas filtran por
+  // pendiente/retrasada/cerrada) pero alimentan el conteo por materia en
+  // Material. Shape identico al que devuelve el scraper real.
+  {
+    id: 'demo-entregada-1',
+    nombre: 'A01 - TOPOLOGIAS',
+    materia: 'Redes',
+    profesor: 'Carlos Alberto Benitez Ramirez',
+    estado: 'entregada',
+    modalidad: 'individual',
+    ventana: 'cerrada',
+    fechaLimite: '27 de agosto de 2026, 15:30',
+    fechaEntrega: '25 de agosto de 2026, 20:50',
+    entregaArchivos: [{ name: 'A01_Topologias_Alvarez.pdf', url: 'https://example.test/a01.pdf' }],
+    instrucciones: '', instruccionesMarkdown: '', enlaces: [], imagenes: [], tablas: [], archivos: [], rubrica: null,
+  },
+  {
+    id: 'demo-entregada-2',
+    nombre: 'ACT02 - RED DE CONSULTORIO',
+    materia: 'Redes',
+    profesor: 'Carlos Alberto Benitez Ramirez',
+    estado: 'entregada',
+    modalidad: 'individual',
+    ventana: 'cerrada',
+    fechaLimite: '27 de agosto de 2026, 17:00',
+    fechaEntrega: '27 de agosto de 2026, 16:38',
+    entregaArchivos: [{ name: 'ACT02_Consultorio.pdf', url: 'https://example.test/act02.pdf' }],
+    instrucciones: '', instruccionesMarkdown: '', enlaces: [], imagenes: [], tablas: [], archivos: [], rubrica: null,
+  },
+  {
+    // Entregada DESPUES del limite: ejercita la marca de "fuera de plazo".
+    id: 'demo-entregada-3',
+    nombre: 'Asignacion 01 - Tipos de Datos Abstractos',
+    materia: 'Estructuras de Datos',
+    profesor: 'Francisco Antonio Mejia Dominguez',
+    estado: 'entregada',
+    modalidad: 'equipo',
+    ventana: 'cerrada',
+    fechaLimite: '30 de agosto de 2026, 23:59',
+    fechaEntrega: '31 de agosto de 2026, 1:12',
+    entregaArchivos: [{ name: 'Asignacion01_Equipo4.zip', url: 'https://example.test/a01.zip' }],
+    instrucciones: '', instruccionesMarkdown: '', enlaces: [], imagenes: [], tablas: [], archivos: [], rubrica: null,
+  },
+  // Consigna VISUAL: diagramas, tabla para completar, codigo y cita. Es el
+  // caso que dejaba en evidencia que la card mostraba texto plano — la tabla
+  // llegaba como celdas sueltas y las imagenes no llegaban. Ejercita todo el
+  // renderer de ActivityInstructions sin necesitar Electron ni el portal.
+  {
+    id: 'demo-act04',
+    nombre: 'ACT04 - Cuatro redes que no funcionan',
+    materia: 'Redes',
+    profesor: 'Carlos Alberto Benitez Ramirez',
+    estado: 'pendiente',
+    modalidad: 'individual',
+    ventana: 'abierta',
+    fechaLimite: iso(1, 17, 0),
+    fechaPublicacion: null,
+    puedeEntregar: true,
+    instrucciones:
+      'ACT04 CUATRO REDES QUE NO FUNCIONAN Que vas a hacer Cuatro redes estan mal. ' +
+      'Red Que esta fallando? En que paso se detecta? Como se arregla? 1 2 3 4',
+    instruccionesMarkdown: [
+      '#### ACT04 · CUATRO REDES QUE NO FUNCIONAN',
+      '',
+      '**Qué vas a hacer**',
+      '',
+      'Cuatro redes están mal. **Por cada una vas a decir qué está fallando, cómo lo descubriste y cómo se arregla**.',
+      '',
+      '**El método que vas a usar**',
+      '',
+      '1. ¿Hay enlace físico? → ¿las luces del puerto encienden?',
+      '2. ¿Están en la misma red? → ¿las direcciones se parecen?',
+      '3. ¿El equipo está bien? → solo si los dos anteriores están bien',
+      '',
+      '**Las cuatro redes**',
+      '',
+      '![Red 1 - Sin enlace](' + MOCK_DIAGRAM + ')',
+      '',
+      '#### Parte 1 · La tabla de direcciones',
+      '',
+      'Copia esta tabla en tu hoja y complétala.',
+      '',
+      '| Red | ¿Qué está fallando? | ¿En qué paso se detecta? | ¿Cómo se arregla? |',
+      '| --- | --- | --- | --- |',
+      '| 1 | El cable de PC1 no sirve o está mal puesto: no hay enlace físico | Paso 1. La luz apagada lo delata antes de tocar nada más | Cambiar el cable o volver a conectarlo bien |',
+      '| 2 |  |  |  |',
+      '| 3 |  |  |  |',
+      '| 4 |  |  |  |',
+      '',
+      '**Direccionamiento del laboratorio**',
+      '| Equipo | Configuración · IP | Configuración · Máscara |',
+      '| --- | --- | --- |',
+      '| PC1 | 192.168.1.10 | 255.255.255.0 |',
+      '| PC2 | 192.168.2.20 | 255.255.255.0 |',
+      '',
+      '> Si una red te traba más de 15 minutos, pasá a la siguiente y volvé después.',
+      '',
+      '```',
+      'ping 192.168.1.20',
+      'ipconfig /all',
+      '```',
+      '',
+      '**Enlace físico**',
+      ': La luz del puerto encendida en los dos extremos.',
+      '',
+      'Una red de 2^32 direcciones. ~~Ignorar el paso 2.~~',
+      '',
+      '---',
+      '',
+      'Plantilla: [ACT04-plantilla.docx](https://example.test/ACT04-plantilla.docx)',
+    ].join('\n'),
+    imagenes: [
+      { url: MOCK_DIAGRAM, alt: 'Red 1 - Sin enlace', titulo: '', original: '', ancho: 420, alto: 180, requiereSesion: false },
+    ],
+    enlaces: [
+      { texto: 'Repaso de subneteo', url: 'https://www.youtube.com/embed/abc123', tipo: 'video' },
+    ],
+    tablas: [],
+    archivos: [{ name: 'ACT04-plantilla.docx', url: 'https://example.test/ACT04-plantilla.docx' }],
+  },
   // Las "demo-*" son consignas para ejercitar el analizador con distintos
   // perfiles (densa, ejecutiva, minimalista, multimedia). Están replicadas en
   // electron/handlers/demo-activities.js, que es la versión que ve Electron con
@@ -37,6 +165,79 @@ const MOCK_ACTIVITIES = [
       { name: 'rubrica-practica-6.pdf', url: 'https://example.test/rubrica6.pdf' },
       { name: 'datasets-prueba.zip', url: 'https://example.test/datasets.zip' },
     ],
+  },
+  // Réplica del caso real que rompía la clasificación: grupal, sin fecha
+  // publicada, sin botón de entrega porque el profesor todavía no asigna
+  // equipos, con la consigna detrás de un enlace de Drive y la rúbrica en una
+  // tabla fuera de #intro. Antes caía en "cerradas" con las instrucciones
+  // aplanadas y sin rúbrica.
+  {
+    id: 'demo-tda',
+    nombre: 'Asignación 02 - Implementación de Tipos de Datos Abstractos',
+    materia: 'Estructuras de Datos',
+    profesor: 'Francisco Antonio Mejía Domínguez',
+    estado: 'pendiente',
+    modalidad: 'equipo',
+    ventana: 'abierta',
+    bloqueo: 'sin_equipo',
+    fechaLimite: 'Sin fecha visible',
+    fechaPublicacion: null,
+    instrucciones:
+      'Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos\n\n' +
+      'Construya los programas de la asignación, teniendo en cuenta los criterios establecidos en la rúbrica de la asignación.\n' +
+      'Subir el archivo comprimido a la plataforma de IVirtual.',
+    instruccionesMarkdown:
+      '[Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos](https://drive.google.com/file/d/1AbCdEf/view)\n\n' +
+      'Construya los programas de la asignación, teniendo en cuenta los criterios establecidos en la rúbrica de la asignación.\n\n' +
+      'Subir el archivo comprimido a la plataforma de [IVirtual](https://ivirtual.itson.edu.mx/mod/assign/view.php?id=1693675).',
+    enlaces: [
+      {
+        texto: 'Enlace a la Asignación 02 - Implementación de Tipos de Datos Abstractos',
+        url: 'https://drive.google.com/file/d/1AbCdEf/view',
+        tipo: 'google',
+      },
+      {
+        texto: 'IVirtual',
+        url: 'https://ivirtual.itson.edu.mx/mod/assign/view.php?id=1693675',
+        tipo: 'itson',
+      },
+    ],
+    rubrica: {
+      titulo: 'Criterios de calificación',
+      encabezados: ['Criterio', 'No cumple', 'Parcial', 'Casi completo', 'Completo'],
+      filas: [
+        [
+          'Entrega de la asignación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple al menos con uno: archivo comprimido como se especificó, nombre correcto (3 puntos)',
+          'Cumple con 2: incluye el proyecto geometria_ID (7 puntos)',
+          'Cumple con todos: geometria_ID y bolsa_ID (10 puntos)',
+        ],
+        [
+          'Carrera',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple al menos 4 criterios: radio y altura, superficie y volumen (10 puntos)',
+          'Cumple al menos 8: excepción si el radio es negativo, bolsa vacía (20 puntos)',
+          'Cumple con todos: agrega, cuenta, busca, remueve, azar y limpia (30 puntos)',
+        ],
+        [
+          'Codificación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple con 2: métodos de Cilindro y PruebaGeometria (15 puntos)',
+          'Cumple con 3: métodos de Bolsa (25 puntos)',
+          'Cumple con todos: PruebaBolsa ejecuta todas las pruebas pedidas (40 puntos)',
+        ],
+        [
+          'Documentación',
+          'No cumple con ninguno de los criterios (0 puntos)',
+          'Cumple con uno: las clases contienen encabezado (5 puntos)',
+          'Cumple con 2: los métodos están documentados (10 puntos)',
+          'Cumple con todos: documentación completa y consistente (20 puntos)',
+        ],
+      ],
+      markdown: '',
+    },
+    archivos: [],
   },
   {
     id: 'demo-2',
@@ -293,6 +494,117 @@ MOCK_HORARIO_MATERIAS.push({
 
 const MOCK_DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
+// Boleta de ejemplo. Réplica de la forma que arma groupMateriasByCode en
+// electron/handlers/cia.js: promedio de materia con componentes es el promedio
+// de los promedios por componente, no de las parciales sueltas.
+// Los códigos coinciden con MOCK_HORARIO_MATERIAS a propósito: así Horario y
+// Calificaciones muestran las mismas materias en capturas de pantalla.
+// `final` no es opcional por estética: App.jsx oculta la página Calificaciones
+// salvo que alguna materia traiga un `parcial: 'Final'` con nota. Sin esa
+// entrada el módulo entero queda invisible.
+function parciales(valores, final = null) {
+  const items = valores.map((calificacion, index) => ({
+    nombre: `Parcial ${index + 1}`,
+    etiqueta: `P${index + 1}`,
+    parcial: `P${index + 1}`,
+    calificacion,
+    sobre: 10,
+  }));
+
+  if (final === null) {
+    return items;
+  }
+
+  return [...items, { nombre: 'Final', etiqueta: 'Final', parcial: 'Final', calificacion: final, sobre: 10 }];
+}
+
+const MOCK_CALIFICACIONES = [
+  {
+    codigo: 'DAW-401',
+    clave: 'DAW-401',
+    nombre: 'Desarrollo de Aplicaciones Web con React y Node',
+    profesor: 'Dra. Martínez López',
+    calificaciones: parciales([9.2, 9.5, 9.0], 9.2),
+    promedio: 9.23,
+    estado: 'aprobada',
+    tieneComponentes: false,
+    componentes: [],
+  },
+  {
+    // Única materia con Teoría + Laboratorio: ejercita el render de componentes.
+    codigo: 'BD-301',
+    clave: 'BD-301',
+    nombre: 'Bases de Datos c/Lab',
+    profesor: 'Ing. Rodríguez',
+    calificaciones: parciales([9.0, 8.6, 9.2], 9.3),
+    promedio: 9.28,
+    estado: 'aprobada',
+    tieneComponentes: true,
+    componentes: [
+      { tipo: 'Teoría', calificaciones: parciales([9.0, 8.6, 9.2], 8.9), promedio: 8.93 },
+      { tipo: 'Laboratorio', calificaciones: parciales([9.5, 9.8, 9.6], 9.6), promedio: 9.63 },
+    ],
+  },
+  {
+    // Tercer parcial aún sin subir: el hueco debe verse como "—", no como cero.
+    codigo: 'RC-302',
+    clave: 'RC-302',
+    nombre: 'Redes de Computadoras',
+    profesor: 'Dr. García Torres',
+    calificaciones: parciales([7.5, 8.0, null]),
+    promedio: 7.75,
+    estado: 'aprobada',
+    tieneComponentes: false,
+    componentes: [],
+  },
+  {
+    // Promedio entre 6 y 7: dispara el estado en_riesgo en la UI.
+    codigo: 'ET-201',
+    clave: 'ET-201',
+    nombre: 'Ética Profesional',
+    profesor: 'Mtro. Hernández',
+    calificaciones: parciales([6.4, 6.0, null]),
+    promedio: 6.2,
+    estado: 'en_riesgo',
+    tieneComponentes: false,
+    componentes: [],
+  },
+  {
+    codigo: 'IS-402',
+    clave: 'IS-402',
+    nombre: 'Ingeniería de Software',
+    profesor: 'Dra. Sánchez',
+    calificaciones: parciales([8.8, 9.1, 8.5], 8.8),
+    promedio: 8.8,
+    estado: 'aprobada',
+    tieneComponentes: false,
+    componentes: [],
+  },
+  {
+    codigo: 'MAT-105',
+    clave: 'MAT-105',
+    nombre: 'Matemáticas para Ingeniería',
+    profesor: 'Mtra. Valenzuela',
+    calificaciones: parciales([7.0, 7.8, 8.2], 7.7),
+    promedio: 7.67,
+    estado: 'aprobada',
+    tieneComponentes: false,
+    componentes: [],
+  },
+  {
+    // Materia sin ninguna parcial cargada: estado sin_calificacion.
+    codigo: 'API-001',
+    clave: 'API-001',
+    nombre: 'Asesoría de Proyecto Integrador y Titulación Profesional',
+    profesor: 'Dr. Peralta',
+    calificaciones: parciales([null, null, null]),
+    promedio: null,
+    estado: 'sin_calificacion',
+    tieneComponentes: false,
+    componentes: [],
+  },
+];
+
 const MOCK_CALENDAR_TYPES = ['Profesional Asociado y Licenciatura', 'Posgrado', 'Medicina'];
 
 function calEvent(titulo, inicio, fin, categoria, extra = {}) {
@@ -446,6 +758,172 @@ let MOCK_NOTIFICATIONS = [
     timestamp: hoursAgo(9 * 24), read: true, actionUrl: null, meta: {},
   },
 ];
+
+// Material de materias — estructura y contenido tomados del recon real del
+// portal (scripts/spike-material-recon.cjs + spike-material-deep.cjs) para que
+// la UI se pruebe contra la forma que iVirtual devuelve de verdad.
+// Asistencia — copiado del recon real (scripts/spike-attendance-recon.cjs).
+// La primera materia trae una sesion ABIERTA para poder ejercitar el registro
+// sin esperar a que un profe abra una de verdad; en el portal real ese link
+// solo existe durante la clase.
+const MOCK_ATTENDANCE = {
+  version: 1,
+  timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+  materias: [
+    {
+      cursoId: '67408',
+      materia: 'Matematicas Computacionales',
+      modulo: 'Asistencia: Unidad de competencia I',
+      url: 'https://ivirtual.itson.edu.mx/mod/attendance/view.php?id=1',
+      resumen: { tomadas: '1', puntos: '2 / 2', porcentaje: '100.0%' },
+      permiteAutoRegistro: true,
+      sesionAbierta: { texto: 'Submit attendance', href: 'https://ivirtual.itson.edu.mx/mod/attendance/attendance.php?sessid=999&sesskey=mock' },
+      sesiones: [
+        { fecha: 'Wed 26 Aug 2026 4PM - 4:30PM', descripcion: 'Regular class session', estado: 'Presente', puntos: '2 / 2', observaciones: 'Self-recorded', pendiente: false, autoRegistrada: true },
+        { fecha: 'Mon 31 Aug 2026 4PM - 4:30PM', descripcion: 'Regular class session', estado: '?', puntos: '? / 2', observaciones: '', pendiente: true, autoRegistrada: false },
+      ],
+    },
+    {
+      cursoId: '64090',
+      materia: 'Estructuras de Datos',
+      modulo: 'Asistencia',
+      url: 'https://ivirtual.itson.edu.mx/mod/attendance/view.php?id=2',
+      resumen: { tomadas: '1', puntos: '2 / 2', porcentaje: '100.0%' },
+      permiteAutoRegistro: true,
+      sesionAbierta: null,
+      sesiones: [
+        { fecha: 'Thu 27 Aug 2026 2PM - 3:30PM', descripcion: 'Sesion de clase regular', estado: 'Presente', puntos: '2 / 2', observaciones: 'Self-recorded', pendiente: false, autoRegistrada: true },
+      ],
+    },
+    {
+      cursoId: '64025',
+      materia: 'Redes',
+      modulo: 'UC1 - Asistencia (Attendance)',
+      url: 'https://ivirtual.itson.edu.mx/mod/attendance/view.php?id=3',
+      resumen: { tomadas: '3', puntos: '4 / 6', porcentaje: '66.7%' },
+      permiteAutoRegistro: false,
+      sesionAbierta: null,
+      sesiones: [
+        { fecha: 'Thu 27 Aug 2026 3:30PM - 5PM', descripcion: 'Sesion de clase regular', estado: 'Presente', puntos: '2 / 2', observaciones: '', pendiente: false, autoRegistrada: false },
+      ],
+    },
+  ],
+};
+
+// Portadas de mentira. Moodle genera las suyas como data:image/svg+xml, pero
+// aca se usa PNG: es lo que efectivamente se ve sin sesion ni red y basta para
+// comprobar que el cuadro pinta su imagen.
+const MOCK_PORTADA = (hex) =>
+  'data:image/svg+xml;utf8,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><rect width="8" height="4" fill="${hex}"/></svg>`,
+  );
+
+const MOCK_MATERIAL = {
+  version: 3,
+  timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+  novedades: [
+    { id: 'mod-9002', nombre: 'T5 - CLIENTE SERVIDOR', materia: 'Redes', seccion: '24 August - 30 August' },
+  ],
+  materias: [
+    {
+      id: '67408',
+      codigo: '1190M-14750',
+      periodo: 'Agosto-Diciembre 2026 Remotos',
+      imagen: MOCK_PORTADA('#2f6fb5'),
+      imagenRequiereSesion: false,
+      nombre: 'Matematicas Computacionales',
+      totalRecursos: 2,
+      enlacesVivos: [
+        { tipo: 'meet', nombre: 'Enlace a la clase', url: 'https://meet.google.com/snm-kqct-rtk' },
+        { tipo: 'whatsapp', nombre: 'Unete al grupo de whatsApp', url: 'https://chat.whatsapp.com/mock' },
+      ],
+      secciones: [
+        {
+          titulo: 'Unidad de Competencia I',
+          resumen: '',
+          recursos: [
+            {
+              id: 'mod-8001',
+              tipo: 'carpeta',
+              nombre: 'Material de la unidad de competencia I',
+              descripcion: '',
+              archivos: [
+                { nombre: 'Clase 1 Algebra Booleana.pdf', url: 'https://ivirtual.itson.edu.mx/pluginfile.php/1/mock1.pdf', ext: 'pdf' },
+                { nombre: 'Clase 2. Compuertas Logicas.pdf', url: 'https://ivirtual.itson.edu.mx/pluginfile.php/1/mock2.pdf', ext: 'pdf' },
+                { nombre: 'Sesion 1_Presentacion de Encuadre.pdf', url: 'https://ivirtual.itson.edu.mx/pluginfile.php/1/mock3.pdf', ext: 'pdf' },
+              ],
+            },
+            { id: 'mod-8002', tipo: 'foro', nombre: 'Avisos', descripcion: '', urlModulo: 'https://ivirtual.itson.edu.mx/mod/forum/view.php?id=8002' },
+          ],
+        },
+      ],
+    },
+    {
+      id: '64025',
+      codigo: '1145C-14836',
+      periodo: 'Agosto-Diciembre 2026 Remotos',
+      imagen: MOCK_PORTADA('#1d7fd0'),
+      imagenRequiereSesion: false,
+      nombre: 'Redes',
+      totalRecursos: 3,
+      enlacesVivos: [],
+      secciones: [
+        {
+          titulo: '24 August - 30 August',
+          resumen: '',
+          recursos: [
+            { id: 'mod-9001', tipo: 'drive', nombre: 'T4 - MEDIOS DE TRANSMISION', descripcion: '', destino: 'https://drive.google.com/file/d/1r8IFECrG410nbSJB-xDOF846X9UJ8lKt/view?usp=sharing', driveId: '1r8IFECrG410nbSJB-xDOF846X9UJ8lKt' },
+            { id: 'mod-9002', tipo: 'drive', nombre: 'T5 - CLIENTE SERVIDOR', descripcion: '', destino: 'https://drive.google.com/file/d/1WFMeSK0_KW97EBmSqLAkJKl_h2-Co10I/view?usp=sharing', driveId: '1WFMeSK0_KW97EBmSqLAkJKl_h2-Co10I' },
+            { id: 'mod-9003', tipo: 'foro', nombre: 'Avisos', descripcion: '', urlModulo: 'https://ivirtual.itson.edu.mx/mod/forum/view.php?id=9003' },
+          ],
+        },
+      ],
+    },
+    {
+      id: '64090',
+      codigo: '1147C-14832',
+      periodo: 'Agosto-Diciembre 2026 Remotos',
+      imagen: MOCK_PORTADA('#0b2a4a'),
+      imagenRequiereSesion: false,
+      nombre: 'Estructuras de Datos',
+      totalRecursos: 7,
+      enlacesVivos: [],
+      secciones: [
+        {
+          titulo: 'General',
+          resumen: '',
+          recursos: [
+            {
+              id: 'mod-7001',
+              tipo: 'pagina',
+              nombre: 'Notas de Java',
+              descripcion: '',
+              texto: 'Tema 1 - Programacion Orientada a Objetos. Tema 2 - Tipos de Datos y Expresiones en Java. Tema 3 - Estructuras de control.',
+              links: [
+                { texto: 'Tema 1 - Programacion Orientada a Objetos', url: 'https://ejemplo.com/tema1' },
+                { texto: 'Tema 2 - Tipos de Datos', url: 'https://ejemplo.com/tema2' },
+              ],
+            },
+          ],
+        },
+        {
+          // Los 6 links que el profe pegó dentro de un mod_label. El scraper que
+          // sólo miraba módulos con página propia los perdía todos.
+          titulo: 'Semana 1: 21 de agosto - 27 de agosto',
+          resumen: '',
+          recursos: [
+            { id: 'url-a1', tipo: 'drive', nombre: 'Presentacion del Curso', descripcion: 'Del texto de "Semana 1"', destino: 'https://drive.google.com/file/d/1l_-iihBjCfTi7fe1c0SW9s2p4T1IPcJK/view', driveId: '1l_-iihBjCfTi7fe1c0SW9s2p4T1IPcJK' },
+            { id: 'url-a2', tipo: 'drive', nombre: 'Estructuras de Datos', descripcion: 'Del texto de "Semana 1"', destino: 'https://drive.google.com/file/d/1gTgJhVms2Ch-eSadnMJFwkJPqBDTo3AH/view', driveId: '1gTgJhVms2Ch-eSadnMJFwkJPqBDTo3AH' },
+            { id: 'url-a3', tipo: 'drive', nombre: 'Fundamentos de las Estructuras de Dato', descripcion: 'Del texto de "Semana 1"', destino: 'https://drive.google.com/file/d/1C6T-sqfcUry3q-rYYHzpYOQKgUuhzXjw/view', driveId: '1C6T-sqfcUry3q-rYYHzpYOQKgUuhzXjw' },
+            { id: 'url-a4', tipo: 'drive', nombre: 'Estudia esos conceptos en las filminas de la 1 a la 15', descripcion: 'Del texto de "Semana 1" (enlace partido)', destino: 'https://drive.google.com/file/d/1F3c2nv9_OayKUzY5FDox7iE98mdQxA0U/view', driveId: '1F3c2nv9_OayKUzY5FDox7iE98mdQxA0U' },
+            { id: 'url-a5', tipo: 'drive', nombre: 'Ejemplos sobre Tipos de Datos Abstractos', descripcion: 'Del texto de "Semana 1"', destino: 'https://drive.google.com/file/d/1q0P3iMSkKkomJCQWTeafSibjMekD0BA9/view', driveId: '1q0P3iMSkKkomJCQWTeafSibjMekD0BA9' },
+            { id: 'url-a6', tipo: 'drive', nombre: 'Enlace a la Asignacion 01 - Tipos de Datos Abstractos', descripcion: 'Del texto de "Semana 1"', destino: 'https://drive.google.com/file/d/1-YKG9qb6OqpVPev1zJcRMKT0yWd5cFBh/view', driveId: '1-YKG9qb6OqpVPev1zJcRMKT0yWd5cFBh' },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 const MOCK_MUSIC_ARTISTS = [
   ['Caloncho', 'Bálsamo'],
@@ -666,7 +1144,7 @@ let mockNotificationListener = null;
 if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) {
   window.scraperApp = {
     getSettings: async () => ({
-      user: '00000000000',
+      user: '00000123456',
       hasPassword: true,
       ciaUser: '',
       hasCIAPassword: false,
@@ -684,7 +1162,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         : { ok: true };
     },
     clearCredentials: async () => ({ success: true }),
-    runScraper: async () => ({ activities: MOCK_ACTIVITIES, timestamp: Date.now(), fromCache: true }),
+    runScraper: async ({ force = false } = {}) => ({ activities: MOCK_ACTIVITIES, timestamp: Date.now(), fromCache: !force }),
     clearCache: async () => ({ success: true }),
     runHorario: async () => ({
       materias: MOCK_HORARIO_MATERIAS,
@@ -700,7 +1178,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       return { success: true };
     },
     clearHorarioCache: async () => ({ success: true }),
-    runCIA: async () => ({ materias: [], timestamp: Date.now(), fromCache: true }),
+    runCIA: async () => ({ materias: MOCK_CALIFICACIONES, timestamp: Date.now(), fromCache: true }),
     clearCIACache: async () => ({ success: true }),
     runCalendario: async (options = {}) => ({
       events: MOCK_CALENDAR_EVENTS,
@@ -883,6 +1361,102 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         return { ok: true };
       },
     },
+    prompt: {
+      modes: async () => ({
+        ok: true,
+        defaultMode: 'resolver',
+        modes: [
+          { id: 'resolver', label: 'Resolver la actividad' },
+          { id: 'entender', label: 'Explicar el tema' },
+          { id: 'revisar', label: 'Revisar mi borrador' },
+        ],
+      }),
+      getCached: async () => ({ ok: true, data: null }),
+      generate: async ({ activity, modo }) => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        // Escribí "fallar-prompt" en la consigna para ejercitar el error.
+        if (/fallar-prompt/i.test(String(activity?.instrucciones || ''))) {
+          return { error: 'ALL_FAILED', message: 'La IA no respondió.' };
+        }
+        return {
+          ok: true,
+          modo,
+          backend: 'mock-model',
+          prompt: [
+            `Actúa como asistente de un estudiante de ${activity?.materia || 'la materia'}.`,
+            `Actividad: ${activity?.nombre || ''}`,
+            `Modo: ${modo}`,
+            '- Requisito 1 extraído de la consigna',
+            '- Requisito 2 extraído del documento del profesor',
+            'Antes de entregar, verificá punto por punto contra los criterios.',
+          ].join('\n'),
+          fuentes: { adjuntosLeidos: ['rubrica.pdf'], adjuntosOmitidos: [], materialTitulos: 4, instruccionesChars: 320 },
+        };
+      },
+      onProgress: () => () => {},
+    },
+    attendance: {
+      getCached: async () => ({ ok: true, data: MOCK_ATTENDANCE }),
+      sync: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        // Timestamp fresco como hace el handler real: con uno congelado una
+        // sync exitosa se ve igual que no haber hecho nada.
+        return { ok: true, data: { ...MOCK_ATTENDANCE, timestamp: new Date().toISOString() } };
+      },
+      peekOptions: async (url) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        if (!/sessid=/.test(String(url))) return { error: 'INVALID_SESSION_URL' };
+        return {
+          ok: true,
+          opciones: [
+            { value: '1', label: 'Presente' },
+            { value: '2', label: 'Retardo' },
+            { value: '3', label: 'Falta justificada' },
+          ],
+          pidePassword: false,
+        };
+      },
+      mark: async ({ url, statusValue }) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        if (!/sessid=/.test(String(url))) return { error: 'INVALID_SESSION_URL' };
+        // Para ejercitar el copy de error: elegí "Falta justificada".
+        if (statusValue === '3') return { error: 'PORTAL_REJECTED', message: 'iVirtual rechazó el registro.' };
+        return { ok: true, estado: statusValue };
+      },
+      onProgress: () => () => {},
+    },
+    // Copiado del recon real del portal (spike-material-recon + -deep), no
+    // inventado: si el mock tuviera una forma distinta a la de iVirtual, la UI
+    // se vería bien acá y rota contra datos de verdad.
+    material: {
+      getCached: async () => ({ ok: true, data: MOCK_MATERIAL }),
+      sync: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        return { ok: true, data: { ...MOCK_MATERIAL, timestamp: new Date().toISOString() } };
+      },
+      download: async ({ url, nombre }) => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        // Misma regla que el handler: sólo pluginfile.php se puede bajar.
+        if (!/pluginfile\.php/.test(String(url))) return { error: 'NOT_DOWNLOADABLE' };
+        return { ok: true, path: `C:\\mock\\${nombre}`, bytes: 444416 };
+      },
+      openExternal: async () => ({ ok: true }),
+      openFile: async () => ({ ok: true }),
+      onProgress: () => () => {},
+    },
+    // Los mismos backends que devuelve llm-status con el .env real, para poder
+    // ejercitar el menú de modelos del editor sin keys cargadas.
+    llm: {
+      selectableBackends: async () => ({
+        ok: true,
+        backends: [
+          { id: 'cloudflare', label: 'Llama 3.3 70B', isDefault: true, keyCount: 1 },
+          { id: 'gemini', label: 'Gemini 2.5 Flash', isDefault: false, keyCount: 9 },
+          { id: 'mistral', label: 'Mistral Small', isDefault: false, keyCount: 1 },
+          { id: 'groq', label: 'GPT-OSS 120B', isDefault: false, keyCount: 1 },
+        ],
+      }),
+    },
     notes: {
       list: async ({ view = 'active', filters = {} } = {}) => {
         const matchView = (n) => (n.trashed ? view === 'trashed' : n.archived ? view === 'archived' : view === 'active');
@@ -1007,12 +1581,18 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       // así el lado a lado prueba de verdad que el render preserva el markup.
       // Firma del preload (html suelto), no la del payload IPC: el mock ocupa el
       // lugar de window.scraperApp, no el del canal.
-      improve: async (html) => {
+      improve: async (html, backend = null) => {
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         const text = String(html || '').replace(/<[^>]*>/g, ' ').trim();
         if (!text) return { error: 'EMPTY_INPUT' };
         if (String(html).length > 8000) return { error: 'TOO_LONG' };
+
+        // Ejercita el fallo del modelo elegido a mano: escribí "fallar-modelo"
+        // con un modelo seleccionado por click derecho.
+        if (backend && /fallar-modelo/i.test(text)) {
+          return { error: 'BACKEND_FAILED', message: `${backend} no respondió. Probá con otro modelo o volvé a Automático.` };
+        }
 
         // Devuelve códigos de error a demanda para poder ejercitar los toasts:
         // escribí "fallar-ia" o "sin-ia" en la nota.
@@ -1028,7 +1608,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
           chunk.trim() ? `>${chunk.replace(/\s+/g, ' ').trim()} (mejorado)<` : match
         ));
 
-        return { improved, backend: 'mock-model' };
+        return { improved, backend: backend ? `mock-${backend}` : 'mock-auto' };
       },
       attachImage: async (noteId, arrayBuffer, filename, mime) => {
         const note = MOCK_NOTES.find((n) => n.id === noteId);
@@ -1048,6 +1628,19 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         note.attachments = (note.attachments || []).filter((a) => a.id !== attachmentId);
         return { ok: true, attachments: note.attachments };
       },
+      // En el mock los adjuntos son data URLs, no archivos: el navegador sí sabe
+      // copiar una al portapapeles, pero no hay diálogo de guardado que simular,
+      // así que descargar solo confirma el recorrido de la UI.
+      copyImage: async (src) => {
+        try {
+          const blob = await (await fetch(src)).blob();
+          await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
+          return { ok: true };
+        } catch (_error) {
+          return { error: 'No se pudo copiar la imagen.' };
+        }
+      },
+      saveImage: async () => ({ ok: true, path: 'mock/descargas/imagen.png' }),
       bulkAction: async (ids, action, payload = {}) => {
         const idSet = new Set(ids || []);
         const now = new Date().toISOString();
@@ -1146,9 +1739,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
     },
     portalSistemas: {
       getProfile: async () => ({
-        fullName: 'David Alvarez Aviles',
-        email: 'david.alvarez279009@potros.itson.edu.mx',
-        studentId: '00000000000',
+        fullName: 'Alumno Demo ITSON',
+        email: 'alumno.demo@potros.itson.edu.mx',
+        studentId: '00000123456',
         photoPath: null, // Sin foto real en mock — cae a iniciales, mismo camino que producción.
         acadProg: 'INSOF',
         cachedAt: hoursAgo(20),
@@ -1157,9 +1750,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       refreshProfile: async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         return {
-          fullName: 'David Alvarez Aviles',
-          email: 'david.alvarez279009@potros.itson.edu.mx',
-          studentId: '00000000000',
+          fullName: 'Alumno Demo ITSON',
+          email: 'alumno.demo@potros.itson.edu.mx',
+          studentId: '00000123456',
           photoPath: null,
           acadProg: 'INSOF',
           cachedAt: new Date().toISOString(),
@@ -1168,7 +1761,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       },
       getCredential: async () => {
         await new Promise((resolve) => setTimeout(resolve, 20000));
-        return { savedPath: 'C:/Users/mock/Documents/Credencial-00000000000.pdf' };
+        return { savedPath: 'C:/Users/mock/Documents/Credencial-00000123456.pdf' };
       },
     },
     notices: {

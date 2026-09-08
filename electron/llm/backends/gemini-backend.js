@@ -1,4 +1,4 @@
-const { LlmBackendBase, classifyError, fetchWithTimeout, stripCodeFence, transientError } = require('./base');
+const { LlmBackendBase, classifyError, fetchWithTimeout, resolveTimeout, stripCodeFence, transientError } = require('./base');
 
 // 20 req/día por key, pero hay hasta 16 keys en .env: el pool las rota.
 const ENV_BASE = 'GEMINI_API_KEY';
@@ -37,7 +37,7 @@ class GeminiBackend extends LlmBackendBase {
   }
 
   async chat(messages, opts = {}) {
-    const { maxTokens = 2000, temperature = 0.2, jsonSchema = null } = opts;
+    const { maxTokens = 2000, temperature = 0.2, jsonSchema = null, timeoutMs } = opts;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.slot.key}`;
 
     const body = {
@@ -54,7 +54,7 @@ class GeminiBackend extends LlmBackendBase {
       providerName: this.providerName,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }, resolveTimeout(timeoutMs));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');

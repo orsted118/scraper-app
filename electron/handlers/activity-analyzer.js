@@ -15,6 +15,7 @@ const MAX_SUBMISSION_CHARS = 16000;
 // Las consignas de Moodle a veces arrastran rúbricas enteras; sin techo, la
 // petición de extracción se come el contexto y el modelo devuelve JSON cortado.
 const MAX_INSTRUCTIONS_CHARS = 8000;
+const MAX_RUBRIC_CHARS = 6000;
 // Techo de requisitos: por encima de esto el checklist deja de ser accionable y
 // suele ser señal de que el modelo desglosó de más.
 const MAX_REQUIREMENTS = 20;
@@ -112,8 +113,46 @@ function getActivityTitle(activity) {
   return String(activity?.nombre || activity?.titulo || '').trim();
 }
 
+// Cuando el profe deja la consigna en un PDF de Drive, el cuerpo en Moodle es
+// literalmente el enlace. Extraer requisitos de eso daba un análisis armado sobre
+// la mitad del contrato de entrega. La cola de Drive ya bajó ese PDF y le sacó el
+// texto: se lo agregamos acá para que el recorte y el aviso de "consigna
+// recortada" que ya existen apliquen igual, sin plomería nueva.
+function getDriveDocuments(activity) {
+  try {
+    const { getDriveFilesForActivity, leerTexto } = require('./drive');
+
+    return getDriveFilesForActivity(activity)
+      .filter((archivo) => archivo.estado === 'ok')
+      .map((archivo) => ({ nombre: archivo.nombre, texto: leerTexto(archivo) }))
+      .filter((doc) => doc.texto)
+      .map((doc) => `\n\n--- Documento enlazado en la consigna: ${doc.nombre} ---\n${doc.texto}`)
+      .join('');
+  } catch (_error) {
+    // Sin el store de Drive el análisis sigue con lo que haya en Moodle.
+    return '';
+  }
+}
+
 function getActivityInstructions(activity) {
-  return String(activity?.instrucciones || activity?.descripcion || '').trim();
+  // El markdown conserva enlaces y tablas de la consigna; el texto plano los
+  // aplanaba y el modelo perdía tanto el destino de los enlaces como la
+  // estructura de las tablas.
+  const deMoodle = String(
+    activity?.instruccionesMarkdown || activity?.instrucciones || activity?.descripcion || '',
+  ).trim();
+
+  // Moodle primero: ahí viven el nombre de archivo, la portada y la modalidad,
+  // que son cortos y son la mitad del contrato que el PDF no repite.
+  return `${deMoodle}${getDriveDocuments(activity)}`.trim();
+}
+
+// La rúbrica dice literalmente qué se evalúa y cuántos puntos vale cada cosa.
+// Sin ella el analizador deduce los requisitos de la consigna, que casi siempre
+// es más vaga que los criterios que el profesor va a usar para calificar.
+function getActivityRubric(activity) {
+  const markdown = String(activity?.rubrica?.markdown || '').trim();
+  return markdown ? markdown.slice(0, MAX_RUBRIC_CHARS) : '';
 }
 
 async function extractRequirements(activity) {
@@ -133,6 +172,7 @@ async function extractRequirements(activity) {
 
   const title = getActivityTitle(activity);
   const instructions = getActivityInstructions(activity);
+  const rubric = getActivityRubric(activity);
 
   if (!instructions && !title) {
     throw new Error('La actividad no tiene título ni instrucciones para analizar.');
@@ -148,6 +188,9 @@ async function extractRequirements(activity) {
     'Consigna:',
     trimmedInstructions || '(la actividad no trae instrucciones; deduce los requisitos del título)',
     instructions.length > MAX_INSTRUCTIONS_CHARS ? '\n(consigna recortada)' : null,
+    rubric ? '' : null,
+    rubric ? 'Criterios de calificación (rúbrica publicada por el profesor):' : null,
+    rubric || null,
   ]
     .filter((line) => line !== null)
     .join('\n');
@@ -387,5 +430,6 @@ module.exports = {
   parseSubmission,
   parseSubmissionPayload,
   registerActivityAnalyzerHandlers,
+  getActivityInstructions,
   verifySubmission,
 };

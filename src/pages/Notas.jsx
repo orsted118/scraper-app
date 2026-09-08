@@ -838,6 +838,26 @@ function Notas({ deepLink } = {}) {
     [api, refresh],
   );
 
+  const handleCopyImage = useCallback(
+    async (src) => {
+      if (!api?.notes?.copyImage) return;
+      const result = await api.notes.copyImage(src);
+      showToast(result?.error || 'Imagen copiada');
+    },
+    [api, showToast],
+  );
+
+  const handleDownloadImage = useCallback(
+    async (src, filename) => {
+      if (!api?.notes?.saveImage) return;
+      const result = await api.notes.saveImage(src, filename);
+      // Cancelar el diálogo no es un error ni un logro: no dispara toast.
+      if (result?.canceled) return;
+      showToast(result?.error || 'Imagen guardada');
+    },
+    [api, showToast],
+  );
+
   const handleEmptyTrash = async () => {
     try {
       await api?.notes?.emptyTrash?.();
@@ -1342,6 +1362,8 @@ function Notas({ deepLink } = {}) {
           onExport={createdIdRef.current || !editing.__isNew ? () => handleExport(createdIdRef.current || editing.id) : undefined}
           onAttachImage={handleAttachImage}
           onRemoveImage={handleRemoveImageBySrc}
+          onCopyImage={handleCopyImage}
+          onDownloadImage={handleDownloadImage}
           onToast={showToast}
         />
       ) : null}

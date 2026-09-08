@@ -3,7 +3,7 @@
 // Persistencia en JSON plano (mismo patrón que el resto de handlers).
 const fs = require('fs');
 const path = require('path');
-const { app, dialog, ipcMain, net, protocol } = require('electron');
+const { app, clipboard, dialog, ipcMain, nativeImage, net, protocol } = require('electron');
 
 const VALID_COLORS = new Set(['neutral', 'vermillion', 'amber', 'green', 'cyan', 'purple']);
 const VALID_TYPES = new Set(['text', 'checklist']);
@@ -348,6 +348,83 @@ function removeAttachment(noteId, attachmentId) {
   return { ok: true, attachments: updated.attachments };
 }
 
+// Un src que llega del renderer (URL dvpotro-note-img:// o path crudo) → path
+// absoluto validado, o null. Único cerco del módulo: lo usan el protocolo y las
+// acciones de copiar/guardar, para que no haya dos versiones de la misma
+// comprobación que puedan separarse. Nada fuera de notes-attachments se sirve ni
+// se copia, aunque el renderer lo pida.
+function resolveAttachmentPath(src) {
+  if (!src || typeof src !== 'string') return null;
+
+  try {
+    const decoded = src.startsWith(`${NOTE_IMG_SCHEME}://`)
+      ? decodeURIComponent(new URL(src).pathname)
+      : src;
+    const filePath = path.normalize(
+      process.platform === 'win32' && /^\/[a-z]:/i.test(decoded) ? decoded.slice(1) : decoded,
+    );
+
+    // Con `path.sep` al final: sin él, un directorio hermano llamado
+    // "notes-attachments-otro" pasaría el startsWith.
+    if (!filePath.startsWith(getAttachmentsRoot() + path.sep)) return null;
+    if (!IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) return null;
+    if (!fs.existsSync(filePath)) return null;
+
+    return filePath;
+  } catch (_error) {
+    return null;
+  }
+}
+
+// El filename del adjunto viene del File pegado: puede traer separadores o
+// caracteres que Windows rechaza. Se usa solo como sugerencia del diálogo, pero
+// un nombre inválido hace fallar showSaveDialog entero.
+function toSafeFilename(name, ext) {
+  const base = typeof name === 'string' ? path.basename(name) : '';
+  const stem = base
+    .replace(/\.[^.]+$/, '')
+    .replace(/[<>:"/\\|?* -]/g, '')
+    .trim();
+
+  return `${stem || 'imagen'}${ext}`;
+}
+
+function copyImageToClipboard(src) {
+  const filePath = resolveAttachmentPath(src);
+  if (!filePath) return { error: 'La imagen ya no está disponible.' };
+
+  // nativeImage y no el buffer crudo: pone un bitmap en el portapapeles, que es
+  // lo que Word, Paint o un chat esperan al pegar. De un GIF animado se copia el
+  // primer cuadro — el portapapeles del sistema no transporta animación.
+  const image = nativeImage.createFromPath(filePath);
+  if (image.isEmpty()) return { error: 'No se pudo leer la imagen.' };
+
+  clipboard.writeImage(image);
+  return { ok: true };
+}
+
+async function saveImageAs(src, filename) {
+  const filePath = resolveAttachmentPath(src);
+  if (!filePath) return { error: 'La imagen ya no está disponible.' };
+
+  const ext = path.extname(filePath).toLowerCase();
+  const { canceled, filePath: dest } = await dialog.showSaveDialog({
+    title: 'Guardar imagen',
+    defaultPath: path.join(app.getPath('downloads'), toSafeFilename(filename, ext)),
+    filters: [{ name: 'Imagen', extensions: [ext.replace('.', '')] }],
+  });
+
+  if (canceled || !dest) return { ok: false, canceled: true };
+
+  try {
+    fs.copyFileSync(filePath, dest);
+  } catch (_error) {
+    return { error: 'No se pudo guardar la imagen.' };
+  }
+
+  return { ok: true, path: dest };
+}
+
 function registerNoteImageScheme() {
   protocol.registerSchemesAsPrivileged([
     { scheme: NOTE_IMG_SCHEME, privileges: { supportFetchAPI: true, stream: true } },
@@ -356,22 +433,13 @@ function registerNoteImageScheme() {
 
 function registerNoteImageProtocol() {
   protocol.handle(NOTE_IMG_SCHEME, (request) => {
-    try {
-      const url = new URL(request.url);
-      const decoded = decodeURIComponent(url.pathname);
-      const filePath = path.normalize(
-        process.platform === 'win32' && decoded.startsWith('/') ? decoded.slice(1) : decoded,
-      );
+    const filePath = resolveAttachmentPath(request.url);
 
-      // Solo sirve DENTRO de notes-attachments: no es un file-server del disco.
-      if (!filePath.startsWith(getAttachmentsRoot()) || !IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase()) || !fs.existsSync(filePath)) {
-        return new Response('Not found', { status: 404 });
-      }
-
-      return net.fetch(pathToFileURL(filePath).toString(), { headers: request.headers });
-    } catch (_error) {
-      return new Response('Bad request', { status: 400 });
+    if (!filePath) {
+      return new Response('Not found', { status: 404 });
     }
+
+    return net.fetch(pathToFileURL(filePath).toString(), { headers: request.headers });
   });
 }
 
@@ -738,6 +806,11 @@ function registerNotesHandlers() {
   ipcMain.handle('notes:bulk-action', async (_event, { ids, action, payload }) => bulkAction(ids, action, payload));
   ipcMain.handle('notes:attach-image', async (_event, { noteId, arrayBuffer, filename, mime }) => attachImage(noteId, arrayBuffer, filename, mime));
   ipcMain.handle('notes:remove-attachment', async (_event, { noteId, attachmentId }) => removeAttachment(noteId, attachmentId));
+  // Copiar/guardar toman el src del <img> y no un attachmentId: el editor tiene
+  // el nodo del DOM a mano y no la nota resuelta, y el src ya identifica el
+  // archivo sin obligar a releer la nota para traducirlo.
+  ipcMain.handle('notes:copy-image', async (_event, src) => copyImageToClipboard(src));
+  ipcMain.handle('notes:save-image', async (_event, { src, filename }) => saveImageAs(src, filename));
 
   registerNoteImageProtocol();
   startReminderScheduler();
@@ -749,6 +822,7 @@ module.exports = {
   bulkAction,
   checkReminders,
   clearReminder,
+  copyImageToClipboard,
   createNote,
   deleteLabel,
   createLabel,
@@ -767,6 +841,8 @@ module.exports = {
   registerNoteImageScheme,
   removeAttachment,
   renameLabel,
+  resolveAttachmentPath,
+  saveImageAs,
   restoreNote,
   setReminder,
   snoozeReminder,

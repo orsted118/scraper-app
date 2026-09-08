@@ -1,6 +1,6 @@
 {
   "name": "dvpotro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "electron/main.js",
   "type": "commonjs",
@@ -19,7 +19,25 @@
     "test:horario": "node scripts/test-horario-modalidad.cjs",
     "test:modalidad": "node scripts/test-modalidad-deteccion.cjs",
     "test:cache": "node scripts/test-horario-cache-version.cjs",
-    "test:upload": "node scripts/test-upload-validacion.cjs"
+    "test:upload": "node scripts/test-upload-validacion.cjs",
+    "test:accepted-types": "node scripts/test-accepted-types.cjs",
+    "test:material": "node scripts/test-material-clasificacion.cjs",
+    "spike:material": "node scripts/spike-material-recon.cjs",
+    "test:force-resync": "node scripts/test-force-resync.cjs",
+    "test:attendance": "node scripts/test-attendance.cjs",
+    "spike:attendance": "node scripts/spike-attendance-recon.cjs",
+    "test:prompt": "node scripts/test-prompt-builder.cjs",
+    "test:drive": "node scripts/test-drive-normalizacion.cjs",
+    "test:clasificacion": "node scripts/test-clasificacion.cjs",
+    "test:fechas": "node scripts/test-fechas.cjs",
+    "mcp": "node mcp/dvpotro-mcp.js",
+    "test:notes-images": "electron scripts/test-notes-image-actions.cjs",
+    "test:extraccion": "node scripts/test-extraccion-contenido.cjs",
+    "test:scrape": "node scripts/test-scrape-timing.cjs",
+    "test:drive:red": "electron scripts/test-drive-red.cjs",
+    "drive:resolve": "electron scripts/resolve-drive-once.cjs",
+    "test:mcp-drive": "node scripts/test-mcp-drive.cjs",
+    "test:drive:llm": "node scripts/test-drive-llm.cjs"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
@@ -93,7 +111,7 @@
     "publish": {
       "provider": "github",
       "owner": "orsted118",
-      "repo": "Scrap-Its"
+      "repo": "scraper-app"
     }
   },
   "description": "DVPotro desktop academic tracker for ITSON portals."

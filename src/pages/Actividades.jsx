@@ -20,6 +20,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import ActivityCard from '../components/ActivityCard';
+import useDriveFiles from '../hooks/useDriveFiles';
 import useHiddenActivities from '../hooks/useHiddenActivities';
 import { formatLastSync } from '../utils/formatLastSync';
 import { diasHastaVencimiento, parseFechaPortal } from '../utils/fechas';
@@ -213,6 +214,7 @@ function Actividades({
   const [tableSort, setTableSort] = useState({ col: 'fecha', dir: 'asc' });
   const [showHidden, setShowHidden] = useState(false);
   const { hide, isHidden, unhide } = useHiddenActivities();
+  const { porUrl: driveFiles } = useDriveFiles();
   const friendlyError = getFriendlyErrorMessage(error);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   // Se filtra acá arriba y no por vista: contadores, tabs, kanban y la tarjeta
@@ -464,7 +466,7 @@ function Actividades({
           layout={reduced ? false : true}
           variants={itemVariants}
         >
-          <ActivityCard {...activity} onHide={hide} />
+          <ActivityCard {...activity} driveFiles={driveFiles} onHide={hide} />
         </motion.div>
       ))}
     </motion.div>

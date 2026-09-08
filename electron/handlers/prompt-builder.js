@@ -40,6 +40,10 @@ const MAX_LINKS = 10;
 // analizador de entregas.
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.docx']);
 
+// Los adjuntos del profe viven bajo este segmento; las entregas del alumno
+// bajo assignsubmission_file.
+const INTROATTACHMENT_RE = new RegExp("/mod_assign/introattachment/");
+
 const CACHE_VERSION = 1;
 
 // Qué se le pide a la IA destino. Cambia el prompt generado por completo, así
@@ -99,10 +103,38 @@ function writeCache(cache) {
 
 // Los adjuntos viven en pluginfile.php y necesitan la cookie de sesión. Se bajan
 // a un temporal y se descartan: lo que importa es el texto, no el archivo.
+// El scraper guarda `name`, no `nombre`. Leer solo `nombre` hacia que el filtro
+// cayera al URL, donde extname devuelve '.pdf?forcedownload=1' y nunca entra en
+// SUPPORTED_EXTENSIONS: candidatos salia vacio para el 100% de los datos reales
+// y esta funcion nunca llego a correr.
+function attachmentName(file) {
+  return String(file?.name || file?.nombre || '');
+}
+
+function attachmentExtension(file) {
+  const desdeNombre = path.extname(attachmentName(file)).toLowerCase();
+  if (desdeNombre) return desdeNombre;
+
+  // extname sobre el URL crudo se come la query: hay que quedarse con el path.
+  try {
+    return path.extname(new URL(String(file?.url || '')).pathname).toLowerCase();
+  } catch (_error) {
+    return '';
+  }
+}
+
+// `archivos` NO son solo los adjuntos del profe. El scraper barre todo
+// pluginfile.php de la pagina, asi que mezcla mod_assign/introattachment con
+// assignsubmission_file: las entregas del propio alumno, 11 de 12 en datos
+// reales. Sin este filtro el prompt le pasa al modelo la respuesta del alumno
+// bajo el titulo que promete la consigna del profesor.
+function isProfessorAttachment(file) {
+  return INTROATTACHMENT_RE.test(String(file?.url || ""));
+}
+
 async function extractAttachmentTexts(archivos, { onProgress = null } = {}) {
   const candidatos = (archivos || []).filter(
-    (file) => SUPPORTED_EXTENSIONS.has(path.extname(String(file?.nombre || file?.url || '')).toLowerCase())
-      && /pluginfile\.php/.test(String(file?.url || '')),
+    (file) => isProfessorAttachment(file) && SUPPORTED_EXTENSIONS.has(attachmentExtension(file)),
   );
 
   if (candidatos.length === 0) return { textos: [], omitidos: [] };
@@ -111,7 +143,7 @@ async function extractAttachmentTexts(archivos, { onProgress = null } = {}) {
   const pass = process.env.IVIRTUAL_PASS;
 
   if (!user || !pass) {
-    return { textos: [], omitidos: candidatos.map((f) => ({ nombre: f.nombre, motivo: 'sin credenciales' })) };
+    return { textos: [], omitidos: candidatos.map((f) => ({ nombre: attachmentName(f), motivo: 'sin credenciales' })) };
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dvpotro-prompt-'));
@@ -128,7 +160,7 @@ async function extractAttachmentTexts(archivos, { onProgress = null } = {}) {
     const loginError = await loginToIVirtual(page, user, pass);
 
     if (loginError) {
-      return { textos: [], omitidos: candidatos.map((f) => ({ nombre: f.nombre, motivo: 'no se pudo entrar a iVirtual' })) };
+      return { textos: [], omitidos: candidatos.map((f) => ({ nombre: attachmentName(f), motivo: 'no se pudo entrar a iVirtual' })) };
     }
 
     for (const [index, file] of candidatos.entries()) {
@@ -139,21 +171,21 @@ async function extractAttachmentTexts(archivos, { onProgress = null } = {}) {
         const response = await context.request.get(file.url);
 
         if (!response.ok()) {
-          omitidos.push({ nombre: file.nombre, motivo: `HTTP ${response.status()}` });
+          omitidos.push({ nombre: attachmentName(file), motivo: `HTTP ${response.status()}` });
           continue;
         }
 
-        const destino = path.join(tmpDir, `adj-${index}${path.extname(file.nombre || '.pdf')}`);
+        const destino = path.join(tmpDir, `adj-${index}${attachmentExtension(file) || '.pdf'}`);
         fs.writeFileSync(destino, await response.body());
 
         const { parseSubmission } = require('./activity-analyzer');
         const parsed = await parseSubmission(destino);
 
-        textos.push({ nombre: file.nombre, texto: parsed.text, palabras: parsed.wordCount });
+        textos.push({ nombre: attachmentName(file), texto: parsed.text, palabras: parsed.wordCount });
       } catch (error) {
         // Un PDF escaneado no tiene texto extraíble. No es un fallo del flujo:
         // se anota para poder decírselo al modelo y que no lo dé por leído.
-        omitidos.push({ nombre: file.nombre, motivo: error?.message || 'no se pudo leer' });
+        omitidos.push({ nombre: attachmentName(file), motivo: error?.message || 'no se pudo leer' });
       }
     }
   } finally {
@@ -254,8 +286,53 @@ function budgetAttachments(textos) {
   });
 }
 
+// Los PDFs de Drive que la cola ya bajó. Entran por la misma puerta que los
+// adjuntos de Moodle para que budgetAttachments los recorte con el mismo
+// criterio: la consigna real del profe suele estar acá y no en el cuerpo de
+// Moodle, que muchas veces es sólo el enlace.
+function textosDeDrive(activity) {
+  try {
+    const { getDriveFilesForActivity, leerTexto } = require('./drive');
+    const textos = [];
+    const omitidos = [];
+
+    for (const archivo of getDriveFilesForActivity(activity)) {
+      if (archivo.estado !== 'ok') {
+        omitidos.push({ nombre: archivo.etiqueta || archivo.url, motivo: `enlace de Drive: ${archivo.estado}` });
+        continue;
+      }
+
+      const texto = leerTexto(archivo);
+
+      if (!texto) {
+        omitidos.push({ nombre: archivo.nombre, motivo: 'el PDF no tiene texto extraíble' });
+        continue;
+      }
+
+      textos.push({ nombre: archivo.nombre, texto, palabras: archivo.palabras || 0, url: archivo.url });
+    }
+
+    return { textos, omitidos };
+  } catch (error) {
+    // Sin el store de Drive el prompt se arma igual, con lo que haya en Moodle.
+    log('no se pudo leer el store de Drive:', error?.message || error);
+    return { textos: [], omitidos: [] };
+  }
+}
+
 async function gatherContext(activity, { onProgress = null } = {}) {
   const { textos, omitidos } = await extractAttachmentTexts(activity?.archivos, { onProgress });
+  const drive = textosDeDrive(activity);
+
+  // Los de Drive van PRIMERO: cuando la consigna de Moodle es un enlace, ese PDF
+  // es la consigna, y si hay que recortar no puede ser lo primero que se pierda.
+  const todosLosTextos = [...drive.textos, ...textos];
+  const todosOmitidos = [...omitidos, ...drive.omitidos];
+
+  // Un enlace cuyo contenido YA está en el prompt no puede seguir listado como
+  // "contenido NO disponible": eso le dice al modelo que no lo asuma, justo
+  // cuando lo tiene delante.
+  const urlsResueltas = new Set(drive.textos.map((t) => t.url).filter(Boolean));
 
   return {
     actividad: {
@@ -275,9 +352,11 @@ async function gatherContext(activity, { onProgress = null } = {}) {
     ),
     instruccionesRecortadas:
       String(activity?.instruccionesMarkdown || activity?.instrucciones || '').length > MAX_INSTRUCTIONS_CHARS,
-    adjuntos: budgetAttachments(textos),
-    adjuntosOmitidos: omitidos,
-    enlaces: Array.isArray(activity?.enlaces) ? activity.enlaces.slice(0, MAX_LINKS) : [],
+    adjuntos: budgetAttachments(todosLosTextos),
+    adjuntosOmitidos: todosOmitidos,
+    enlaces: Array.isArray(activity?.enlaces)
+      ? activity.enlaces.filter((e) => !urlsResueltas.has(e.url)).slice(0, MAX_LINKS)
+      : [],
     rubrica: activity?.rubrica?.markdown
       ? {
           titulo: activity.rubrica.titulo || 'Criterios de calificación',
@@ -505,14 +584,18 @@ module.exports = {
   CACHE_VERSION,
   DEFAULT_MODE,
   MODES,
+  attachmentExtension,
+  attachmentName,
   budgetAttachments,
   collectMaterialTitles,
   gatherContext,
   generatePrompt,
   getCachePath,
+  isProfessorAttachment,
   normalizeSubject,
   readCache,
   registerPromptBuilderHandlers,
   renderContext,
+  textosDeDrive,
   writeCache,
 };

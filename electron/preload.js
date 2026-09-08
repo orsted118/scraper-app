@@ -222,6 +222,21 @@ contextBridge.exposeInMainWorld('scraperApp', {
       return () => ipcRenderer.removeListener('material:progress', listener);
     },
   },
+  drive: {
+    getCached: () => ipcRenderer.invoke('drive:get-cached'),
+    // Promoción por click: abrir una actividad manda sus archivos al frente de
+    // la cola en vez de esperar el turno del lote de fondo.
+    resolve: (payload) => ipcRenderer.invoke('drive:resolve', payload),
+    readText: (fileId) => ipcRenderer.invoke('drive:read-text', fileId),
+    // Canal propio y no scraper:progress: ese payload es {current, total, curso}
+    // y reusarlo haría que la barra de materias se recargue desde cero después
+    // de haber llegado a 100%.
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on('drive:progress', listener);
+      return () => ipcRenderer.removeListener('drive:progress', listener);
+    },
+  },
   llm: {
     probeAll: (opts) => ipcRenderer.invoke('llm:probe-all', opts),
     usageStats: (opts) => ipcRenderer.invoke('llm:usage-stats', opts),

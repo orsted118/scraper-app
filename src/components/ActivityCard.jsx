@@ -21,7 +21,7 @@ import PromptGenerator from '../pages/actividades/PromptGenerator';
 import ActivityCardMenu from './ActivityCardMenu';
 import ActivityInstructions from './ActivityInstructions';
 import ActivitySubmission from './ActivitySubmission';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { EASE } from '../utils/motion';
 import { diasHastaVencimiento, parseFechaPortalDate } from '../utils/fechas';
 import { getFileIcon } from './file-icons';
@@ -268,6 +268,7 @@ function getAvailabilityNotice({ bloqueo, ventana, fechaPublicacion, publication
 function ActivityCard({
   archivos = [],
   bloqueo = null,
+  driveFiles = null,
   enlaces = [],
   equipo = null,
   fechaLimite,
@@ -295,6 +296,7 @@ function ActivityCard({
   const [downloadError, setDownloadError] = useState('');
   const [rubricExpanded, setRubricExpanded] = useState(false);
   const [linkError, setLinkError] = useState('');
+  const [driveError, setDriveError] = useState('');
 
   const theme = getCardTheme(estado, modalidad);
   const edge = getCardEdge(estado);
@@ -333,6 +335,47 @@ function ActivityCard({
       await window.scraperApp.openExternal(enlace.url);
     } catch (_error) {
       setLinkError('No fue posible abrir el enlace.');
+    }
+  };
+
+  // Un enlace de Drive que la app ya resolvió deja de ser un enlace: es un PDF
+  // en disco. Se parte acá, al renderizar, para no tocar la caché de actividades
+  // ni agregarle un campo que después habría que mantener sincronizado.
+  const { documentos, enlacesSueltos } = useMemo(() => {
+    if (!driveFiles?.size) return { documentos: [], enlacesSueltos: enlaces };
+
+    const documentosResueltos = [];
+    const restantes = [];
+
+    for (const enlace of enlaces) {
+      const archivo = driveFiles.get(enlace.url);
+
+      if (archivo?.estado === 'ok') {
+        documentosResueltos.push({ ...archivo, etiqueta: enlace.texto || archivo.etiqueta });
+        continue;
+      }
+
+      restantes.push(enlace);
+    }
+
+    return { documentos: documentosResueltos, enlacesSueltos: restantes };
+  }, [driveFiles, enlaces]);
+  // El PDF ya está en disco: abrirlo es abrir un archivo local, no volver a
+  // pedírselo a Google. Se reusa material.openFile, que ya chequea que exista
+  // antes de mandárselo al shell.
+  const handleOpenDriveFile = async (archivo) => {
+    setDriveError('');
+
+    try {
+      if (typeof window === 'undefined' || !window.scraperApp?.material?.openFile) {
+        setDriveError('Abrir archivos solo está disponible dentro de la app.');
+        return;
+      }
+
+      const resultado = await window.scraperApp.material.openFile(archivo.ruta);
+      if (resultado?.error) setDriveError('El archivo ya no está en disco. Se vuelve a bajar en la próxima sincronización.');
+    } catch (_error) {
+      setDriveError('No fue posible abrir el archivo.');
     }
   };
 
@@ -641,7 +684,79 @@ function ActivityCard({
                     </section>
                   ) : null}
 
-                  {enlaces.length > 0 ? (
+                  {documentos.length > 0 ? (
+                    <section>
+                      <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                        <Paperclip className="h-4 w-4" />
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.22em]">Documentos de la consigna</h4>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                        {documentos.map((documento) => {
+                          const { Icon: DocIcon, label: docLabel } = getFileIcon(documento.nombre);
+
+                          return (
+                            <div
+                              key={documento.fileId}
+                              className="flex items-center gap-3 border px-3 py-2"
+                              style={{
+                                borderColor: 'var(--border-subtle)',
+                                background: 'var(--bg-card)',
+                                borderRadius: 'var(--radius-card, 0px)',
+                              }}
+                            >
+                              <div
+                                className="flex h-9 w-9 shrink-0 items-center justify-center border"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                              >
+                                <DocIcon className="h-5 w-5 shrink-0" />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  title={documento.nombre}
+                                  className="truncate text-xs font-medium"
+                                  style={{ color: 'var(--text-strong)' }}
+                                >
+                                  {documento.nombre}
+                                </p>
+                                <p className="mt-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>
+                                  {docLabel}{documento.palabras ? ` · ${documento.palabras} palabras` : ''}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDriveFile(documento)}
+                                className="hov-accent inline-flex h-8 w-8 shrink-0 items-center justify-center border"
+                                style={{
+                                  borderColor: 'var(--border-normal)',
+                                  background: 'var(--bg-secondary)',
+                                  color: 'var(--text-normal)',
+                                  borderRadius: 'var(--radius-badge, 0px)',
+                                }}
+                                aria-label={`Abrir ${documento.nombre}`}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {driveError ? (
+                        <p className="mt-2 text-xs" style={{ color: 'var(--error-text)' }}>
+                          {driveError}
+                        </p>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {enlacesSueltos.length > 0 ? (
                     <section>
                       <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
                         <LinkIcon className="h-4 w-4" />
@@ -649,7 +764,7 @@ function ActivityCard({
                       </div>
 
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {enlaces.map((enlace) => (
+                        {enlacesSueltos.map((enlace) => (
                           <button
                             key={enlace.url}
                             type="button"
@@ -675,7 +790,7 @@ function ActivityCard({
                         </p>
                       ) : null}
 
-                      {enlaces.some((enlace) => enlace.tipo === 'google') ? (
+                      {enlacesSueltos.some((enlace) => enlace.tipo === 'google') ? (
                         <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
                           Se abren en tu navegador, donde ya tienes la sesión de Google iniciada.
                         </p>

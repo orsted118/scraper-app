@@ -40,6 +40,7 @@ const { registerLlmStatusHandlers } = require('./handlers/llm-status');
 const { registerMaterialHandlers } = require('./handlers/material');
 const { registerAttendanceHandlers } = require('./handlers/attendance');
 const { registerPromptBuilderHandlers } = require('./handlers/prompt-builder');
+const { registerDriveHandlers } = require('./handlers/drive');
 const calendarioHandler = require('./handlers/calendario');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -135,6 +136,7 @@ app.whenReady().then(() => {
   registerMaterialHandlers();
   registerAttendanceHandlers();
   registerPromptBuilderHandlers();
+  registerDriveHandlers();
   registerCIAHandlers();
   registerHorarioHandlers();
   registerFileHandlers();

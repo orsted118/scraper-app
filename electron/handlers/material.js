@@ -12,6 +12,13 @@
 //            archivo en Moodle. VERIFICADO: esos Drive NO se pueden bajar sin la
 //            sesión de Google del alumno (redirigen a accounts.google.com), así
 //            que se guardan como enlace y se abren en su navegador.
+//            MEDIDO después sobre los 41 ids de las dos cachés: los de Redes
+//            siguen cerrados (8 de 8), pero los de TODAS las demás materias
+//            bajan anónimos (32 de 33). Compartir es política por profesor, no
+//            azar por archivo. Los de las consignas ya los resuelve drive.js;
+//            traer también los de material está pendiente, y ahí conviene
+//            bajarlos al clickearlos y no de prefetch: son ~19.5 MB de
+//            diapositivas contra 0.87 MB de consignas.
 //   page   → contenido HTML dentro de Moodle (apuntes, listas de recursos).
 //   url    → utilidades que no son material pero valen oro: el Meet de la clase
 //            y el grupo de WhatsApp. Salen aparte como "enlaces vivos".

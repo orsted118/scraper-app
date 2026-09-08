@@ -95,6 +95,47 @@ const objetivos = Object.values(pb.MODES).map((m) => m.objetivo);
 check('cada modo pide algo distinto', new Set(objetivos).size, 3);
 
 console.log('');
+console.log('== Adjuntos: cual es del profe y cual es mio ==');
+// El scraper barre TODO pluginfile.php de la pagina, asi que `archivos`
+// mezcla el adjunto de la consigna con las entregas del propio alumno. En la
+// cache real son 1 y 11. Sin separarlos, el prompt le manda al modelo la
+// respuesta del alumno bajo el titulo que promete la consigna del profesor.
+const DEL_PROFE = {
+  name: 'Ejercicio Clase 28 agosto 2026.pdf',
+  url: 'https://ivirtual.itson.edu.mx/pluginfile.php/2089123/mod_assign/introattachment/0/Ejercicio%20Clase%2028%20agosto%202026.pdf?forcedownload=1',
+};
+const MIO = {
+  name: 'A02_DavidAlvarez_00000279009.pdf',
+  url: 'https://ivirtual.itson.edu.mx/pluginfile.php/2151379/assignsubmission_file/submission_files/8421920/A02_DavidAlvarez_00000279009.pdf?forcedownload=1',
+};
+const MIA_IMAGEN = {
+  name: 'WhatsApp Image 2026-09-03 at 7.19.47 PM.jpeg',
+  url: 'https://ivirtual.itson.edu.mx/pluginfile.php/2159924/assignsubmission_file/submission_files/8446321/WhatsApp%20Image.jpeg?forcedownload=1',
+};
+
+check('introattachment es del profe', pb.isProfessorAttachment(DEL_PROFE), true);
+check('assignsubmission_file es mio', pb.isProfessorAttachment(MIO), false);
+check('una imagen mia tampoco', pb.isProfessorAttachment(MIA_IMAGEN), false);
+
+// El scraper guarda `name`. Leer solo `nombre` hacia que el filtro cayera al
+// URL, donde extname devuelve '.pdf?forcedownload=1': candidatos salia vacio
+// para el 100% de los datos reales y extractAttachmentTexts nunca corrio.
+check('lee el nombre que el scraper guarda', pb.attachmentName(DEL_PROFE), 'Ejercicio Clase 28 agosto 2026.pdf');
+check('tolera la forma vieja', pb.attachmentName({ nombre: 'viejo.pdf' }), 'viejo.pdf');
+check('sin nada devuelve vacio', pb.attachmentName({}), '');
+check('la extension no arrastra la query', pb.attachmentExtension(DEL_PROFE), '.pdf');
+check('ni cuando solo hay url', pb.attachmentExtension({ url: DEL_PROFE.url }), '.pdf');
+check('un docx se reconoce', pb.attachmentExtension({ name: 'consigna.DOCX' }), '.docx');
+check('un archivo sin extension no inventa', pb.attachmentExtension({ name: 'sin-extension', url: 'https://x.com/a' }), '');
+
+// El filtro completo, tal como lo aplica extractAttachmentTexts.
+const SOPORTADAS = new Set(['.pdf', '.docx']);
+const candidatos = (archivos) => archivos.filter((f) => pb.isProfessorAttachment(f) && SOPORTADAS.has(pb.attachmentExtension(f)));
+check('de una consigna real queda solo el del profe', candidatos([DEL_PROFE, MIO, MIA_IMAGEN]).map((f) => f.name), ['Ejercicio Clase 28 agosto 2026.pdf']);
+check('sin adjunto del profe no hay candidatos', candidatos([MIO, MIA_IMAGEN]), []);
+check('una imagen del profe no es candidata', candidatos([{ name: 'diagrama.png', url: DEL_PROFE.url.replace('.pdf', '.png') }]), []);
+
+console.log('');
 console.log('== Guardas ==');
 (async () => {
   const sinId = await pb.generatePrompt({ nombre: 'x' }, {});

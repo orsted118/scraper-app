@@ -1963,6 +1963,18 @@ async function scrapeIVirtualActivities(event, controller = {}) {
     }));
 
     const cachePayload = writeActivitiesCache(enrichedActivities);
+
+    // Los PDFs de Drive se resuelven DESPUÉS, y sin await: acá adentro el pool de
+    // páginas ya no se repara entre chunks, y el re-throw que debería hacer
+    // explotar un error es inoperativo porque withTimeout hace resolve(null) para
+    // todo lo que no sea un timeout. Un fetch lento no perdería una actividad:
+    // envenenaría un slot del pool y tiraría en silencio una de cada cinco
+    // restantes. Además runScrape corre contra GLOBAL_SCRAPE_TIMEOUT_MS y, al
+    // vencer, devuelve error SIN escribir la caché.
+    require('./drive')
+      .resolveLinksForActivities(enrichedActivities)
+      .catch((error) => console.error('[scraper] la resolución de Drive falló:', error?.message || error));
+
     return {
       activities: enrichedActivities,
       // El desglose viaja con el resultado para poder medirlo desde un test y

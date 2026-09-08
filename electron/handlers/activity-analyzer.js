@@ -113,13 +113,38 @@ function getActivityTitle(activity) {
   return String(activity?.nombre || activity?.titulo || '').trim();
 }
 
+// Cuando el profe deja la consigna en un PDF de Drive, el cuerpo en Moodle es
+// literalmente el enlace. Extraer requisitos de eso daba un análisis armado sobre
+// la mitad del contrato de entrega. La cola de Drive ya bajó ese PDF y le sacó el
+// texto: se lo agregamos acá para que el recorte y el aviso de "consigna
+// recortada" que ya existen apliquen igual, sin plomería nueva.
+function getDriveDocuments(activity) {
+  try {
+    const { getDriveFilesForActivity, leerTexto } = require('./drive');
+
+    return getDriveFilesForActivity(activity)
+      .filter((archivo) => archivo.estado === 'ok')
+      .map((archivo) => ({ nombre: archivo.nombre, texto: leerTexto(archivo) }))
+      .filter((doc) => doc.texto)
+      .map((doc) => `\n\n--- Documento enlazado en la consigna: ${doc.nombre} ---\n${doc.texto}`)
+      .join('');
+  } catch (_error) {
+    // Sin el store de Drive el análisis sigue con lo que haya en Moodle.
+    return '';
+  }
+}
+
 function getActivityInstructions(activity) {
   // El markdown conserva enlaces y tablas de la consigna; el texto plano los
   // aplanaba y el modelo perdía tanto el destino de los enlaces como la
   // estructura de las tablas.
-  return String(
+  const deMoodle = String(
     activity?.instruccionesMarkdown || activity?.instrucciones || activity?.descripcion || '',
   ).trim();
+
+  // Moodle primero: ahí viven el nombre de archivo, la portada y la modalidad,
+  // que son cortos y son la mitad del contrato que el PDF no repite.
+  return `${deMoodle}${getDriveDocuments(activity)}`.trim();
 }
 
 // La rúbrica dice literalmente qué se evalúa y cuántos puntos vale cada cosa.
@@ -405,5 +430,6 @@ module.exports = {
   parseSubmission,
   parseSubmissionPayload,
   registerActivityAnalyzerHandlers,
+  getActivityInstructions,
   verifySubmission,
 };

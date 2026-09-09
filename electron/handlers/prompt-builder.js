@@ -20,6 +20,7 @@
 //
 // Lo que no entra se dice explícitamente en el contexto, para que el modelo no
 // invente que lo leyó.
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -35,6 +36,10 @@ const MAX_TOTAL_ATTACHMENT_CHARS = 12000;
 const MAX_MATERIAL_ITEMS = 25;
 const MAX_RUBRIC_CHARS = 6000;
 const MAX_LINKS = 10;
+// Lo que el alumno agrega a mano. Techo bajo a propósito: son aclaraciones
+// puntuales ("el profe dijo en clase que...", "usá Java 17"), no una segunda
+// consigna, y el presupuesto ya está repartido entre las otras secciones.
+const MAX_SPECS_CHARS = 2000;
 
 // Sólo estos dos tienen texto extraíble sin OCR. Mismo criterio que el
 // analizador de entregas.
@@ -75,6 +80,28 @@ function log(...args) {
 
 function getCachePath() {
   return path.join(app.getPath('userData'), 'prompt-cache.json');
+}
+
+// Normaliza las especificaciones del alumno: recorta, colapsa espacios y aplica
+// el techo. Se usa para guardar Y para hashear, así que dos textos que difieren
+// sólo en un salto de línea no cuentan como distintos.
+function normalizeSpecs(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, MAX_SPECS_CHARS);
+}
+
+// La clave DEBE incluir las especificaciones. Sin esto el alumno edita sus
+// aclaraciones, aprieta Generar, y el caché le devuelve el prompt viejo con
+// `fromCache: true`: la función parece andar y no cambió nada.
+//
+// Sin especificaciones la clave queda igual que antes — los prompts ya
+// cacheados siguen siendo válidos y nadie pierde lo que ya generó.
+function buildCacheKey(activityId, modo, especificaciones) {
+  const specs = normalizeSpecs(especificaciones);
+
+  if (!specs) return `${activityId}::${modo}`;
+
+  const hash = crypto.createHash('sha1').update(specs).digest('hex').slice(0, 8);
+  return `${activityId}::${modo}::${hash}`;
 }
 
 function readCache() {
@@ -320,7 +347,7 @@ function textosDeDrive(activity) {
   }
 }
 
-async function gatherContext(activity, { onProgress = null } = {}) {
+async function gatherContext(activity, { onProgress = null, especificaciones = '' } = {}) {
   const { textos, omitidos } = await extractAttachmentTexts(activity?.archivos, { onProgress });
   const drive = textosDeDrive(activity);
 
@@ -364,6 +391,7 @@ async function gatherContext(activity, { onProgress = null } = {}) {
         }
       : null,
     material: collectMaterialTitles(activity?.materia),
+    especificaciones: normalizeSpecs(especificaciones),
   };
 }
 
@@ -387,6 +415,20 @@ function renderContext(context) {
     context.instrucciones || '(la actividad no trae instrucciones escritas)',
     context.instruccionesRecortadas ? '\n(consigna recortada por longitud)' : null,
   ].filter(Boolean).join('\n'));
+
+  // Van pegadas a la consigna y no al final: el modelo tiene que leerlas
+  // mientras todavía tiene fresco qué pidió el profe, para poder integrarlas en
+  // vez de agregarlas como un apéndice suelto. Etiquetadas como del ALUMNO a
+  // propósito: si se confunden con la consigna, el prompt sale afirmando que el
+  // profesor exigió algo que en realidad pidió el estudiante.
+  if (context.especificaciones) {
+    bloques.push([
+      '## Especificaciones del estudiante',
+      'Esto lo agregó el propio estudiante, NO está en la consigna del profesor.',
+      'Son igual de obligatorias: si algo choca con la consigna, mandan estas.',
+      context.especificaciones,
+    ].join('\n'));
+  }
 
   if (context.adjuntos.length > 0) {
     bloques.push([
@@ -466,6 +508,10 @@ Reglas duras:
   eso va explícito en el prompt.
 - NO inventes requisitos que no estén en el contexto. Si algo no está, no lo
   menciones o pedile a la IA que lo confirme con el estudiante.
+- Si hay una sección "Especificaciones del estudiante", eso lo escribió el
+  propio estudiante y es OBLIGATORIO: integralo en el prompt junto con lo que
+  pide la consigna, no lo pegues aparte al final. Cuando choque con la consigna,
+  mandan las especificaciones. No las atribuyas al profesor.
 - Si hay documentos que no se pudieron leer, el prompt debe decirle a la IA que
   pida esos archivos al estudiante en vez de suponer su contenido.
 - Escribí el prompt en el mismo idioma de la consigna (español).
@@ -473,11 +519,12 @@ Reglas duras:
   punto contra los criterios listados.`;
 }
 
-async function generatePrompt(activity, { modo = DEFAULT_MODE, backend = null, force = false, onProgress = null } = {}) {
+async function generatePrompt(activity, { modo = DEFAULT_MODE, backend = null, force = false, onProgress = null, especificaciones = '' } = {}) {
   if (!activity?.id) return { error: 'NO_ACTIVITY' };
 
   const modoValido = MODES[modo] ? modo : DEFAULT_MODE;
-  const cacheKey = `${activity.id}::${modoValido}`;
+  const specs = normalizeSpecs(especificaciones);
+  const cacheKey = buildCacheKey(activity.id, modoValido, specs);
   const cache = readCache();
 
   // El contexto de una actividad no cambia salvo que el profe la edite, y
@@ -489,7 +536,7 @@ async function generatePrompt(activity, { modo = DEFAULT_MODE, backend = null, f
 
   try {
     onProgress?.({ fase: 'contexto' });
-    const context = await gatherContext(activity, { onProgress });
+    const context = await gatherContext(activity, { onProgress, especificaciones: specs });
 
     onProgress?.({ fase: 'generando' });
     const response = await llm.chat(
@@ -513,6 +560,7 @@ async function generatePrompt(activity, { modo = DEFAULT_MODE, backend = null, f
       modo: modoValido,
       backend: response.model,
       generadoEn: new Date().toISOString(),
+      especificaciones: specs,
       // Se guarda de qué se alimentó: sirve para que la UI pueda decir "esto
       // incluyó 2 documentos" y para saber si vale regenerar.
       fuentes: {
@@ -522,6 +570,7 @@ async function generatePrompt(activity, { modo = DEFAULT_MODE, backend = null, f
         instruccionesChars: context.instrucciones.length,
         enlaces: (context.enlaces || []).length,
         rubrica: Boolean(context.rubrica),
+        especificaciones: specs.length,
       },
     };
 
@@ -564,12 +613,17 @@ function registerPromptBuilderHandlers() {
       modo: payload?.modo,
       backend: payload?.backend || null,
       force: Boolean(payload?.force),
+      especificaciones: payload?.especificaciones || '',
       onProgress: (progress) => event.sender.send('prompt:progress', progress),
     }));
 
   ipcMain.handle('prompt:get-cached', async (_event, payload) => {
     const cache = readCache();
-    const entrada = cache.prompts[`${payload?.activityId}::${payload?.modo || DEFAULT_MODE}`];
+    // Misma clave que al generar, o el caché no encuentra el prompt que se
+    // hizo con especificaciones y la card lo muestra como si no existiera.
+    const entrada = cache.prompts[
+      buildCacheKey(payload?.activityId, payload?.modo || DEFAULT_MODE, payload?.especificaciones)
+    ];
     return { ok: true, data: entrada || null };
   });
 
@@ -582,6 +636,8 @@ function registerPromptBuilderHandlers() {
 
 module.exports = {
   CACHE_VERSION,
+  buildCacheKey,
+  normalizeSpecs,
   DEFAULT_MODE,
   MODES,
   attachmentExtension,

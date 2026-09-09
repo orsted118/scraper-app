@@ -1372,7 +1372,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         ],
       }),
       getCached: async () => ({ ok: true, data: null }),
-      generate: async ({ activity, modo }) => {
+      generate: async ({ activity, modo, especificaciones }) => {
         await new Promise((resolve) => setTimeout(resolve, 900));
         // Escribí "fallar-prompt" en la consigna para ejercitar el error.
         if (/fallar-prompt/i.test(String(activity?.instrucciones || ''))) {
@@ -1388,6 +1388,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
             `Modo: ${modo}`,
             '- Requisito 1 extraído de la consigna',
             '- Requisito 2 extraído del documento del profesor',
+            // Se refleja lo que mandó el alumno: si no aparece acá, las
+            // especificaciones no llegaron al main y el bug es del puente.
+            ...(especificaciones ? [`- Especificación del alumno: ${especificaciones}`] : []),
             'Antes de entregar, verificá punto por punto contra los criterios.',
           ].join('\n'),
           fuentes: { adjuntosLeidos: ['rubrica.pdf'], adjuntosOmitidos: [], materialTitulos: 4, instruccionesChars: 320 },

@@ -185,7 +185,10 @@ contextBridge.exposeInMainWorld('scraperApp', {
   // routing ni expone el valor de las keys, apenas sus nombres de variable.
   prompt: {
     generate: (payload) => ipcRenderer.invoke('prompt:generate', payload),
-    getCached: (activityId, modo) => ipcRenderer.invoke('prompt:get-cached', { activityId, modo }),
+    // `especificaciones` viaja también acá: la clave del caché las incluye, así
+    // que sin pasarlas se busca el prompt equivocado.
+    getCached: (activityId, modo, especificaciones) =>
+      ipcRenderer.invoke('prompt:get-cached', { activityId, modo, especificaciones }),
     modes: () => ipcRenderer.invoke('prompt:modes'),
     // Reunir el contexto baja y parsea los adjuntos: sin progreso la UI queda
     // muda mientras se descargan.

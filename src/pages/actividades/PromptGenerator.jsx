@@ -209,11 +209,24 @@ function PromptGenerator({ activity }) {
       <button
         type="button"
         onClick={() => setOpen((visible) => !visible)}
+        // El click derecho también entra por acá. Este encabezado es lo ÚNICO
+        // que se ve con la sección cerrada, así que es donde el alumno lo
+        // intenta: tenerlo sólo en el botón de adentro hacía que la función
+        // pareciera rota hasta desplegar la sección.
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setOpen(true);
+          setShowSpecs(true);
+        }}
+        title="Click derecho para agregar especificaciones al prompt"
         className="flex w-full items-center justify-between gap-2 text-left"
       >
         <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text-strong)' }}>
           <Wand2 className="h-4 w-4" strokeWidth={1.5} />
           Generar prompt para IA
+          {specs.trim() ? (
+            <ListPlus className="h-3.5 w-3.5" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
+          ) : null}
         </span>
         <ChevronDown
           className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}

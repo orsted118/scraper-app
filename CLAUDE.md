@@ -44,6 +44,7 @@ npm run test:drive                     # Normalización y clasificación de link
 npm run test:drive:red                 # Descarga real contra ids reales, DENTRO de Electron (con red)
 npm run test:drive:llm                 # El texto del PDF llegando al prompt y al extractor de requisitos
 npm run test:mcp-drive                 # El MCP sirviendo lo resuelto (JSON-RPC contra el server real)
+npm run test:mcp-entrega               # Defensas y ensayo de dvpotro_entregar (no sube nada)
 npm run drive:resolve                  # Corre la cola de Drive una vez contra la caché real
 ```
 
@@ -72,9 +73,9 @@ tokens) y volcarlo entero quema la ventana de contexto. El valor del server es F
 - **`SCHEMA`** declara qué versión de cada caché sabe leer. Si bumpeás `schemaVersion`/`version` en un handler, **actualizá también `SCHEMA`** o el server empieza a avisar que puede faltar información.
 - **`DVPOTRO_USER_DATA`** pisa la ruta de `userData` — sirve para probar contra un sandbox sin tocar la instalación real.
 
-### Solo lectura, con dos excepciones acotadas
+### Solo lectura, con tres excepciones acotadas
 
-Las 17 tools de consulta no escriben nada. Las dos que salen a la red cargan los handlers
+Las 17 tools de consulta no escriben nada. Las que salen a la red cargan los handlers
 de Electron en Node pelado con un `electron` de mentira:
 
 - **`dvpotro_sync`** corre el scrape y refresca la caché. Tiene lista blanca de módulos —
@@ -87,11 +88,36 @@ de Electron en Node pelado con un `electron` de mentira:
   Las imágenes se numeran al guardarlas: Moodle llama `blobid0.png` a todas las que se
   pegan en el editor, así que sin el índice la segunda pisa a la primera.
 
-Las dos llaman `prepararHandlers()` **antes** de chequear credenciales: esa función es la
+- **`dvpotro_entregar`** sube un archivo como entrega de una actividad. Es la **única
+  tool que escribe en el portal** y está aislada al final del archivo, fuera de
+  `SINCRONIZABLES`, para que ningún sync pueda terminar entregando. Sus defensas:
+  `confirmar` arranca en **false** y sin él hace un ensayo que mira y reporta sin subir;
+  el cmid sale de la caché a partir de un id de actividad, nunca del cliente; y el envío
+  **definitivo** —el que cierra la entrega y ya no se edita— es un flag aparte
+  (`enviar_definitivo`), porque guardar y cerrar son decisiones distintas.
+
+Todas llaman `prepararHandlers()` **antes** de chequear credenciales: esa función es la
 que carga el `.env`, y al revés las credenciales siempre parecen faltar.
 
 Regla dura: **la asistencia jamás se marca sola.** `markAttendance` no se referencia en
-ningún lado de ese archivo, a propósito. Sincronizar es traer, nunca mandar.
+ningún lado de ese archivo, a propósito. Sincronizar sigue siendo traer, nunca mandar:
+lo único que sale hacia el portal es `dvpotro_entregar`, y solo cuando se lo pide
+explícitamente con `confirmar:true`.
+
+#### Dos trampas del DOM de Moodle que ya costaron caro
+
+Las dos daban **falsos positivos que frenaban entregas válidas**, y ninguna se ve sin
+probar contra el portal real:
+
+- **"Add submission" no es un enlace.** Es el botón de un `<form method=get>` con
+  `action=editsubmission` en un hidden. Buscar `a[href*=editsubmission]` devuelve
+  siempre vacío. La verdad de si se puede entregar es que el formulario rinda
+  (`#id_submitbutton` + `input[name=action][value=savesubmission]`), no que exista un
+  botón en la pantalla anterior.
+- **Los `a` de la página incluyen el adjunto del profesor.** El árbol `assign_files_*`
+  de la consigna hacía ver como "ya entregado" algo que nunca se entregó. Lo entregado
+  se lee de la fila `File submissions` de `table.generaltable`, y si hubo entrega o no
+  lo dice la fila `Submission status`.
 
 `isPackaged: true` en el `app` falso **no es cosmético**: `settings.js:getEnvFilePath()`
 lo consulta, y con `undefined` el scrape de horario termina reescribiendo el `.env` del

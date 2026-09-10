@@ -177,6 +177,7 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_prompts` | prompts que la app ya armó por actividad | `prompt-cache.json` |
 | `dvpotro_adjuntos` | **baja archivos**: adjuntos e imágenes de la consigna de UNA actividad a disco, con el texto de los .pdf/.docx. ~10-20 s la primera vez, 0 s después | `actividades-cache.json` |
 | `dvpotro_sync` | **escribe caché**: sale al portal y la refresca. 40-120 s por módulo | — |
+| `dvpotro_entregar` | **ESCRIBE EN EL PORTAL**: sube un archivo como entrega de UNA actividad. La única que manda algo. Por default hace un ensayo y no sube; necesita `confirmar:true`. El envío definitivo es un flag aparte | `actividades-cache.json` |
 
 Notas de uso:
 
@@ -290,4 +291,4 @@ Patrones visuales:
 | Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
-| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 19 tools; 17 de lectura + `dvpotro_adjuntos` + `dvpotro_sync`. Registrado en `.mcp.json` del repo y a nivel usuario |
+| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 20 tools; 17 de lectura + `dvpotro_adjuntos` + `dvpotro_sync` + `dvpotro_entregar` (la única que escribe en el portal). Registrado en `.mcp.json` del repo y a nivel usuario |

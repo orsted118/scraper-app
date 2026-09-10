@@ -80,7 +80,6 @@ function PromptGenerator({ activity }) {
   // no disparar una consulta IPC en cada tecla del textarea.
   const [appliedSpecs, setAppliedSpecs] = useState('');
   const textareaRef = useRef(null);
-  const specsRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -109,26 +108,24 @@ function PromptGenerator({ activity }) {
     return () => clearTimeout(timer);
   }, [specs]);
 
-  // Cerrar el panel con Escape o clickeando afuera. En captura para ganarle al
-  // onMouseDown del propio panel, mismo criterio que el menú de modelos del
-  // editor de notas.
+  // Sólo Escape, sin "cerrar al clickear afuera".
+  //
+  // El panel NO es un popover flotante: vive en el flujo del contenido. Tuvo que
+  // dejar de ser `position: absolute` porque la card anima su altura con
+  // `overflow: hidden`, y ese overflow recortaba el panel entero — abría en el
+  // DOM y no se veía nada en pantalla.
+  //
+  // Estando en flujo, cerrarlo al clickear afuera sería hostil: se cerraría al
+  // tocar el propio textarea o el botón de generar.
   useEffect(() => {
     if (!showSpecs) return undefined;
 
-    const cerrarAfuera = (event) => {
-      if (!specsRef.current?.contains(event.target)) setShowSpecs(false);
-    };
     const cerrarConEsc = (event) => {
       if (event.key === 'Escape') setShowSpecs(false);
     };
 
-    document.addEventListener('mousedown', cerrarAfuera, true);
     document.addEventListener('keydown', cerrarConEsc);
-
-    return () => {
-      document.removeEventListener('mousedown', cerrarAfuera, true);
-      document.removeEventListener('keydown', cerrarConEsc);
-    };
+    return () => document.removeEventListener('keydown', cerrarConEsc);
   }, [showSpecs]);
 
   // Un prompt ya generado se guarda: al reabrir la card no hay que esperar de
@@ -294,126 +291,42 @@ function PromptGenerator({ activity }) {
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <div className="relative" ref={specsRef}>
-              <button
-                type="button"
-                onClick={() => generate(Boolean(result))}
-                // Click derecho abre las especificaciones, igual que el botón de
-                // mejorar notas abre ahí su selector de modelo.
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setShowSpecs((visible) => !visible);
-                }}
-                disabled={loading}
-                title={
-                  specs.trim()
-                    ? 'Click derecho para editar tus especificaciones'
-                    : 'Click derecho para agregar especificaciones'
-                }
-                className="inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
-                style={{
-                  // El borde de acento es la única señal de que hay
-                  // especificaciones cargadas: sin esto el alumno no sabe que el
-                  // prompt va a salir distinto al de la vez pasada.
-                  borderColor: specs.trim() ? 'var(--accent)' : 'var(--border-normal)',
-                  color: 'var(--text-normal)',
-                  borderRadius: 'var(--radius-button, 0px)',
-                }}
-              >
-                <Sparkles className={`h-3.5 w-3.5 ${loading ? 'animate-pulse' : ''}`} strokeWidth={1.5} />
-                {loading
-                  ? PROGRESS_COPY[progress?.fase] || 'Generando…'
-                  : result
-                    ? 'Regenerar'
-                    : 'Generar prompt'}
-                {specs.trim() ? (
-                  <ListPlus className="h-3.5 w-3.5" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
-                ) : null}
-              </button>
-
-              {showSpecs ? (
-                <div
-                  role="dialog"
-                  aria-label="Especificaciones"
-                  className="absolute left-0 top-full z-20 mt-1 w-[22rem] max-w-[80vw] border p-3"
-                  style={{
-                    borderColor: 'var(--border-normal)',
-                    background: 'var(--bg-card)',
-                    borderRadius: 'var(--radius-card, 0px)',
-                  }}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span
-                      className="text-[11px] font-bold uppercase tracking-[0.18em]"
-                      style={{ color: 'var(--text-strong)' }}
-                    >
-                      Especificaciones
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowSpecs(false)}
-                      aria-label="Cerrar"
-                      className="p-0.5"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      <X className="h-3.5 w-3.5" strokeWidth={2} />
-                    </button>
-                  </div>
-
-                  <p className="mb-2 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>
-                    Lo que la consigna no dice y el prompt debería incluir. Se suma a las
-                    instrucciones, la rúbrica y el material que ya se mandan.
-                  </p>
-
-                  <textarea
-                    value={specs}
-                    onChange={(event) => {
-                      setSpecs(event.target.value);
-                      writeStoredSpecs(activity?.id, event.target.value);
-                    }}
-                    rows={5}
-                    maxLength={2000}
-                    placeholder={'Ejemplos:\nEl profe dijo en clase que la portada va sin logo.\nUsar Java 17 y sin librerías externas.\nEntregarlo en una sola cuartilla.'}
-                    className="w-full resize-y border p-2 text-xs leading-5"
-                    style={{
-                      borderColor: 'var(--border-normal)',
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-normal)',
-                      borderRadius: 'var(--radius-button, 0px)',
-                      fontFamily: 'var(--font-body, inherit)',
-                    }}
-                  />
-
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-[10px]" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {specs.length}/2000
-                    </span>
-
-                    {specs.trim() ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSpecs('');
-                          writeStoredSpecs(activity?.id, '');
-                        }}
-                        className="text-[11px] underline"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        Borrar
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {/* Un prompt ya generado se hizo SIN estas especificaciones:
-                      decirlo evita que el alumno crea que ya están aplicadas. */}
-                  {result?.prompt ? (
-                    <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--text-muted)' }}>
-                      El prompt de arriba no las incluye todavía. Apretá Regenerar.
-                    </p>
-                  ) : null}
-                </div>
+            <button
+              type="button"
+              onClick={() => generate(Boolean(result))}
+              // Click derecho abre las especificaciones, igual que el botón de
+              // mejorar notas abre ahí su selector de modelo.
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setShowSpecs((visible) => !visible);
+              }}
+              disabled={loading}
+              title={
+                specs.trim()
+                  ? 'Click derecho para editar tus especificaciones'
+                  : 'Click derecho para agregar especificaciones'
+              }
+              className="inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
+              style={{
+                // El borde de acento es la única señal de que hay
+                // especificaciones cargadas: sin esto el alumno no sabe que el
+                // prompt va a salir distinto al de la vez pasada.
+                borderColor: specs.trim() ? 'var(--accent)' : 'var(--border-normal)',
+                color: 'var(--text-normal)',
+                borderRadius: 'var(--radius-button, 0px)',
+              }}
+            >
+              <Sparkles className={`h-3.5 w-3.5 ${loading ? 'animate-pulse' : ''}`} strokeWidth={1.5} />
+              {loading
+                ? PROGRESS_COPY[progress?.fase] || 'Generando…'
+                : result
+                  ? 'Regenerar'
+                  : 'Generar prompt'}
+              {specs.trim() ? (
+                <ListPlus className="h-3.5 w-3.5" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
               ) : null}
-            </div>
+            </button>
+
 
             {result?.prompt ? (
               <button
@@ -427,6 +340,89 @@ function PromptGenerator({ activity }) {
               </button>
             ) : null}
           </div>
+
+          {showSpecs ? (
+            <div
+              role="dialog"
+              aria-label="Especificaciones"
+              className="w-full max-w-lg border p-3"
+              style={{
+                borderColor: 'var(--border-normal)',
+                background: 'var(--bg-card)',
+                borderRadius: 'var(--radius-card, 0px)',
+              }}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span
+                  className="text-[11px] font-bold uppercase tracking-[0.18em]"
+                  style={{ color: 'var(--text-strong)' }}
+                >
+                  Especificaciones
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowSpecs(false)}
+                  aria-label="Cerrar"
+                  className="p-0.5"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </div>
+
+              <p className="mb-2 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>
+                Lo que la consigna no dice y el prompt debería incluir. Se suma a las
+                instrucciones, la rúbrica y el material que ya se mandan.
+              </p>
+
+              <textarea
+                value={specs}
+                onChange={(event) => {
+                  setSpecs(event.target.value);
+                  writeStoredSpecs(activity?.id, event.target.value);
+                }}
+                rows={5}
+                maxLength={2000}
+                placeholder={'Ejemplos:\nEl profe dijo en clase que la portada va sin logo.\nUsar Java 17 y sin librerías externas.\nEntregarlo en una sola cuartilla.'}
+                className="w-full resize-y border p-2 text-xs leading-5"
+                style={{
+                  borderColor: 'var(--border-normal)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-normal)',
+                  borderRadius: 'var(--radius-button, 0px)',
+                  fontFamily: 'var(--font-body, inherit)',
+                }}
+              />
+
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {specs.length}/2000
+                </span>
+
+                {specs.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpecs('');
+                      writeStoredSpecs(activity?.id, '');
+                    }}
+                    className="text-[11px] underline"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Borrar
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Un prompt ya generado se hizo SIN estas especificaciones:
+                  decirlo evita que el alumno crea que ya están aplicadas. */}
+              {result?.prompt ? (
+                <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--text-muted)' }}>
+                  El prompt de arriba no las incluye todavía. Apretá Regenerar.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {loading && progress?.fase === 'adjuntos' && progress.nombre ? (
             <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>

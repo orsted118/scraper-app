@@ -76,6 +76,16 @@ check('lo reporta', fantasma.length, 1);
 check('dice que no se encuentra', fantasma[0].includes('No se encuentra'), true);
 
 console.log('');
+console.log('== Archivo vacío ==');
+// Moodle acepta 0 bytes sin chistar: la entrega queda en verde con un archivo
+// ilegible adentro y nadie se entera hasta que el profesor lo abre.
+const vacio = crear('vacio.pdf', 0);
+const porVacio = upload.validateFiles([vacio], infoReal);
+check('lo reporta', porVacio.length, 1);
+check('dice que está vacío', porVacio[0].includes('vacío'), true);
+check('nombra el archivo', porVacio[0].includes('vacio.pdf'), true);
+
+console.log('');
 console.log('== URLs del portal ==');
 check(
   'view sin action',

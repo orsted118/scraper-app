@@ -88,13 +88,20 @@ de Electron en Node pelado con un `electron` de mentira:
   Las imágenes se numeran al guardarlas: Moodle llama `blobid0.png` a todas las que se
   pegan en el editor, así que sin el índice la segunda pisa a la primera.
 
-- **`dvpotro_entregar`** sube un archivo como entrega de una actividad. Es la **única
-  tool que escribe en el portal** y está aislada al final del archivo, fuera de
-  `SINCRONIZABLES`, para que ningún sync pueda terminar entregando. Sus defensas:
-  `confirmar` arranca en **false** y sin él hace un ensayo que mira y reporta sin subir;
-  el cmid sale de la caché a partir de un id de actividad, nunca del cliente; y el envío
-  **definitivo** —el que cierra la entrega y ya no se edita— es un flag aparte
-  (`enviar_definitivo`), porque guardar y cerrar son decisiones distintas.
+- **`dvpotro_entregar`** consulta qué pide una actividad y, con permiso explícito, sube
+  el archivo. Es la **única tool que escribe en el portal** y está aislada al final del
+  archivo, fuera de `SINCRONIZABLES`, para que ningún sync pueda terminar entregando.
+  **No reimplementa la subida**: delega en `electron/handlers/assignment-upload.js`, el
+  mismo camino que usa la card de Actividades. Es un wrapper a propósito — dos
+  implementaciones del mismo POST contra un portal frágil divergen apenas Moodle cambia
+  algo. Sus defensas: sin `archivo` solo informa (formatos, tope, cantidad, ventana);
+  con `archivo` valida contra el formulario REAL y no sube; `confirmar:true` es lo único
+  que escribe; y el cmid sale de la caché por id de actividad, nunca del cliente.
+  **Se serializa con `enFila()`**: el transporte despacha los `tools/call` en paralelo a
+  propósito, pero el handler guarda una sola `page` a nivel módulo porque lo pensaron
+  para los clicks secuenciales de la UI. Dos entregas simultáneas manejarían la misma
+  pestaña, y el `closeSession` de la que termina primero le cierra el navegador a la otra
+  en pleno guardado.
 
 Todas llaman `prepararHandlers()` **antes** de chequear credenciales: esa función es la
 que carga el `.env`, y al revés las credenciales siempre parecen faltar.
@@ -104,20 +111,38 @@ ningún lado de ese archivo, a propósito. Sincronizar sigue siendo traer, nunca
 lo único que sale hacia el portal es `dvpotro_entregar`, y solo cuando se lo pide
 explícitamente con `confirmar:true`.
 
-#### Dos trampas del DOM de Moodle que ya costaron caro
+#### Trampas del DOM de Moodle que ya costaron caro
 
-Las dos daban **falsos positivos que frenaban entregas válidas**, y ninguna se ve sin
-probar contra el portal real:
+Ninguna se ve sin probar contra el portal real, y las tres daban **falsos resultados
+sobre entregas válidas**:
 
+- **La página trae ~14 bloques `M.form_filemanager.init` y 12 son del editor de texto.**
+  Quedarse con el primero hace creer que la entrega solo acepta imágenes
+  (`.gif/.jpg/.png/.svg`) y rechaza PDFs que el portal sí acepta. `readSubmissionForm`
+  recorre las llaves con conciencia de strings para agarrar el bloque correcto.
+- **El filemanager se monta por JS y esperar un tiempo fijo no alcanza.** Con 1500 ms
+  la PRIMERA actividad del proceso seguía en `fm-loading` y `archivosEnBorrador` salía
+  vacío aunque la entrega tuviera archivos; `validateFiles` concluía que había lugar con
+  `maxfiles=1` ya ocupado. Por eso existe `waitForSubmissionForm()`: espera
+  `.filemanager:not(.fm-loading)`. Una actividad cerrada no monta filemanager, así que
+  ahí el timeout es el camino normal y no un error.
+- **No todo `pluginfile.php` de la página es del alumno.** Los adjuntos que el profesor
+  colgó de la consigna viven en `/mod_assign/introattachment/`; la entrega vive en
+  `/assignsubmission_file/submission_files/`. `readSubmissionStatus` usa esa lista como
+  ÚNICA prueba de que la subida entró, así que barrer toda la página hacía pasar por
+  entrega buena un "Save changes" que no persistió — con la plantilla del profe y la
+  entrega llamándose parecido, que es el flujo normal. Se filtra por el componente de la
+  URL y **no** por el rótulo de la fila: el rótulo es traducible y un filtro por texto
+  contra un portal en otro idioma devuelve vacío y frena una entrega válida.
+- **Subir un archivo con un nombre que ya está entregado lo PISA.** `attachSingleFile`
+  confirma el diálogo de Moodle con Overwrite, y ahí el archivo anterior no se recupera.
+  Nombre nuevo suma, nombre repetido destruye: son dos operaciones distintas y la tool
+  las distingue antes de pedir confirmación.
 - **"Add submission" no es un enlace.** Es el botón de un `<form method=get>` con
-  `action=editsubmission` en un hidden. Buscar `a[href*=editsubmission]` devuelve
-  siempre vacío. La verdad de si se puede entregar es que el formulario rinda
-  (`#id_submitbutton` + `input[name=action][value=savesubmission]`), no que exista un
-  botón en la pantalla anterior.
-- **Los `a` de la página incluyen el adjunto del profesor.** El árbol `assign_files_*`
-  de la consigna hacía ver como "ya entregado" algo que nunca se entregó. Lo entregado
-  se lee de la fila `File submissions` de `table.generaltable`, y si hubo entrega o no
-  lo dice la fila `Submission status`.
+  `action=editsubmission` en un hidden; `a[href*=editsubmission]` devuelve siempre vacío.
+  La señal de que se puede entregar es que el formulario rinda — `puedeEntregar` se
+  resuelve mirando si hay un botón "Save changes", no comparando contra la fecha límite,
+  que no contempla prórrogas del profesor.
 
 `isPackaged: true` en el `app` falso **no es cosmético**: `settings.js:getEnvFilePath()`
 lo consulta, y con `undefined` el scrape de horario termina reescribiendo el `.env` del

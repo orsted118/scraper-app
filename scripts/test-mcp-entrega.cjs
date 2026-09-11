@@ -1,12 +1,12 @@
 // `dvpotro_entregar` contra el server real, por JSON-RPC sobre stdio. No se
 // hace require del archivo: eso arranca el listener de stdin y cuelga.
 //
-// Por default corre SOLO las defensas y el ensayo: no sube nada al portal.
-// El ensayo sí sale a la red (entra a iVirtual y lee el estado de la entrega),
-// así que necesita credenciales y tarda ~30 s.
+// Por default corre las defensas locales y las dos consultas que NO escriben:
+// la ficha de la actividad (sin `archivo`) y el ensayo (con `archivo`, sin
+// `confirmar`). Ninguna sube nada. Las dos salen a la red, así que necesitan
+// credenciales y tardan ~30 s cada una.
 //
 // Uso: node scripts/test-mcp-entrega.cjs <idActividad> <rutaArchivo>
-const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -81,11 +81,13 @@ const texto = (r) => r?.result?.content?.[0]?.text || '';
     const lista = await pedir('tools/list', {});
     const nombres = (lista.result?.tools || []).map((t) => t.name);
     const spec = (lista.result?.tools || []).find((t) => t.name === 'dvpotro_entregar');
+    const props = spec?.inputSchema?.properties || {};
 
     check('la tool está registrada', nombres.includes('dvpotro_entregar'), `tools: ${nombres.join(', ')}`);
-    check('`archivo` es obligatorio', spec?.inputSchema?.required?.includes('archivo'));
-    check('`confirmar` existe en el schema', !!spec?.inputSchema?.properties?.confirmar);
-    check('`enviar_definitivo` existe en el schema', !!spec?.inputSchema?.properties?.enviar_definitivo);
+    check('`archivo` es opcional', !(spec?.inputSchema?.required || []).includes('archivo'));
+    check('`confirmar` existe en el schema', !!props.confirmar);
+    check('`reemplazar` existe en el schema', !!props.reemplazar);
+    check('no quedó `enviar_definitivo`', !props.enviar_definitivo, 'ese flag prometía un borrador que Moodle no siempre deja');
     check('la descripción avisa que escribe', /escribe/i.test(spec?.description || ''));
 
     const llamar = (args, ms) => pedir('tools/call', { name: 'dvpotro_entregar', arguments: args }, ms);
@@ -96,24 +98,24 @@ const texto = (r) => r?.result?.content?.[0]?.text || '';
     const inexistente = texto(await llamar({ id: ID, archivo: path.join(os.tmpdir(), 'no-existe-jamas-12345.pdf') }));
     check('rechaza archivo inexistente', /No existe el archivo/i.test(inexistente), inexistente.slice(0, 120));
 
-    const vacio = path.join(os.tmpdir(), 'dvpotro-vacio.pdf');
-    fs.writeFileSync(vacio, '');
-    const resVacio = texto(await llamar({ id: ID, archivo: vacio }));
-    check('rechaza archivo vacío', /vac.o/i.test(resVacio), resVacio.slice(0, 120));
-    fs.unlinkSync(vacio);
-
-    const carpeta = texto(await llamar({ id: ID, archivo: os.tmpdir() }));
-    check('rechaza una carpeta', /No es un archivo/i.test(carpeta), carpeta.slice(0, 120));
-
     const idFalso = texto(await llamar({ id: 'no-existe-9-9-9', archivo: ARCHIVO }));
     check('rechaza actividad inexistente', /Sin coincidencias/i.test(idFalso), idFalso.slice(0, 120));
 
-    console.log('\n--- ENSAYO (sale a la red, no sube nada) ---');
+    console.log('\n--- FICHA sin archivo (sale a la red, no sube nada) ---');
+    const ficha = texto(await llamar({ id: ID }, 180_000));
+    console.log(ficha);
+
+    check('la ficha dice qué formatos acepta', /Formatos:/.test(ficha));
+    check('la ficha dice el tope de tamaño', /Tama.o:\s+hasta/.test(ficha));
+    check('la ficha dice si la ventana está abierta', /Ventana:\s+(ABIERTA|CERRADA)/.test(ficha));
+    check('la ficha no sube nada', !/ENTREGADO/.test(ficha));
+
+    console.log('\n--- ENSAYO con archivo (sale a la red, no sube nada) ---');
     const ensayo = texto(await llamar({ id: ID, archivo: ARCHIVO }, 180_000));
     console.log(ensayo);
 
-    check('el ensayo no sube', /ENSAYO — no se subió nada/.test(ensayo));
-    check('el ensayo dice cómo confirmar', /confirmar:true/.test(ensayo));
+    check('el ensayo no sube', !/^## ENTREGADO/m.test(ensayo));
+    check('el ensayo concluye algo', /ENSAYO — no se subió nada|NO SE PUEDE ENTREGAR ASÍ/.test(ensayo));
   } finally {
     cerrar();
   }

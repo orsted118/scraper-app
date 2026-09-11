@@ -41,6 +41,7 @@ scraper-app/
 │     ├─ horario.js                # Scraper CIA horario + búsqueda de meet links en iVirtual
 │     ├─ cia.js                    # Scraper CIA calificaciones (PDF boleta)
 │     ├─ settings.js               # settings:get/settings:save (.env dev/prod)
+│     ├─ assignment-upload.js      # Entrega de archivos a iVirtual (lee el form, valida y sube)
 │     ├─ files.js                  # Descarga de adjuntos via sesión Electron
 │     ├─ drive.js                  # Resuelve los Drive de la consigna a un PDF local (anónimo)
 │     └─ notifications.js          # Notificaciones nativas de pendientes/retrasadas
@@ -101,6 +102,11 @@ scraper-app/
 | `settings:save` | `settings.js` | `{ user, password, ciaUser, ciaPassword }` | `{ success }` o `{ success:false,error }` |
 | `notifications:check` | `notifications.js` | `activities[]` | resumen `{ delayedCount, expiringCount, supported, success }` |
 | `files:download` | `files.js` | `{ url, name }` | `{ success, path? , error? }` |
+| `assignment:upload-info` | `assignment-upload.js` | `url` | `{ success, puedeEntregar, acceptedTypes, maxBytes, maxFiles, archivosEnBorrador, ... }` |
+| `assignment:upload-files` | `assignment-upload.js` | `{ url, files[] }` | `{ success, estado, archivos, sePuedeDeshacer }` o `{ error }` |
+| `assignment:remove-draft-file` | `assignment-upload.js` | `{ url, fileName }` | `{ success }` o `{ error }` |
+| `assignment:remove-submission` | `assignment-upload.js` | `url` | `{ success }` o `{ error }` |
+| `assignment:pick-files` | `assignment-upload.js` | — | rutas elegidas en el diálogo nativo |
 | `drive:get-cached` | `drive.js` | — | `{ ok, data }` — índice de PDFs de Drive resueltos |
 | `drive:resolve` | `drive.js` | `{ urls[], actividadId?, forzar? }` | `{ ok, resueltos, total, data }` |
 | `drive:read-text` | `drive.js` | `fileId` | `{ ok, texto, nombre }` o `{ ok:false, error }` |
@@ -177,7 +183,7 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_prompts` | prompts que la app ya armó por actividad | `prompt-cache.json` |
 | `dvpotro_adjuntos` | **baja archivos**: adjuntos e imágenes de la consigna de UNA actividad a disco, con el texto de los .pdf/.docx. ~10-20 s la primera vez, 0 s después | `actividades-cache.json` |
 | `dvpotro_sync` | **escribe caché**: sale al portal y la refresca. 40-120 s por módulo | — |
-| `dvpotro_entregar` | **ESCRIBE EN EL PORTAL**: sube un archivo como entrega de UNA actividad. La única que manda algo. Por default hace un ensayo y no sube; necesita `confirmar:true`. El envío definitivo es un flag aparte | `actividades-cache.json` |
+| `dvpotro_entregar` | **ESCRIBE EN EL PORTAL**: la única que manda algo. Sin `archivo` informa qué formatos acepta la actividad, el tope de tamaño, cuántos archivos admite y si la ventana sigue abierta. Con `archivo` valida contra el formulario real; solo sube con `confirmar:true`. Delega en `assignment-upload.js` | `actividades-cache.json` |
 
 Notas de uso:
 

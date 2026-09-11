@@ -1826,267 +1826,117 @@ tool(
 // Entrega — la ÚNICA tool que escribe en el portal
 // ---------------------------------------------------------------------------
 //
-// Rompe a propósito el invariante "sincronizar es traer, nunca mandar", y por
-// eso está aislada acá abajo con sus propias defensas:
+// Rompe a propósito el invariante "sincronizar es traer, nunca mandar", y por eso
+// vive acá abajo, fuera de `SINCRONIZABLES`: ningún sync puede terminar entregando.
 //
-//   - No entra en `SINCRONIZABLES`: ningún sync puede terminar entregando.
-//   - `confirmar` arranca en false. Sin él la tool hace un ENSAYO: entra, mira
-//     y reporta qué haría. Subir la tarea equivocada no se deshace desde acá.
-//   - El cmid sale de la caché a partir de un id de actividad, nunca del
-//     cliente. Igual que `dvpotro_adjuntos`, acá adentro no entran URLs.
-//   - El envío DEFINITIVO (el que cierra la entrega y ya no se edita) es un
-//     segundo flag aparte: guardar un borrador y cerrarlo son decisiones
-//     distintas y se piden por separado.
-//   - La asistencia sigue sin poder marcarse. Esto sube un archivo a una
-//     actividad y nada más.
+// NO reimplementa la subida. Leer el formulario, expandir los grupos de
+// `accepted_types`, validar y subir lo hace `electron/handlers/assignment-upload.js`
+// —el mismo camino que usa la card de Actividades en la app—. Dos implementaciones
+// del mismo POST contra un portal frágil divergen apenas Moodle cambia algo, y esa
+// ya sabe cosas que no son obvias: la página trae ~14 bloques
+// `M.form_filemanager.init` y 12 son de los pickers del editor de texto, así que
+// quedarse con el primero hacía creer que la entrega solo aceptaba imágenes.
+//
+// Lo único que agrega esta tool es la capa de decisión: por defecto NO sube.
 
-const MAX_ENTREGA_BYTES = 100 * 1024 * 1024;
-
-async function leerEstadoEntrega(pagina) {
-  return pagina.evaluate(() => {
-    // Todo sale de la tabla de estado de la entrega, con la celda como
-    // elemento y no como texto. Raspar `a` sueltos de la página traía el
-    // ADJUNTO DEL PROFESOR (el árbol `assign_files_*` de la consigna) y hacía
-    // ver como "ya entregado" algo que nunca se entregó.
-    const filas = [...document.querySelectorAll('table.generaltable tr')]
-      .map((tr) => [...tr.querySelectorAll('th, td')])
-      .filter((celdas) => celdas.length >= 2);
-
-    const fila = (patron) => filas.find((c) => new RegExp(patron, 'i').test(c[0].textContent.trim()));
-    const texto = (patron) => fila(patron)?.[1]?.textContent.trim() || '';
-
-    const botones = [...document.querySelectorAll('a, button, input[type=submit]')];
-    const conTexto = (patron) => botones.find((b) => new RegExp(patron, 'i')
-      .test((b.textContent || b.value || '').trim()));
-
-    const estado = texto('^(Submission status|Estado de la entrega)');
-    const celdaArchivos = fila('^(File submissions|Archivos enviados|Env.os de archivo)');
-
-    return {
-      estado,
-      calificacion: texto('^(Grading status|Estado de la calificaci)'),
-      ultimaModificacion: texto('^(Last modified|.ltima modificaci)'),
-      yaEntregado: !!estado && !/No submissions have been made yet|No se han realizado env/i.test(estado),
-      archivos: celdaArchivos
-        ? [...celdaArchivos[1].querySelectorAll('a')].map((a) => a.textContent.trim()).filter(Boolean)
-        : [],
-      // Moodle NO expone "Add submission" como enlace: es el botón de un
-      // <form method=get> con `action=editsubmission` en un hidden. Buscar un
-      // `a[href]` daba siempre falso y frenaba entregas perfectamente abiertas.
-      puedeEditar: !!(
-        [...document.querySelectorAll('form')].some((f) => [...f.querySelectorAll('input[type=hidden]')]
-          .some((i) => i.name === 'action' && /^editsubmission$/i.test(i.value)))
-        || document.querySelector('a[href*="action=editsubmission"]')
-        || conTexto('^(Add|Edit) submission|^(Agregar|Editar) entrega')
-      ),
-      esperaEnvioDefinitivo: !!(
-        [...document.querySelectorAll('form')].some((f) => [...f.querySelectorAll('input[type=hidden]')]
-          .some((i) => i.name === 'action' && /^submit$/i.test(i.value)))
-        || document.querySelector('a[href*="action=submit"]')
-        || conTexto('^(Submit assignment|Enviar (tarea|para calificaci))')
-      ),
-    };
-  });
+// El transporte de este server NO serializa `tools/call`: despacha cada una con
+// `Promise.resolve().then(...)` a propósito, para que un sync de 40 s no deje
+// mudo al resto. Pero `assignment-upload.js` guarda UNA sola sesión de navegador
+// a nivel módulo —una única `page`— porque la pensó para los clicks secuenciales
+// de la UI, donde no hay concurrencia posible.
+//
+// Dos entregas simultáneas manejarían esa misma pestaña: los clicks de una caen
+// sobre el formulario de la otra, y el `closeSession` de la que termina primero
+// le cierra el navegador a la que todavía está guardando. El modelo pide dos
+// actividades en un mismo bloque sin pensarlo.
+//
+// Se serializa acá y no en el handler porque la app sí quiere ese reuso: el
+// problema es exclusivo de este proceso.
+// `buildError` devuelve { error: CODIGO, message: texto }. No existe ningún
+// `.code`: leerlo dejaba el código pelado en pantalla y tiraba justo la línea
+// que dice qué revisar.
+function detalleError(res) {
+  return [res.error, res.message].filter(Boolean).join(': ');
 }
 
-async function subirEntrega({ cmid, archivo, nombreDestino, reemplazar, envioDefinitivo }) {
-  prepararHandlers();
+let entregaEnCurso = Promise.resolve();
 
-  const { chromium } = require(path.join(REPO, 'node_modules', 'playwright'));
-  const scraper = require(path.join(REPO, 'electron', 'handlers', 'scraper.js'));
+function enFila(tarea) {
+  const turno = entregaEnCurso.then(tarea, tarea);
 
-  const base = `https://ivirtual.itson.edu.mx/mod/assign/view.php?id=${cmid}`;
-  const navegador = await chromium.launch({ headless: true });
+  // La cola no se puede cortar porque una llamada previa haya fallado.
+  entregaEnCurso = turno.then(() => {}, () => {});
 
-  try {
-    const contexto = await navegador.newContext();
-    const pagina = await contexto.newPage();
+  return turno;
+}
 
-    const login = await scraper.loginToIVirtual(
-      pagina,
-      process.env.IVIRTUAL_USER?.trim(),
-      process.env.IVIRTUAL_PASS,
-    );
+function mb(bytes) {
+  if (!Number.isInteger(bytes) || bytes <= 0) return 'sin tope';
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-    if (login?.error) return { error: `No se pudo entrar a iVirtual: ${login.error}` };
-
-    await pagina.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    const antes = await leerEstadoEntrega(pagina);
-
-    if (!antes.puedeEditar) {
-      return { error: 'El portal no ofrece el formulario de entrega para esta actividad (ventana cerrada, tarea grupal sin equipo, o entrega ya cerrada).', antes };
-    }
-
-    if (antes.yaEntregado && !reemplazar) {
-      const detalle = antes.archivos.length ? `: ${antes.archivos.join(', ')}` : '';
-      return { error: `Esta actividad ya tiene entrega${detalle} (${antes.estado}). Volvé a pedirlo con reemplazar:true si querés subir igual.`, antes };
-    }
-
-    await pagina.goto(`${base}&action=editsubmission`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    // La verdad de si se puede entregar es que el formulario rinda, no que
-    // exista un botón en la vista anterior. Si Moodle no lo deja, acá no hay
-    // ni `savesubmission` ni botón de guardar.
-    const formulario = await pagina.evaluate(() => ({
-      hay: !!document.querySelector('#id_submitbutton')
-        && !!document.querySelector('input[name=action][value=savesubmission]'),
-      aviso: document.querySelector('.alert-danger, .errorbox')?.textContent?.trim().slice(0, 200) || '',
-    }));
-
-    if (!formulario.hay) {
-      return { error: `iVirtual no rindió el formulario de entrega${formulario.aviso ? `: ${formulario.aviso}` : '.'}`, antes };
-    }
-
-    // El filemanager se arma con JS: recién cuando pierde `fm-loading` existen
-    // el botón de agregar y el input del picker.
-    await pagina.waitForSelector('.filemanager:not(.fm-loading)', { timeout: 45000 });
-    await pagina.click('.fp-btn-add a, .fp-btn-add button');
-    await pagina.waitForSelector('.file-picker', { timeout: 30000 });
-
-    // "Upload a file" viene activo por default, pero el orden de los
-    // repositorios lo decide el servidor y no cuesta nada fijarlo.
-    const repoSubida = pagina.locator('.fp-repo').filter({ hasText: /Upload a file|Subir un archivo/i }).first();
-    if (await repoSubida.count()) await repoSubida.click();
-
-    await pagina.waitForSelector('input[name=repo_upload_file]', { timeout: 30000 });
-    await pagina.setInputFiles('input[name=repo_upload_file]', archivo);
-
-    if (nombreDestino) {
-      const titulo = pagina.locator('.file-picker input[name=title]').first();
-      if (await titulo.count()) await titulo.fill(nombreDestino);
-    }
-
-    await pagina.click('.fp-upload-btn');
-
-    // El picker cierra solo cuando la subida terminó; si el server rechaza el
-    // archivo se queda abierto con el error adentro.
-    await pagina.waitForSelector('.file-picker.fp-generallayout', { state: 'hidden', timeout: 60000 })
-      .catch(() => {});
-
-    // Sirve solo para saber que la subida entró en el formulario. El nombre
-    // definitivo se lee después del portal: acá el árbol del filemanager mete
-    // también su carpeta raíz ("Files"), que no es un archivo.
-    const enBandeja = await pagina.evaluate(() => [...document.querySelectorAll('.filemanager .fp-filename')]
-      .map((e) => e.textContent.trim())
-      .filter((t) => t && /\.[a-z0-9]{2,5}$/i.test(t)));
-
-    if (!enBandeja.length) {
-      const aviso = await pagina.evaluate(() => document.querySelector('.fp-error, .alert-danger')?.textContent?.trim() || '');
-      return { error: `El archivo no quedó cargado en el formulario${aviso ? `: ${aviso}` : '.'}`, antes };
-    }
-
-    await Promise.all([
-      pagina.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {}),
-      pagina.click('#id_submitbutton'),
-    ]);
-
-    await pagina.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    let despues = await leerEstadoEntrega(pagina);
-
-    if (despues.esperaEnvioDefinitivo && envioDefinitivo) {
-      await pagina.goto(`${base}&action=submit`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-      // Cuando el profesor exige declaración de autoría, el botón no se
-      // habilita hasta tildarla.
-      const declaracion = pagina.locator('#id_submissionstatement').first();
-      if (await declaracion.count()) await declaracion.check().catch(() => {});
-
-      await Promise.all([
-        pagina.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {}),
-        pagina.click('#id_submitbutton'),
-      ]);
-
-      await pagina.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      despues = await leerEstadoEntrega(pagina);
-    }
-
-    return { antes, despues, subidos: enBandeja };
-  } finally {
-    await navegador.close();
+function fichaEntrega(info, upload) {
+  // Sin formulario no hay límites que leer. Reportar "sin tope" ahí sería
+  // inventar: lo que pasa es que el portal no mostró nada.
+  if (!info.puedeEntregar) {
+    return 'Ventana:   CERRADA — el portal no rinde el formulario de entrega.\n'
+      + '           Sus límites y formatos no se pueden leer hasta que vuelva a abrir.';
   }
+
+  const formatos = info.acceptedTypes?.length
+    ? upload.describeAcceptedTypes(info.acceptedTypes)
+    : 'cualquier formato';
+
+  const recibe = [
+    info.aceptaArchivos ? 'archivos' : null,
+    info.aceptaTexto ? 'texto en línea' : null,
+  ].filter(Boolean).join(' y ') || 'nada';
+
+  return [
+    `Ventana:   ${info.puedeEntregar ? 'ABIERTA — el portal acepta entregas ahora' : 'CERRADA — el portal no rinde el formulario'}`,
+    `Recibe:    ${recibe}`,
+    `Formatos:  ${formatos}`,
+    `Tamaño:    hasta ${mb(info.maxBytes)} por archivo`,
+    `Archivos:  hasta ${Number.isInteger(info.maxFiles) && info.maxFiles > 0 ? info.maxFiles : 'sin tope'}`,
+    info.archivosEnBorrador?.length
+      ? `Ya subido: ${info.archivosEnBorrador.join(', ')}`
+      : 'Ya subido: nada',
+    info.requiereDeclaracion ? 'Pide declaración de autoría al enviar.' : null,
+  ].filter(Boolean).join('\n');
 }
 
 tool(
   'dvpotro_entregar',
-  'SUBE un archivo como entrega de UNA actividad de iVirtual. Es la única tool que ESCRIBE en el portal: todas las demás solo leen. Por default hace un ENSAYO —entra, mira el estado y reporta qué haría— y no sube nada; para que suba de verdad hay que pasar confirmar:true. El envío definitivo (el que cierra la entrega) es un flag aparte. LENTO: ~30-60 s.',
+  'Consulta qué acepta una actividad de iVirtual y, si se lo confirmás, SUBE el archivo como entrega. Es la única tool que ESCRIBE en el portal: todas las demás solo leen. Sin `archivo` responde qué formatos acepta, cuánto pesa el tope, cuántos archivos admite y si la ventana sigue abierta. Con `archivo` pero sin `confirmar:true` valida y reporta sin subir nada. LENTO: abre un navegador, ~20-40 s.',
   {
     type: 'object',
     properties: {
       id: { type: 'string', description: 'Id exacto que devuelve dvpotro_actividades.' },
       nombre: { type: 'string', description: 'Alternativa al id: parte del nombre de la actividad.' },
-      archivo: { type: 'string', description: 'Ruta absoluta del archivo local a entregar.' },
+      archivo: {
+        type: 'string',
+        description: 'Ruta absoluta del archivo a entregar. Sin esto solo informa qué acepta la actividad.',
+      },
       confirmar: {
         type: 'boolean',
-        description: 'Sin esto NO sube nada: hace un ensayo y reporta qué haría. Ponelo en true solo con el visto bueno explícito del alumno.',
+        description: 'Sin esto NO sube nada. Según cómo esté configurada la actividad, subir puede quedar como entrega FINAL enviada a calificar, que ya no se edita. Ponelo en true solo con el visto bueno explícito del alumno.',
       },
       reemplazar: {
         type: 'boolean',
-        description: 'Seguir aunque la actividad ya tenga archivos entregados. Por defecto se frena.',
-      },
-      enviar_definitivo: {
-        type: 'boolean',
-        description: 'Si la tarea usa borradores, además de guardar hace el envío final para calificar. Eso ya no se edita: pedilo aparte.',
-      },
-      renombrar: {
-        type: 'string',
-        description: 'Nombre con el que queda el archivo en el portal. Por defecto el del archivo local.',
+        description: 'Seguir aunque la actividad ya tenga algo entregado. Si el nombre coincide con un archivo ya entregado, lo PISA y no se recupera.',
       },
     },
-    required: ['archivo'],
   },
-  async ({ id, nombre, archivo, confirmar = false, reemplazar = false, enviar_definitivo = false, renombrar }) => {
+  async ({ id, nombre, archivo, confirmar = false, reemplazar = false }) => enFila(async () => {
     const encontrada = unaActividad({ id, nombre });
     if (encontrada.fallo) return encontrada.fallo;
 
     const { a } = encontrada;
+    if (!a.url) return `La actividad [${a.id}] no tiene URL de iVirtual en la caché; no hay a dónde entregar.`;
 
-    if (!path.isAbsolute(archivo)) return `\`archivo\` tiene que ser una ruta absoluta. Llegó: ${archivo}`;
-    if (!fs.existsSync(archivo)) return `No existe el archivo: ${archivo}`;
-
-    const stat = fs.statSync(archivo);
-    if (!stat.isFile()) return `No es un archivo: ${archivo}`;
-    if (stat.size === 0) return `El archivo está vacío: ${archivo}`;
-    if (stat.size > MAX_ENTREGA_BYTES) {
-      return `El archivo pesa ${Math.round(stat.size / 1024 / 1024)} MB y el tope es ${MAX_ENTREGA_BYTES / 1024 / 1024} MB.`;
-    }
-
-    // El cmid sale de la caché, nunca del cliente.
-    const cmid = /[?&]id=(\d+)/.exec(a.url || '')?.[1];
-    if (!cmid) return `La actividad [${a.id}] no tiene URL de iVirtual en la caché; no hay a dónde entregar.`;
-
-    const kb = Math.round(stat.size / 1024);
-    const destino = renombrar || path.basename(archivo);
-
-    const ficha = [
-      encontrada.cabecera,
-      '',
-      `# Entrega de "${a.nombre}"`,
-      `${a.materia} · ${a.profesor || 'sin profesor en caché'}`,
-      `Estado en caché: ${a.estado} · ventana ${a.ventana} · vence ${a.fechaLimite || 'sin fecha'}`,
-      '',
-      `Archivo:  ${archivo}`,
-      `Tamaño:   ${kb} KB`,
-      `Sube como: ${destino}`,
-      `Destino:  ${a.url}`,
-    ];
-
-    if (!confirmar) {
-      prepararHandlers();
-
-      const faltan = ['IVIRTUAL_USER', 'IVIRTUAL_PASS'].filter((v) => !process.env[v]);
-      if (faltan.length) {
-        return `Faltan credenciales para entrar a iVirtual: ${faltan.join(', ')}. Configuralas en Ajustes de DVPotro.`;
-      }
-
-      return [
-        ...ficha,
-        '',
-        '## ENSAYO — no se subió nada',
-        'Para subirlo de verdad, volvé a llamar la tool con confirmar:true.',
-        enviar_definitivo
-          ? 'Además haría el envío definitivo, que ya no se puede editar.'
-          : 'Quedaría guardado; si la tarea usa borradores NO se envía a calificar sin enviar_definitivo:true.',
-      ].join('\n');
+    if (archivo !== undefined) {
+      if (!path.isAbsolute(archivo)) return `\`archivo\` tiene que ser una ruta absoluta. Llegó: ${archivo}`;
+      if (!fs.existsSync(archivo)) return `No existe el archivo: ${archivo}`;
     }
 
     prepararHandlers();
@@ -2096,48 +1946,125 @@ tool(
       return `Faltan credenciales para entrar a iVirtual: ${faltan.join(', ')}. Configuralas en Ajustes de DVPotro.`;
     }
 
-    let res;
+    const upload = require(path.join(REPO, 'electron', 'handlers', 'assignment-upload.js'));
+
+    const cabecera = [
+      encontrada.cabecera,
+      '',
+      `# ${a.nombre}`,
+      `${a.materia} · ${a.profesor || 'sin profesor en caché'}`,
+      `Caché: ${a.estado} · vence ${a.fechaLimite || 'sin fecha'}`,
+      '',
+    ];
 
     try {
-      res = await subirEntrega({
-        cmid,
-        archivo,
-        nombreDestino: renombrar,
-        reemplazar,
-        envioDefinitivo: enviar_definitivo,
-      });
-    } catch (error) {
-      return [...ficha, '', `## FALLÓ`, `${error?.message || error}`, '', 'Nada garantiza que no haya quedado a medias: revisá la actividad en el portal.'].join('\n');
-    }
+      const info = await upload.getUploadInfo(a.url);
 
-    if (res.error) {
+      if (!info.success) {
+        return [...cabecera, `No se pudo leer el formulario de entrega: ${detalleError(info)}`].join('\n');
+      }
+
+      const bloques = [...cabecera, '## Qué pide esta actividad', fichaEntrega(info, upload)];
+
+      // Sin archivo la pregunta era "¿qué acepta y hasta cuándo?": ya está contestada.
+      if (archivo === undefined) {
+        bloques.push(
+          '',
+          info.puedeEntregar
+            ? 'Para entregar: volvé a llamarme con `archivo` (ruta absoluta) y, si querés que suba de verdad, `confirmar:true`.'
+            : 'El portal no está aceptando entregas para esta actividad.',
+        );
+        return bloques.join('\n');
+      }
+
+      const kb = Math.round(fs.statSync(archivo).size / 1024);
+      bloques.push('', '## Archivo', `${archivo}`, `${kb} KB · sube como ${path.basename(archivo)}`);
+
+      const problemas = upload.validateFiles([archivo], info);
+
+      if (!info.puedeEntregar) {
+        problemas.unshift('El portal no rinde el formulario de entrega: la ventana está cerrada.');
+      }
+
+      if (!info.aceptaArchivos) {
+        problemas.unshift('Esta actividad no recibe archivos.');
+      }
+
+      // El handler ya frena si se pasa de `maxFiles`; esto es distinto: avisa que
+      // hay algo entregado aunque quepan más archivos.
+      //
+      // Y hay dos desenlaces muy distintos según el nombre: `attachSingleFile`
+      // confirma el diálogo de Moodle con Overwrite, así que un nombre repetido
+      // DESTRUYE el archivo ya entregado, mientras que uno nuevo se suma.
+      const pisaria = (info.archivosEnBorrador || []).filter((n) => n === path.basename(archivo));
+
+      if (info.archivosEnBorrador?.length && !reemplazar) {
+        problemas.push(
+          pisaria.length
+            ? `Ya hay entregado un archivo con ESE MISMO nombre (${pisaria.join(', ')}) y subir lo PISA sin vuelta atrás. Pedilo con reemplazar:true solo si es lo que querés.`
+            : `Ya hay algo entregado (${info.archivosEnBorrador.join(', ')}) y subir AGREGA otro archivo. Pedilo con reemplazar:true si es lo que querés.`,
+        );
+      }
+
+      if (problemas.length) {
+        return [...bloques, '', '## NO SE PUEDE ENTREGAR ASÍ', ...problemas.map((p) => `- ${p}`)].join('\n');
+      }
+
+      if (!confirmar) {
+        return [
+          ...bloques,
+          '',
+          '## ENSAYO — no se subió nada',
+          'Pasa todas las validaciones contra el formulario real del portal.',
+          // Esta es la única pantalla de consentimiento del camino MCP. Con
+          // `submissiondrafts` desactivado —la configuración más común— el
+          // guardado ES la entrega enviada a calificar, y ya no se edita.
+          'Ojo: según cómo esté configurada la actividad, esto puede quedar como entrega FINAL',
+          'enviada a calificar. Pedile el OK explícito al alumno antes de mandar confirmar:true.',
+          pisaria.length ? `Y pisaría ${pisaria.join(', ')}, que ya está entregado.` : '',
+          '',
+          'Para subirlo, volvé a llamarme con confirmar:true.',
+        ].filter(Boolean).join('\n');
+      }
+
+      const res = await upload.uploadFiles(a.url, [archivo]);
+
+      if (!res.success) {
+        // UPLOAD_NOT_CONFIRMED no significa "no se subió": significa que el
+        // portal no lo mostró donde se lo esperaba. Titularlo como fallo invita
+        // a reintentar, y un reintento a ciegas puede pisar lo que sí entró.
+        const incierto = res.error === 'UPLOAD_NOT_CONFIRMED';
+
+        return [
+          ...bloques,
+          '',
+          incierto ? '## NO SE PUDO CONFIRMAR' : '## NO SE ENTREGÓ',
+          detalleError(res),
+          incierto ? '\nPuede haber quedado subido. Mirá la actividad en el portal ANTES de reintentar.' : '',
+        ].filter(Boolean).join('\n');
+      }
+
       return [
-        ...ficha,
+        ...bloques,
         '',
-        '## NO SE ENTREGÓ',
-        res.error,
-        res.antes ? `\nEstado actual en el portal: ${res.antes.estado || 'sin leer'}` : '',
-      ].join('\n');
+        '## ENTREGADO',
+        `Estado en el portal: ${res.textoEstado || res.estado}`,
+        `Archivos en la entrega: ${(res.archivos || []).join(', ') || 'el portal no los lista'}`,
+        // Con `submissiondrafts` activado, "Save changes" deja borrador y el
+        // profesor NO lo ve. Hay que decirlo fuerte: el alumno cree que entregó.
+        res.estado === 'borrador'
+          ? '\nATENCIÓN: quedó como BORRADOR. El profesor todavía NO lo ve como entregado. Terminá de enviarlo desde la app o el portal.'
+          : '',
+        '\nLa caché quedó vieja: corré dvpotro_sync con modulo:"actividades" para que la app lo refleje.',
+      ].filter(Boolean).join('\n');
+    } finally {
+      // El handler deja un timer de cierre ocioso. En la app eso reusa el
+      // navegador entre clicks; acá mantendría vivo el proceso del MCP.
+      await upload.closeSession('mcp').catch(() => {});
     }
-
-    const { despues } = res;
-
-    return [
-      ...ficha,
-      '',
-      '## ENTREGADO',
-      `Subido: ${(despues.archivos.length ? despues.archivos : res.subidos).join(', ')}`,
-      `Estado en el portal: ${despues.estado || 'sin leer'}`,
-      `Calificación: ${despues.calificacion || 'sin leer'}`,
-      `Última modificación: ${despues.ultimaModificacion || 'sin leer'}`,
-      despues.archivos.length ? `Archivos en la entrega: ${despues.archivos.join(', ')}` : '',
-      despues.esperaEnvioDefinitivo
-        ? '\nATENCIÓN: quedó como BORRADOR. El profesor todavía no lo ve como entregado. Para cerrarlo: misma tool con enviar_definitivo:true (después ya no se edita).'
-        : '',
-      '\nLa caché quedó vieja: la actividad sigue figurando como no entregada hasta que corras dvpotro_sync con modulo:"actividades".',
-    ].filter(Boolean).join('\n');
-  },
+  }),
 );
+
 
 // ---------------------------------------------------------------------------
 // Transporte MCP (JSON-RPC 2.0 por stdio, mensajes separados por \n)

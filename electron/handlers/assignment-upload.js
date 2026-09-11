@@ -40,6 +40,7 @@ const UPLOAD_TIMEOUT_MS = 120_000;
 const SESSION_IDLE_MS = 5 * 60 * 1000;
 
 let cachedSession = null;
+let sesionEnVuelo = null;
 let idleTimer = null;
 
 function log(...args) {
@@ -81,17 +82,7 @@ async function closeSession(reason = 'manual') {
   await session.browser.close().catch(() => {});
 }
 
-async function getSession() {
-  if (cachedSession) {
-    // Un browser cerrado por fuera (crash, cierre de la app) deja el objeto
-    // colgado: se detecta acá en vez de fallar en medio de una subida.
-    if (cachedSession.browser.isConnected()) {
-      scheduleIdleClose();
-      return cachedSession;
-    }
-    cachedSession = null;
-  }
-
+async function abrirSesion() {
   const user = process.env.IVIRTUAL_USER;
   const pass = process.env.IVIRTUAL_PASS;
 
@@ -103,25 +94,62 @@ async function getSession() {
 
   log('abriendo navegador y logueando…');
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ acceptDownloads: false });
-  const page = await context.newPage();
-  page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
-  // El scraper ya sabe loguear; se reutiliza para no tener dos implementaciones
-  // del login que puedan divergir cuando el portal cambie.
-  const { loginToIVirtual } = require('./scraper');
-  const loginError = await loginToIVirtual(page, user, pass);
+  // Desde acá todo va bajo try: `loginToIVirtual` no atrapa nada y los timeouts
+  // de Playwright TIRAN. Sin esto un login que se cuelga dejaba el Chromium
+  // abierto sin que nadie guardara la referencia para cerrarlo.
+  try {
+    const context = await browser.newContext({ acceptDownloads: false });
+    const page = await context.newPage();
+    page.setDefaultTimeout(PAGE_TIMEOUT_MS);
 
-  if (loginError) {
+    // El scraper ya sabe loguear; se reutiliza para no tener dos implementaciones
+    // del login que puedan divergir cuando el portal cambie.
+    const { loginToIVirtual } = require('./scraper');
+    const loginError = await loginToIVirtual(page, user, pass);
+
+    if (loginError) {
+      throw Object.assign(new Error('LOGIN_FAILED'), {
+        result: buildError('LOGIN_FAILED', 'iVirtual rechazó las credenciales.'),
+      });
+    }
+
+    return { browser, context, page };
+  } catch (error) {
     await browser.close().catch(() => {});
-    throw Object.assign(new Error('LOGIN_FAILED'), {
-      result: buildError('LOGIN_FAILED', 'iVirtual rechazó las credenciales.'),
-    });
+    throw error;
+  }
+}
+
+async function getSession() {
+  if (cachedSession) {
+    // Un browser cerrado por fuera (crash, cierre de la app) deja el objeto
+    // colgado: se detecta acá en vez de fallar en medio de una subida.
+    if (cachedSession.browser.isConnected()) {
+      scheduleIdleClose();
+      return cachedSession;
+    }
+    cachedSession = null;
   }
 
-  cachedSession = { browser, context, page };
-  scheduleIdleClose();
-  return cachedSession;
+  // La promesa se memoiza, no solo el resultado. Abrir la sesión son tres
+  // awaits (launch, newPage, login completo) y `cachedSession` recién se
+  // asigna al final: dos entradas concurrentes en frío lanzaban DOS Chromium
+  // y el segundo pisaba al primero, que quedaba sin referencia y sin timer,
+  // vivo hasta que muriera el proceso.
+  if (!sesionEnVuelo) {
+    sesionEnVuelo = abrirSesion()
+      .then((sesion) => {
+        cachedSession = sesion;
+        scheduleIdleClose();
+        return sesion;
+      })
+      .finally(() => {
+        sesionEnVuelo = null;
+      });
+  }
+
+  return sesionEnVuelo;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,8 +299,7 @@ async function getUploadInfo(assignmentUrl) {
   try {
     const { page } = await getSession();
     await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    // El filemanager se monta por JS; sin esta espera el formulario se lee vacío.
-    await page.waitForTimeout(1500);
+    await waitForSubmissionForm(page);
 
     const info = await readSubmissionForm(page);
     return { success: true, ...info };
@@ -283,6 +310,23 @@ async function getUploadInfo(assignmentUrl) {
     log('error leyendo el formulario:', error?.message);
     return buildError('FORM_READ_FAILED', 'No fue posible leer el formulario de entrega.');
   }
+}
+
+// El filemanager se monta por JS y hasta entonces `.fp-filename` no existe.
+// Esperar un tiempo fijo alcanzaba con la página tibia y fallaba en frío: la
+// PRIMERA actividad que abre el proceso seguía en `fm-loading` a los 1500 ms y
+// `archivosEnBorrador` salía vacío aunque la entrega tuviera archivos. Con eso
+// la validación de `maxFiles` daba luz verde de más: con maxfiles=1 y un archivo
+// ya subido creía que había lugar. Medido contra "Asignación 02", que devolvía
+// [] en frío y ["Asignacion02_ID.zip"] esperando de verdad.
+//
+// Una actividad cerrada no monta filemanager: ahí el selector nunca aparece y el
+// timeout es el camino normal, no un error.
+async function waitForSubmissionForm(page) {
+  await page
+    .waitForSelector('.filemanager:not(.fm-loading)', { timeout: PAGE_TIMEOUT_MS })
+    .catch(() => {});
+  await page.waitForTimeout(300);
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +486,14 @@ function validateFiles(filePaths, info) {
       return;
     }
 
+    // Moodle acepta 0 bytes sin chistar y la entrega queda en verde con un
+    // archivo ilegible adentro. El caso llega solo: un PDF que se generó mal,
+    // o una copia que quedó a medias.
+    if (stats.size === 0) {
+      problems.push(`"${nombre}" está vacío (0 bytes).`);
+      return;
+    }
+
     if (Number.isInteger(info.maxBytes) && info.maxBytes > 0 && stats.size > info.maxBytes) {
       const limiteMb = (info.maxBytes / (1024 * 1024)).toFixed(1);
       const pesoMb = (stats.size / (1024 * 1024)).toFixed(1);
@@ -498,7 +550,21 @@ async function readSubmissionStatus(page) {
     return {
       estado,
       textoEstado,
-      archivos: Array.from(document.querySelectorAll('a[href*="pluginfile.php"]'))
+      // Barrer TODA la página traía también los adjuntos que el profesor colgó
+      // de la consigna, que son `pluginfile.php` igual. Y esta lista es la
+      // única prueba que `uploadFiles` tiene de que la subida entró: con la
+      // plantilla del profe y la entrega llamándose parecido —el flujo normal:
+      // bajarla, llenarla, subirla— un "Save changes" que no persistió pasaba
+      // por entrega buena y el alumno se quedaba sin nada.
+      //
+      // Medido en "Clase 07 sep 2026": 2 anchors, uno
+      // `/mod_assign/introattachment/` (del profe) y otro
+      // `/assignsubmission_file/submission_files/` (la entrega).
+      //
+      // Se filtra por el componente de la URL y no por el rótulo de la fila
+      // porque el rótulo es traducible: un filtro por texto contra un portal
+      // en otro idioma devuelve vacío y frena una entrega válida.
+      archivos: Array.from(document.querySelectorAll('a[href*="assignsubmission_file"]'))
         .map((a) => normalize(a.textContent))
         .filter(Boolean),
     };
@@ -612,7 +678,7 @@ async function uploadFiles(assignmentUrl, filePaths) {
   try {
     const { page } = await getSession();
     await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    await page.waitForTimeout(1500);
+    await waitForSubmissionForm(page);
 
     const info = await readSubmissionForm(page);
 

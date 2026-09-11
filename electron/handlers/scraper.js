@@ -237,13 +237,17 @@ function clearActivitiesCache() {
   return { success: true };
 }
 
+// NO borra la caché. Antes sí lo hacía, y todos sus call sites son errores de
+// ACCESO —NO_INTERNET, LOGIN_FAILED, NO_CREDENTIALS, NO_USER, NO_PASSWORD, un
+// timeout— que dicen "no pude entrar", no "lo cacheado es falso". Un scrape
+// fallido dejaba al alumno sin `actividades-cache.json`, que es de donde viven
+// actividades, agenda, materias, búsqueda y novedades.
+//
+// En la app el daño se disimulaba porque el alumno está mirando y vuelve a
+// sincronizar. Por MCP no hay nadie: la sesión se queda ciega, en silencio y
+// sin la app abierta para recuperarse. Para limpiar a propósito está
+// `scraper:clear-cache`.
 function buildScrapeError(message) {
-  try {
-    clearActivitiesCache();
-  } catch (_error) {
-    // Ignore cache cleanup failures.
-  }
-
   return { error: message };
 }
 

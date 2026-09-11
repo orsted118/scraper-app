@@ -77,8 +77,10 @@ tokens) y volcarlo entero quema la ventana de contexto. El valor del server es F
 
 La mayoría solo lee caché. Las que hacen algo más, en orden de qué tan lejos llegan:
 
-- **Caché local**: `dvpotro_nota_crear` y `dvpotro_ocultar` escriben JSON en `userData`.
-  Son reversibles desde la propia app y no salen a la red.
+- **Caché local**: `dvpotro_nota_crear`, `dvpotro_ocultar` y `dvpotro_marcar_leidas`
+  escriben JSON en `userData` y no salen a la red. `dvpotro_marcar_leidas` es la única
+  escritura EN LOTE del server — un filtro toca decenas de items de una llamada — así
+  que exige criterio y `confirmar:true`, y se niega a marcar todo.
 - **Bajan archivos**: `dvpotro_adjuntos` y `dvpotro_material_leer`.
 - **Refrescan caché saliendo al portal**: `dvpotro_sync`.
 - **Escriben en el PORTAL**: `dvpotro_entregar` y `dvpotro_quitar_archivo`, y nada más.
@@ -130,6 +132,16 @@ Regla dura: **la asistencia jamás se marca sola.** `markAttendance` no se refer
 ningún lado de ese archivo, a propósito. Sincronizar sigue siendo traer, nunca mandar:
 lo único que sale hacia el portal es `dvpotro_entregar`, y solo cuando se lo pide
 explícitamente con `confirmar:true`.
+
+#### Un error de acceso no es evidencia de que la caché esté mal
+
+`buildScrapeError()` en `scraper.js` borraba `actividades-cache.json` en TODOS sus
+caminos — `NO_INTERNET`, `LOGIN_FAILED`, `NO_CREDENTIALS`, `NO_USER`, `NO_PASSWORD`, el
+timeout global — y ninguno de esos dice "lo cacheado es falso": dicen "no pude entrar".
+Un sync fallido dejaba al alumno sin el archivo del que viven actividades, agenda,
+materias, búsqueda y novedades. En la app el daño se disimulaba porque hay alguien
+mirando que vuelve a sincronizar; por MCP la sesión se queda ciega, en silencio y sin la
+app abierta para recuperarse. Para limpiar a propósito está `scraper:clear-cache`.
 
 #### El `electron` de mentira miente de más
 

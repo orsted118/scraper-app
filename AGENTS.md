@@ -175,7 +175,8 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_notas` | notas personales tipo Keep | `notes.json` |
 | `dvpotro_calendario` | calendario escolar del ITSON en una ventana de días | `calendario-cache.json` |
 | `dvpotro_buscar` | un texto a la vez en actividades, material, notas y calendario | varias |
-| `dvpotro_notificaciones` | avisos que la app generó | `notifications.json` |
+| `dvpotro_notificaciones` | avisos que la app generó, filtrables por `fuente` y `categoria`. Sin filtro imprime el desglose: la bandeja está dominada por los errores de sync de "sistema" | `notifications.json` |
+| `dvpotro_marcar_leidas` | **escribe caché local**: marca avisos leídos para que `solo_no_leidas` sirva de algo. Exige criterio y `confirmar:true`; nunca marca todo | `notifications.json` |
 | `dvpotro_novedades` | qué cambió: actividades nuevas, fechas movidas, cambios de aula | `notifications.json` |
 | `dvpotro_agenda` | clases + entregas + calendario en un solo eje temporal ordenado | horario + actividades + calendario |
 | `dvpotro_perfil` | nombre, matrícula, correo y programa — para portadas | `profile-cache/profile.json` |
@@ -302,4 +303,4 @@ Patrones visuales:
 | Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
-| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 25 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |
+| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 26 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |

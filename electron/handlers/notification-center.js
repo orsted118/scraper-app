@@ -110,6 +110,40 @@ function saveNotifications(items) {
   writeJson(getNotificationsPath(), { version: 1, items: items.slice(0, MAX_NOTIFICATIONS) });
 }
 
+// Vive fuera de los `ipcMain.handle` para que el servidor MCP pueda usarla: ahí
+// `ipcMain` es un doble de mentira y lo que quede adentro de un handler es
+// inalcanzable.
+//
+// Exige un criterio a propósito: sin filtro NO marca todo. Un "marcá todas"
+// implícito borraría de un saque la única señal de qué es nuevo, y para eso la
+// app ya tiene su botón, donde el que aprieta sabe lo que está haciendo.
+function setRead({ ids, source, category } = {}) {
+  const porId = Array.isArray(ids) && ids.length ? new Set(ids.map(String)) : null;
+
+  if (!porId && !source && !category) {
+    return { ok: false, error: 'Hace falta un criterio: ids, source o category.' };
+  }
+
+  const items = loadNotifications();
+  let marcadas = 0;
+
+  for (const item of items) {
+    if (item.read) continue;
+    if (porId && !porId.has(String(item.id))) continue;
+    if (source && item.source !== source) continue;
+    if (category && item.category !== category) continue;
+
+    item.read = true;
+    marcadas += 1;
+  }
+
+  // Solo prende `read`. Nunca filtra ni borra items: este archivo es la fuente
+  // de dvpotro_novedades, y los diffs emiten una sola vez — lo borrado no vuelve.
+  if (marcadas) saveNotifications(items);
+
+  return { ok: true, marcadas, sinLeer: items.filter((item) => !item.read).length };
+}
+
 function readSnapshot(name) {
   return readJson(getSnapshotPath(name));
 }
@@ -857,6 +891,7 @@ module.exports = {
   getAutoSyncSettings,
   getSettings,
   setAutoSyncSettings,
+  setRead,
   processSync,
   processSyncError,
   registerNotificationCenter,

@@ -999,27 +999,58 @@ tool(
 
 tool(
   'dvpotro_notificaciones',
-  'Avisos que DVPotro generó: cambios detectados entre sincronizaciones, recordatorios y noticias del portal.',
+  'Avisos que DVPotro generó: cambios detectados entre sincronizaciones, recordatorios y noticias del portal. Filtrá por `fuente` — sin filtro la bandeja está dominada por los errores de sync de "sistema", que no son novedades académicas.',
   {
     type: 'object',
     properties: {
+      fuente: {
+        type: 'string',
+        description: 'actividades, horario, calendario, itson-news (convocatorias, becas, pagos), notas o sistema (errores de sync). Coincidencia parcial.',
+      },
+      categoria: {
+        type: 'string',
+        description: 'nueva, cambio, proximidad, error o info. Coincidencia parcial.',
+      },
       solo_no_leidas: { type: 'boolean' },
       limite: { type: 'number', description: 'Por defecto 25.' },
     },
   },
-  ({ solo_no_leidas = false, limite = 25 }) => {
+  ({ fuente, categoria, solo_no_leidas = false, limite = 25 }) => {
     const res = cargar('notifications.json', 'Usá DVPotro un rato para que genere avisos.');
     if (res.fallo) return res.fallo;
 
-    const items = (res.data.items || [])
+    const todos = res.data.items || [];
+
+    const filtrados = todos
       .filter((n) => !solo_no_leidas || !n.read)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      // Coincidencia parcial y no un enum cerrado: `source` lo decide quien
+      // emite, y un enum desactualizado rechazaría un valor perfectamente
+      // válido en vez de filtrarlo.
+      .filter((n) => !fuente || incluye(n.source, fuente))
+      .filter((n) => !categoria || incluye(n.category, categoria))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    const items = filtrados
       .slice(0, limite)
-      .map((n) => `  [${n.source}/${n.priority}] ${n.title}${n.body ? `\n     ${extracto(n.body, 160)}` : ''}`);
+      // El id adelante para que `dvpotro_marcar_leidas` tenga a qué apuntarle.
+      .map((n) => `  [${n.id}] [${n.source}/${n.priority}] ${n.title}${n.body ? `\n     ${extracto(n.body, 160)}` : ''}`
+        // El enlace solo donde ES el contenido: en una convocatoria del portal
+        // y en el meet de una clase. En el resto solo alarga cada bloque.
+        + (n.actionUrl && /itson-news|horario/.test(n.source) ? `\n     ${n.actionUrl}` : ''));
 
-    const ultima = maxFecha(res.data.items, 'timestamp');
+    const ultima = maxFecha(todos, 'timestamp');
 
-    return `[notifications.json · mostrando ${items.length}${ultima ? ` · más reciente ${edad(ultima)}` : ''}]\n\n${lista(items)}`;
+    // El desglose por fuente es la brújula: dice qué filtro pedir sin tener que
+    // volcar los 192 items para descubrirlo.
+    const porFuente = Object.entries(
+      todos.reduce((acc, n) => ({ ...acc, [n.source || '?']: (acc[n.source || '?'] || 0) + 1 }), {}),
+    ).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ');
+
+    const cabecera = `[notifications.json · mostrando ${items.length} de ${filtrados.length} filtrados`
+      + ` · ${todos.length} en total, ${todos.filter((n) => !n.read).length} sin leer`
+      + `${ultima ? ` · más reciente ${edad(ultima)}` : ''}]`;
+
+    return `${cabecera}\n${fuente || categoria ? '' : `Por fuente: ${porFuente}\n`}\n${lista(items)}`;
   },
 );
 
@@ -1884,6 +1915,78 @@ tool(
     }
 
     return bloques.join('\n');
+  },
+);
+
+tool(
+  'dvpotro_marcar_leidas',
+  'Marca avisos como leídos para que la bandeja funcione como un inbox con cursor: sin esto `solo_no_leidas` nunca achica nada y cada sesión te repite las mismas novedades. Exige un criterio (ids, fuente o categoría): nunca marca todo. Escribe la caché local, no toca el portal.',
+  {
+    type: 'object',
+    properties: {
+      ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ids exactos, los que dvpotro_notificaciones muestra entre corchetes.',
+      },
+      fuente: { type: 'string', description: 'Marca todas las de esa fuente. Valor EXACTO: actividades, horario, calendario, itson-news, sistema.' },
+      categoria: { type: 'string', description: 'Marca todas las de esa categoría. Valor EXACTO: nueva, cambio, proximidad, error, info.' },
+      confirmar: { type: 'boolean', description: 'Sin esto solo cuenta cuántas marcaría. Requerido para escribir.' },
+    },
+  },
+  ({ ids, fuente, categoria, confirmar = false }) => {
+    const porId = Array.isArray(ids) && ids.length ? new Set(ids.map(String)) : null;
+
+    if (!porId && !fuente && !categoria) {
+      return 'Pasá `ids`, `fuente` o `categoria`. Sin criterio no marco nada: barrer la bandeja entera borra la única señal de qué es nuevo, y para eso está el botón de la app.';
+    }
+
+    const res = cargar('notifications.json', 'Usá DVPotro un rato para que genere avisos.');
+    if (res.fallo) return res.fallo;
+
+    const todos = res.data.items || [];
+    const alcanzadas = todos.filter((n) => !n.read
+      && (!porId || porId.has(String(n.id)))
+      && (!fuente || n.source === fuente)
+      && (!categoria || n.category === categoria));
+
+    if (!alcanzadas.length) {
+      return `Ningún aviso sin leer coincide con ese criterio. Sin leer hay ${todos.filter((n) => !n.read).length}; mirá el desglose con dvpotro_notificaciones.`;
+    }
+
+    const desglose = Object.entries(
+      alcanzadas.reduce((acc, n) => ({ ...acc, [n.source || '?']: (acc[n.source || '?'] || 0) + 1 }), {}),
+    ).map(([k, v]) => `${k} ${v}`).join(' · ');
+
+    // Es la primera escritura EN LOTE del server: un filtro puede tocar 78
+    // items de una sola llamada, así que el conteo previo es la pantalla de
+    // consentimiento. Marcar leído no se deshace desde acá.
+    if (!confirmar) {
+      return [
+        `ENSAYO — no se marcó nada.`,
+        `Marcaría ${alcanzadas.length} aviso(s): ${desglose}`,
+        '',
+        ...alcanzadas.slice(0, 8).map((n) => `  [${n.source}] ${n.title}`),
+        alcanzadas.length > 8 ? `  ... y ${alcanzadas.length - 8} más` : '',
+        '',
+        'Para marcarlos, volvé a llamarme con confirmar:true.',
+      ].filter(Boolean).join('\n');
+    }
+
+    prepararHandlers();
+
+    const centro = require(path.join(REPO, 'electron', 'handlers', 'notification-center.js'));
+    const hecho = centro.setRead({ ids: ids || null, source: fuente || null, category: categoria || null });
+
+    if (!hecho.ok) return hecho.error;
+
+    return [
+      `Marcadas ${hecho.marcadas} como leídas (${desglose}).`,
+      `Quedan ${hecho.sinLeer} sin leer.`,
+      '',
+      // El push al renderer va por BrowserWindow, que acá es una lista vacía.
+      'Si tenías DVPotro abierto, su bandeja no se entera hasta que la vuelvas a abrir.',
+    ].join('\n');
   },
 );
 

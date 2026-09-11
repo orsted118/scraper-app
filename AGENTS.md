@@ -182,8 +182,13 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_requisitos` | requisitos ya extraídos de una consigna y la última verificación | `activity-analysis/<id>.json` |
 | `dvpotro_prompts` | prompts que la app ya armó por actividad | `prompt-cache.json` |
 | `dvpotro_adjuntos` | **baja archivos**: adjuntos e imágenes de la consigna de UNA actividad a disco, con el texto de los .pdf/.docx. ~10-20 s la primera vez, 0 s después | `actividades-cache.json` |
+| `dvpotro_material_leer` | **baja y lee**: abre UN recurso de material y devuelve su texto — la presentación del profe, el PDF de la clase, la página del curso. Resuelve Drive o `pluginfile` según el recurso | `material.json` |
+| `dvpotro_nota` | UNA nota entera en markdown, sin el recorte a 400 caracteres de `dvpotro_notas` | `notes.json` |
+| `dvpotro_nota_crear` | **escribe caché local**: crea una nota de texto o checklist en la app, para que lo hablado en la terminal no muera en el scrollback | `notes.json` |
+| `dvpotro_ocultar` | **escribe caché local**: lista, oculta o restaura una actividad. Sin argumentos muestra las ocultas, que era lo único invisible desde el chat | `hidden-activities.json` |
 | `dvpotro_sync` | **escribe caché**: sale al portal y la refresca. 40-120 s por módulo | — |
 | `dvpotro_entregar` | **ESCRIBE EN EL PORTAL**: la única que manda algo. Sin `archivo` informa qué formatos acepta la actividad, el tope de tamaño, cuántos archivos admite y si la ventana sigue abierta. Con `archivo` valida contra el formulario real; solo sube con `confirmar:true`. Delega en `assignment-upload.js` | `actividades-cache.json` |
+| `dvpotro_quitar_archivo` | **ESCRIBE EN EL PORTAL**: saca un archivo de una entrega. Complemento de `dvpotro_entregar`, que con un nombre nuevo SUMA en vez de reemplazar. Solo con `confirmar:true` | `actividades-cache.json` |
 
 Notas de uso:
 
@@ -297,4 +302,4 @@ Patrones visuales:
 | Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
-| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 20 tools; 17 de lectura + `dvpotro_adjuntos` + `dvpotro_sync` + `dvpotro_entregar` (la única que escribe en el portal). Registrado en `.mcp.json` del repo y a nivel usuario |
+| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 25 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |

@@ -73,10 +73,18 @@ tokens) y volcarlo entero quema la ventana de contexto. El valor del server es F
 - **`SCHEMA`** declara qué versión de cada caché sabe leer. Si bumpeás `schemaVersion`/`version` en un handler, **actualizá también `SCHEMA`** o el server empieza a avisar que puede faltar información.
 - **`DVPOTRO_USER_DATA`** pisa la ruta de `userData` — sirve para probar contra un sandbox sin tocar la instalación real.
 
-### Solo lectura, con tres excepciones acotadas
+### Qué escribe cada tool
 
-Las 17 tools de consulta no escriben nada. Las que salen a la red cargan los handlers
-de Electron en Node pelado con un `electron` de mentira:
+La mayoría solo lee caché. Las que hacen algo más, en orden de qué tan lejos llegan:
+
+- **Caché local**: `dvpotro_nota_crear` y `dvpotro_ocultar` escriben JSON en `userData`.
+  Son reversibles desde la propia app y no salen a la red.
+- **Bajan archivos**: `dvpotro_adjuntos` y `dvpotro_material_leer`.
+- **Refrescan caché saliendo al portal**: `dvpotro_sync`.
+- **Escriben en el PORTAL**: `dvpotro_entregar` y `dvpotro_quitar_archivo`, y nada más.
+
+Las que salen a la red cargan los handlers de Electron en Node pelado con un `electron`
+de mentira:
 
 - **`dvpotro_sync`** corre el scrape y refresca la caché. Tiene lista blanca de módulos —
   **nunca** se arma un nombre de función con lo que mandó el cliente.
@@ -103,6 +111,18 @@ de Electron en Node pelado con un `electron` de mentira:
   pestaña, y el `closeSession` de la que termina primero le cierra el navegador a la otra
   en pleno guardado.
 
+- **`dvpotro_material_leer`** abre un recurso de material. Son tres caminos y no una
+  abstracción porque cada tipo se lee distinto: la `pagina` ya trajo su texto en el
+  scrape, la `carpeta` cuelga de `pluginfile.php` y necesita la cookie, y el `drive` pasa
+  por la cola de `drive.js`. Medido sobre la caché real: de 34 recursos, 19 son Drive,
+  1 es la carpeta con los PDF de clase y 3 son páginas.
+
+- **`dvpotro_quitar_archivo`** saca un archivo de una entrega. Va en la MISMA cola
+  `enFila()` que `dvpotro_entregar` — no una propia — porque comparten la única `page`
+  de `assignment-upload.js`. Se niega si la actividad ya tiene nota, y si es el único
+  archivo avisa que la entrega queda VACÍA pero marcada como enviada, que es peor que
+  no haber entregado.
+
 Todas llaman `prepararHandlers()` **antes** de chequear credenciales: esa función es la
 que carga el `.env`, y al revés las credenciales siempre parecen faltar.
 
@@ -110,6 +130,25 @@ Regla dura: **la asistencia jamás se marca sola.** `markAttendance` no se refer
 ningún lado de ese archivo, a propósito. Sincronizar sigue siendo traer, nunca mandar:
 lo único que sale hacia el portal es `dvpotro_entregar`, y solo cuando se lo pide
 explícitamente con `confirmar:true`.
+
+#### El `electron` de mentira miente de más
+
+El fake de `prepararHandlers()` hay que ampliarlo cada vez que un handler nuevo toca una
+API de Electron que no está. Dos casos ya encontrados, los dos silenciosos:
+
+- **`session.fromPartition`**: `drive.js` baja los PDF de Drive con
+  `session.fromPartition(...).fetch()`. Sin ventana esa API no existe, la llamada tiraba
+  y la cola archivaba TODO Drive como `error_red`: el MCP nunca pudo resolver un enlace
+  de Drive, ni para material ni para consignas. De esa sesión solo se usa `fetch`, y el
+  global de Node cumple el mismo contrato.
+- **`nativeImage`**: `portal-sistemas.js` lo usa para achicar la foto del alumno ANTES de
+  guardar el perfil, así que sin el doble el scrape tiraba justo antes de
+  `writeProfileCache` y se perdían también nombre, matrícula y correo. El doble devuelve
+  un JPEG vacío y el guard propio del handler deja la foto en null y sigue.
+
+El patrón común: el handler falla en una línea cosmética y se lleva puesto el dato útil
+que ya tenía leído. Cuando un módulo nuevo no anda por MCP, mirar primero qué destructura
+de `require('electron')`.
 
 #### Trampas del DOM de Moodle que ya costaron caro
 

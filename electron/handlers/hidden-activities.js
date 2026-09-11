@@ -40,36 +40,43 @@ function writeIds(ids) {
   }
 }
 
-function registerHiddenActivitiesHandlers() {
-  ipcMain.handle('hidden-activities:get', async () => ({ ok: true, ids: readIds() }));
+// `addId` y `removeId` viven fuera de los `ipcMain.handle` para que el servidor
+// MCP pueda llamarlas: ahí `ipcMain` es un doble de mentira y lo que quede
+// adentro de un closure de handler es inalcanzable.
+function addId(id) {
+  const normalized = String(id || '').trim();
 
-  ipcMain.handle('hidden-activities:add', async (_event, id) => {
-    const normalized = String(id || '').trim();
+  if (!normalized) {
+    return { ok: false, error: 'La actividad no tiene id: no se puede ocultar.' };
+  }
 
-    if (!normalized) {
-      return { ok: false, error: 'La actividad no tiene id: no se puede ocultar.' };
-    }
+  const ids = readIds();
 
-    const ids = readIds();
+  if (ids.includes(normalized)) {
+    return { ok: true, ids, yaEstaba: true };
+  }
 
-    if (ids.includes(normalized)) {
-      return { ok: true, ids };
-    }
+  const next = [...ids, normalized];
 
-    const next = [...ids, normalized];
-    return writeIds(next)
-      ? { ok: true, ids: next }
-      : { ok: false, error: 'No fue posible guardar la actividad oculta.' };
-  });
-
-  ipcMain.handle('hidden-activities:remove', async (_event, id) => {
-    const normalized = String(id || '').trim();
-    const next = readIds().filter((entry) => entry !== normalized);
-
-    return writeIds(next)
-      ? { ok: true, ids: next }
-      : { ok: false, error: 'No fue posible restaurar la actividad.' };
-  });
+  return writeIds(next)
+    ? { ok: true, ids: next }
+    : { ok: false, error: 'No fue posible guardar la actividad oculta.' };
 }
 
-module.exports = { registerHiddenActivitiesHandlers };
+function removeId(id) {
+  const normalized = String(id || '').trim();
+  const ids = readIds();
+  const next = ids.filter((entry) => entry !== normalized);
+
+  return writeIds(next)
+    ? { ok: true, ids: next, noEstaba: next.length === ids.length }
+    : { ok: false, error: 'No fue posible restaurar la actividad.' };
+}
+
+function registerHiddenActivitiesHandlers() {
+  ipcMain.handle('hidden-activities:get', async () => ({ ok: true, ids: readIds() }));
+  ipcMain.handle('hidden-activities:add', async (_event, id) => addId(id));
+  ipcMain.handle('hidden-activities:remove', async (_event, id) => removeId(id));
+}
+
+module.exports = { addId, readIds, registerHiddenActivitiesHandlers, removeId };

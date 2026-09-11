@@ -771,7 +771,7 @@ async function removeDraftFile(assignmentUrl, fileName) {
   try {
     const { page } = await getSession();
     await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    await page.waitForTimeout(1500);
+    await waitForSubmissionForm(page);
 
     const before = await readSubmissionForm(page);
 
@@ -808,7 +808,12 @@ async function removeDraftFile(assignmentUrl, fileName) {
     await page.waitForTimeout(1200);
 
     await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    await page.waitForTimeout(1500);
+
+    // Sin esperar de verdad al filemanager, `archivosEnBorrador` llega vacío en
+    // frío y el `success` de abajo —que se define por AUSENCIA— daba true sin
+    // haber quitado nada. Falso exito, que es la direccion peligrosa: la UI
+    // decia "listo" y el archivo seguia entregado.
+    await waitForSubmissionForm(page);
     const after = await readSubmissionForm(page);
 
     return {
@@ -861,7 +866,10 @@ async function removeSubmission(assignmentUrl) {
     await page.waitForTimeout(2000);
 
     await page.goto(viewUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    await page.waitForTimeout(1500);
+
+    // `readSubmissionStatus` lee de esa tabla; sin ella devuelve 'desconocido'
+    // y el success de abajo daria false aunque la entrega SI se haya quitado.
+    await page.waitForSelector('table.generaltable', { timeout: PAGE_TIMEOUT_MS }).catch(() => {});
     const status = await readSubmissionStatus(page);
 
     return {

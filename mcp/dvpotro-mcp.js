@@ -893,7 +893,9 @@ tool(
 
       const meta = [n.status, n.color !== 'neutral' ? n.color : null, ...(n.labels || [])].filter(Boolean).join(' · ');
 
-      return `${n.pinned ? '📌 ' : ''}${n.title || '(sin título)'}${n.archived ? ' [archivada]' : ''}\n   ${meta}\n${cuerpo}`;
+      // El id va adelante porque sin él la nota no es direccionable: no se
+      // podía pedirla entera con dvpotro_nota ni agregarle nada.
+      return `[${n.id}] ${n.pinned ? '📌 ' : ''}${n.title || '(sin título)'}${n.archived ? ' [archivada]' : ''}\n   ${meta}\n${cuerpo}`;
     });
 
     const ultima = maxFecha(res.data, 'updatedAt');
@@ -1334,10 +1336,31 @@ function prepararHandlers() {
       BrowserWindow: { getAllWindows: () => [] },
       shell: {},
       dialog: {},
+
+      // `portal-sistemas.js` lo destructura en su require y lo usa para achicar
+      // la foto del alumno ANTES de guardar el perfil. Sin este doble el scrape
+      // tiraba TypeError justo antes de `writeProfileCache` y se perdían también
+      // nombre, matrícula y correo, que ya estaban leídos. Devolver un JPEG
+      // vacío hace que su propio guard (`if (jpeg.length > 0)`) deje la foto en
+      // null y siga de largo: por MCP la foto no le sirve a nadie, los datos sí.
+      nativeImage: {
+        createFromBuffer: () => ({ resize: () => ({ toJPEG: () => Buffer.alloc(0) }) }),
+      },
       protocol: { handle: () => {}, registerSchemesAsPrivileged: () => {} },
       // El scraper copia sus cookies a la sesión de Electron para que el
       // renderer pueda bajar adjuntos. Sin renderer no hay a dónde copiarlas.
-      session: { defaultSession: { cookies: { set: async () => {} } } },
+      session: {
+        defaultSession: { cookies: { set: async () => {} } },
+
+        // `drive.js` baja los PDF de Drive con `session.fromPartition(...).fetch()`,
+        // que es API de Electron. Sin ventana no existen esas sesiones, así que
+        // la llamada tiraba y la cola archivaba TODO Drive como `error_red`: el
+        // MCP nunca pudo resolver un enlace de Drive, ni para material ni para
+        // consignas. De esa sesión solo se usa `fetch`, y el global de Node
+        // cumple el mismo contrato (status, headers, body.getReader,
+        // arrayBuffer), así que alcanza con prestárselo.
+        fromPartition: () => ({ fetch: (url, opciones) => fetch(url, opciones) }),
+      },
     },
   };
 
@@ -1456,6 +1479,48 @@ const SINCRONIZABLES = {
       if (res?.error) return { error: res.error };
 
       return { resumen: `${res.materias?.length || 0} materias` };
+    },
+  },
+
+  // `notices.js` quedó afuera de la lista blanca por forma, no por peligro:
+  // SINCRONIZABLES asumía "módulo con caché propia + tool de lectura + fila en
+  // dvpotro_estado", y los avisos no tienen nada de eso: desembocan en
+  // notifications.json, que `dvpotro_notificaciones` ya lee.
+  avisos: {
+    descripcion: 'convocatorias, becas, pagos y reinscripción del portal público del ITSON',
+    credenciales: [],
+    segundos: 20,
+    ejecutar: async () => {
+      const notices = require(path.join(REPO, 'electron', 'handlers', 'notices.js'));
+      const res = await notices.syncNotices();
+
+      if (!res?.ok) return { error: res?.error || 'no se pudieron leer las noticias' };
+
+      return {
+        resumen: res.seeded
+          ? `${res.total} avisos registrados por primera vez (no se notifican para no inundar)`
+          : `${res.added} aviso(s) nuevo(s) sobre ${res.total}`,
+      };
+    },
+  },
+
+  // `dvpotro_perfil` era la única lectura que terminaba en un callejón sin
+  // salida: sin caché contestaba "abrí Ajustes en DVPotro", justo lo que no se
+  // puede hacer desde una sesión por stdio con la app cerrada. Y es el dato que
+  // hace falta a las 2 AM para una portada.
+  perfil: {
+    descripcion: 'nombre como figura en el sistema, matrícula, correo institucional y programa',
+    credenciales: ['IVIRTUAL_USER', 'IVIRTUAL_PASS'],
+    segundos: 30,
+    ejecutar: async () => {
+      const portal = require(path.join(REPO, 'electron', 'handlers', 'portal-sistemas.js'));
+      const res = await portal.refreshProfile();
+
+      if (res?.error) return { error: res.error };
+
+      const p = res.profile || res;
+
+      return { resumen: `${p.fullName || 'sin nombre'} · ${p.studentId || 'sin matrícula'}` };
     },
   },
 };
@@ -1823,6 +1888,425 @@ tool(
 );
 
 // ---------------------------------------------------------------------------
+// Notas: leer una entera y crear
+// ---------------------------------------------------------------------------
+//
+// `dvpotro_notas` lista, pero recorta el cuerpo a 400 caracteres: unos apuntes
+// de clase llegaban mutilados. Y hasta acá el MCP solo leía, así que lo que se
+// hablaba en la terminal moría en el scrollback en vez de quedar en la app.
+
+// El `body` de una nota es HTML —así lo guarda y lo renderiza la app— y
+// `sanitizeHtmlBackstop` es un backstop contra scripts, no un escapador. Guardar
+// texto pelado ahí haría desaparecer los saltos de línea y trataría cualquier
+// `<` del alumno como etiqueta.
+function textoAHtml(texto) {
+  const escapado = String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return escapado
+    .split(/\n{2,}/)
+    .map((parrafo) => `<p>${parrafo.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
+tool(
+  'dvpotro_nota',
+  'UNA nota completa, en markdown y sin recortar. dvpotro_notas lista y recorta el cuerpo a 400 caracteres; esta trae el texto entero, el checklist con sus tildes y las imágenes adjuntas.',
+  {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Id de la nota, el que ahora devuelve dvpotro_notas entre corchetes.' },
+    },
+    required: ['id'],
+  },
+  ({ id }) => {
+    prepararHandlers();
+
+    const notas = require(path.join(REPO, 'electron', 'handlers', 'notes.js'));
+    const res = notas.exportMarkdown(id);
+
+    if (!res.ok) return res.error || 'No se pudo leer la nota.';
+
+    return res.markdown;
+  },
+);
+
+tool(
+  'dvpotro_nota_crear',
+  'Crea una nota en DVPotro: de texto o checklist. Para que lo que se habla acá quede DENTRO de la app y no en el scrollback de la terminal — los pendientes de una conversación, un apunte de clase, lo que hay que llevar el lunes. Escribe en la caché local, no toca el portal.',
+  {
+    type: 'object',
+    properties: {
+      titulo: { type: 'string', description: 'Título de la nota.' },
+      texto: { type: 'string', description: 'Cuerpo en texto plano. Los saltos de línea se respetan. Excluyente con `checklist`.' },
+      checklist: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Una línea por ítem. Si viene, la nota es un checklist y `texto` se ignora.',
+      },
+      etiquetas: { type: 'array', items: { type: 'string' }, description: 'Etiquetas existentes o nuevas.' },
+      color: { type: 'string', description: 'Color de la nota en la app. Por defecto neutral.' },
+      fijada: { type: 'boolean', description: 'La deja arriba de todo en la app.' },
+    },
+  },
+  ({ titulo, texto, checklist, etiquetas, color, fijada = false }) => {
+    if (!titulo && !texto && !(checklist || []).length) {
+      return 'Pasá al menos `titulo`, `texto` o `checklist`: una nota vacía no le sirve a nadie.';
+    }
+
+    prepararHandlers();
+
+    const notas = require(path.join(REPO, 'electron', 'handlers', 'notes.js'));
+    const items = (checklist || []).map((t) => String(t)).filter((t) => t.trim());
+
+    // `normalizeNote` ya valida tipo, color, estado, etiquetas e ítems y
+    // descarta lo que no reconoce, así que no hace falta repetir esa validación
+    // acá: se le pasa la intención y él decide.
+    const nota = notas.createNote({
+      type: items.length ? 'checklist' : 'text',
+      title: titulo || '',
+      body: items.length ? '' : textoAHtml(texto),
+      items: items.map((t) => ({ text: t, done: false })),
+      labels: Array.isArray(etiquetas) ? etiquetas : [],
+      color,
+      pinned: fijada,
+    });
+
+    const cuerpo = nota.type === 'checklist'
+      ? nota.items.map((i) => `   [ ] ${i.text}`).join('\n')
+      : `   ${recorte(String(texto || ''), 300)}`;
+
+    return [
+      `Nota creada en DVPotro.`,
+      '',
+      `[${nota.id}] ${nota.title || '(sin título)'}`,
+      `   ${[nota.type, nota.color, ...(nota.labels || [])].filter(Boolean).join(' · ')}`,
+      cuerpo,
+      '',
+      `Para verla entera: dvpotro_nota con id:"${nota.id}".`,
+    ].join('\n');
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Actividades ocultas
+// ---------------------------------------------------------------------------
+//
+// `dvpotro_actividades`, `dvpotro_materias`, `dvpotro_buscar` y `dvpotro_agenda`
+// ya RESTAN las ocultas, pero hasta acá lo único que se veía desde el chat era
+// el pie "(N ocultas por vos en la app, no se listan)": ni cuáles eran ni cómo
+// revertirlo sin abrir DVPotro.
+//
+// No pide confirmación, a diferencia de dvpotro_entregar, y es a propósito: esa
+// regla protege lo irreversible y lo que sale al portal. Esto es local y el
+// handler ni siquiera implementa "eliminar" — la actividad vive en iVirtual y
+// vuelve en el próximo scrape. La salvaguarda acá es otra: id EXACTO y una por
+// llamada, para que un "limpiá mi lista" no termine ocultando ocho de un saque.
+
+function nombresDeActividades() {
+  return new Map(
+    (readJson('actividades-cache.json').data?.actividades || [])
+      .map((a) => [String(a.id), `${a.nombre} — ${a.materia}`]),
+  );
+}
+
+tool(
+  'dvpotro_ocultar',
+  'Oculta o restaura UNA actividad en DVPotro. Sin argumentos lista las que están ocultas hoy, que es lo único que no se puede ver desde el chat. Ocultar no borra nada: la actividad sigue en iVirtual y vuelve a aparecer apenas la restaures.',
+  {
+    type: 'object',
+    properties: {
+      id: {
+        type: 'string',
+        description: 'Id EXACTO de la actividad, el que devuelve dvpotro_actividades. Sin esto solo lista las ocultas.',
+      },
+      mostrar: {
+        type: 'boolean',
+        description: 'Restaura en vez de ocultar. Por defecto false (oculta).',
+      },
+    },
+  },
+  ({ id, mostrar = false }) => {
+    prepararHandlers();
+
+    const ocultas = require(path.join(REPO, 'electron', 'handlers', 'hidden-activities.js'));
+    const nombres = nombresDeActividades();
+    const listar = (ids) => (ids.length
+      ? ids.map((x) => `  [${x}] ${nombres.get(String(x)) || '(ya no está en la caché)'}`).join('\n')
+      : '  (ninguna)');
+
+    if (!id) {
+      const ids = ocultas.readIds();
+
+      return [
+        `${ids.length} actividad(es) oculta(s):`,
+        listar(ids),
+        '',
+        ids.length
+          ? 'Para restaurar una: dvpotro_ocultar con su id y mostrar:true.'
+          : 'Para ocultar una: dvpotro_ocultar con su id.',
+      ].join('\n');
+    }
+
+    // El id se exige exacto: matchear por nombre es lo que convierte un
+    // "ocultá esa" en ocho actividades ocultas.
+    const etiqueta = nombres.get(String(id));
+
+    if (!etiqueta && !mostrar) {
+      return `No hay ninguna actividad con id ${id} en la caché. Mirá los ids con dvpotro_actividades — son posicionales y se corren cuando el profe agrega tareas.`;
+    }
+
+    const res = mostrar ? ocultas.removeId(id) : ocultas.addId(id);
+
+    if (!res.ok) return res.error;
+
+    if (mostrar) {
+      return [
+        res.noEstaba
+          ? `[${id}] no estaba oculta; no cambió nada.`
+          : `Restaurada [${id}] ${etiqueta || ''}`.trim(),
+        '',
+        `Ocultas ahora (${res.ids.length}):`,
+        listar(res.ids),
+      ].join('\n');
+    }
+
+    return [
+      res.yaEstaba ? `[${id}] ya estaba oculta.` : `Oculta [${id}] ${etiqueta}`,
+      'Deja de aparecer en dvpotro_actividades, dvpotro_materias, dvpotro_buscar y dvpotro_agenda.',
+      '',
+      `Para revertirlo: dvpotro_ocultar con id:"${id}" y mostrar:true.`,
+    ].join('\n');
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Lectura de material
+// ---------------------------------------------------------------------------
+//
+// `dvpotro_material` lista los recursos pero no puede abrirlos, y ahí vive casi
+// todo lo que el profesor explicó. Medido sobre la caché real: de 34 recursos,
+// 19 son enlaces de Drive, 1 es la carpeta con los PDFs de clase y 3 son páginas
+// con texto propio. O sea que el contenido de la materia estaba, hasta ahora,
+// fuera del alcance de Claude Code.
+//
+// Cada tipo se lee distinto y por eso hay tres caminos, no una abstracción:
+//   pagina   -> el texto ya vino en el scrape, no hay nada que bajar
+//   carpeta  -> `pluginfile.php`, necesita la cookie de sesión
+//   drive    -> la cola de `drive.js`, que resuelve anónimo
+
+function recursosDeMaterial(data) {
+  const salida = [];
+
+  for (const m of data.materias || []) {
+    for (const s of m.secciones || []) {
+      for (const r of s.recursos || []) {
+        salida.push({ ...r, materia: m.nombre, codigo: m.codigo });
+      }
+    }
+  }
+
+  return salida;
+}
+
+function unRecurso({ id, nombre, materia }) {
+  const res = cargar('material.json', 'Sincronizá Material en DVPotro, o pedí dvpotro_sync con modulo:"material".');
+  if (res.fallo) return { fallo: res.fallo };
+
+  const todos = recursosDeMaterial(res.data);
+  const deLaMateria = materia
+    ? todos.filter((r) => incluye(r.materia, materia) || incluye(r.codigo, materia))
+    : todos;
+
+  const encontrados = id
+    ? deLaMateria.filter((r) => String(r.id) === String(id))
+    : deLaMateria.filter((r) => incluye(r.nombre, nombre));
+
+  if (!id && !nombre) return { fallo: 'Pasá `id` o `nombre` del recurso. Para ver cuáles hay: dvpotro_material.' };
+  if (!encontrados.length) return { fallo: 'Sin coincidencias. Usá dvpotro_material para ver los recursos disponibles.' };
+
+  if (encontrados.length > 1) {
+    return {
+      fallo: `Coinciden ${encontrados.length}. Especificá el id:\n${encontrados
+        .map((r) => `  [${r.id}] ${r.nombre} (${r.materia} · ${r.tipo})`)
+        .join('\n')}`,
+    };
+  }
+
+  return { r: encontrados[0], cabecera: res.cabecera };
+}
+
+async function textoDeDrive(url, forzar) {
+  const drive = require(path.join(REPO, 'electron', 'handlers', 'drive.js'));
+  const normalizado = drive.normalizeDriveLink(url);
+
+  if (normalizado.kind === 'no_es_archivo') {
+    return { error: `el enlace de Drive no apunta a un archivo descargable (${normalizado.motivo || 'sin id'})` };
+  }
+
+  // `juntarLinks` lee `enlaces` con tipo 'google', así que se le pasa una
+  // actividad sintética. La cola está escrita para actividades y no hace falta
+  // tocarla para resolver un recurso de material: lo que le importa es el link.
+  await drive.resolveLinksForActivities(
+    [{ id: 'material', enlaces: [{ tipo: 'google', url }] }],
+    { forzar },
+  );
+
+  const entrada = drive.readIndice().archivos[normalizado.fileId];
+
+  if (!entrada) return { error: 'la cola de Drive no dejó registro del archivo' };
+
+  if (entrada.estado !== 'ok') {
+    // `requiere_sesion` es el caso común: un Drive compartido solo con la
+    // cuenta institucional no se baja anónimo, y eso no es un error a arreglar.
+    return { error: `Drive devolvió "${entrada.estado}"${entrada.estado === 'requiere_sesion' ? ' (el archivo no es público; abrilo con tu cuenta del ITSON)' : ''}` };
+  }
+
+  return { texto: drive.leerTexto(entrada), ruta: entrada.ruta, nombre: entrada.nombre };
+}
+
+async function textoDePluginfile(archivo, codigo) {
+  const material = require(path.join(REPO, 'electron', 'handlers', 'material.js'));
+
+  const faltan = ['IVIRTUAL_USER', 'IVIRTUAL_PASS'].filter((v) => !process.env[v]);
+  if (faltan.length) {
+    return { error: `faltan credenciales para bajarlo de iVirtual: ${faltan.join(', ')}` };
+  }
+
+  const bajada = await material.downloadFile({
+    url: archivo.url,
+    nombre: archivo.nombre,
+    materiaId: codigo || 'general',
+  });
+
+  if (bajada.error) return { error: `${bajada.error}${bajada.message ? `: ${bajada.message}` : ''}` };
+
+  // `downloadFile` se conforma con un 200, y Moodle contesta la pantalla de
+  // login con 200. Sin este chequeo el HTML del login se archiva con extensión
+  // .pdf y el fallo recién aparece al intentar leerlo.
+  const cabeza = fs.readFileSync(bajada.path).subarray(0, 64).toString('latin1');
+
+  if (/^\s*<(!doctype|html)/i.test(cabeza)) {
+    fs.unlinkSync(bajada.path);
+    return { error: 'iVirtual devolvió HTML: la sesión no quedó abierta' };
+  }
+
+  const extraido = await extraerTextoAdjunto(bajada.path);
+
+  return {
+    texto: extraido ? extraido.texto : '',
+    ruta: bajada.path,
+    nombre: archivo.nombre,
+    sinTexto: !extraido,
+  };
+}
+
+tool(
+  'dvpotro_material_leer',
+  'Abre UN recurso de material y devuelve su texto: la presentación del profesor, el PDF de la clase, la página del curso. dvpotro_material lista qué hay; esta lo lee. Baja de Drive o de iVirtual según el recurso y deja el archivo en disco. LENTO la primera vez (~10-30 s), después reusa lo que ya bajó.',
+  {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Id exacto del recurso, el que devuelve dvpotro_material.' },
+      nombre: { type: 'string', description: 'Alternativa al id: parte del nombre del recurso.' },
+      materia: { type: 'string', description: 'Acota la búsqueda cuando el nombre se repite entre materias.' },
+      archivo: {
+        type: 'string',
+        description: 'Si el recurso es una carpeta con varios PDFs, parte del nombre del que querés. Sin esto los lista.',
+      },
+      forzar: { type: 'boolean', description: 'Vuelve a bajarlo aunque ya esté en disco.' },
+    },
+  },
+  async ({ id, nombre, materia, archivo, forzar = false }) => {
+    const encontrado = unRecurso({ id, nombre, materia });
+    if (encontrado.fallo) return encontrado.fallo;
+
+    const { r } = encontrado;
+    const cabecera = [
+      encontrado.cabecera,
+      '',
+      `# ${r.nombre}`,
+      `${r.materia} · ${r.tipo} · sección "${r.seccion || '—'}"`,
+      r.descripcion ? r.descripcion : '',
+      '',
+    ].filter(Boolean);
+
+    // Las páginas del curso ya trajeron su texto en el scrape: no hay nada que
+    // bajar y salir a la red sería trabajo de más.
+    if (r.texto) {
+      const enlaces = (r.links || []).map((l) => `- ${l.texto || l.nombre || l.url}: ${l.url}`);
+
+      return [
+        ...cabecera,
+        '```',
+        recorte(r.texto, MAX_TEXTO_ADJUNTO),
+        '```',
+        enlaces.length ? `\n## Enlaces de la página\n${enlaces.join('\n')}` : '',
+      ].filter(Boolean).join('\n');
+    }
+
+    if (Array.isArray(r.archivos) && r.archivos.length) {
+      const candidatos = archivo
+        ? r.archivos.filter((f) => incluye(f.nombre, archivo))
+        : r.archivos;
+
+      if (!candidatos.length) {
+        return [...cabecera, `Ningún archivo coincide con "${archivo}". Tiene:`, ...r.archivos.map((f) => `- ${f.nombre}`)].join('\n');
+      }
+
+      if (candidatos.length > 1) {
+        return [
+          ...cabecera,
+          `Es una carpeta con ${candidatos.length} archivos. Pedí uno con \`archivo\`:`,
+          ...candidatos.map((f) => `- ${f.nombre}`),
+        ].join('\n');
+      }
+
+      prepararHandlers();
+      const leido = await textoDePluginfile(candidatos[0], r.codigo);
+
+      if (leido.error) return [...cabecera, `No se pudo leer "${candidatos[0].nombre}": ${leido.error}`].join('\n');
+
+      return [
+        ...cabecera,
+        `## ${leido.nombre}`,
+        leido.ruta,
+        '',
+        leido.sinTexto ? '(sin texto extraíble: es un archivo que hay que abrir)' : '```',
+        leido.sinTexto ? '' : recorte(leido.texto, MAX_TEXTO_ADJUNTO),
+        leido.sinTexto ? '' : '```',
+      ].filter(Boolean).join('\n');
+    }
+
+    const urlDrive = r.driveId ? r.destino || r.urlModulo : null;
+
+    if (urlDrive) {
+      prepararHandlers();
+      const leido = await textoDeDrive(urlDrive, forzar);
+
+      if (leido.error) {
+        return [...cabecera, `No se pudo leer de Drive: ${leido.error}`, '', `Abrilo a mano: ${urlDrive}`].join('\n');
+      }
+
+      if (!leido.texto) {
+        return [...cabecera, `Bajado a ${leido.ruta}`, '', '(sin texto extraíble: probablemente sea una presentación de puras imágenes)'].join('\n');
+      }
+
+      return [...cabecera, `## ${leido.nombre}`, leido.ruta, '', '```', recorte(leido.texto, MAX_TEXTO_ADJUNTO), '```'].join('\n');
+    }
+
+    // Foros y enlaces sueltos no tienen contenido propio que bajar.
+    return [
+      ...cabecera,
+      `Este recurso es de tipo "${r.tipo}" y no tiene un archivo que leer.`,
+      r.urlModulo ? `Abrilo en el portal: ${r.urlModulo}` : '',
+    ].filter(Boolean).join('\n');
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Entrega — la ÚNICA tool que escribe en el portal
 // ---------------------------------------------------------------------------
 //
@@ -2065,6 +2549,121 @@ tool(
   }),
 );
 
+
+tool(
+  'dvpotro_quitar_archivo',
+  'Saca UN archivo de la entrega de una actividad en iVirtual. Es el complemento de dvpotro_entregar: con un nombre nuevo Moodle SUMA el archivo en vez de reemplazarlo, así que sin esto un archivo equivocado solo se sacaba entrando al portal a mano. Sin `confirmar:true` solo lista qué hay subido. ESCRIBE EN EL PORTAL.',
+  {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Id exacto que devuelve dvpotro_actividades.' },
+      nombre: { type: 'string', description: 'Alternativa al id: parte del nombre de la actividad.' },
+      archivo: {
+        type: 'string',
+        description: 'Nombre EXACTO del archivo a sacar, tal como figura en la entrega. Sin esto solo lista.',
+      },
+      confirmar: {
+        type: 'boolean',
+        description: 'Sin esto NO saca nada. Ponelo en true solo con el visto bueno explícito del alumno.',
+      },
+    },
+  },
+  async ({ id, nombre, archivo, confirmar = false }) => enFila(async () => {
+    const encontrada = unaActividad({ id, nombre });
+    if (encontrada.fallo) return encontrada.fallo;
+
+    const { a } = encontrada;
+    if (!a.url) return `La actividad [${a.id}] no tiene URL de iVirtual en la caché.`;
+
+    prepararHandlers();
+
+    const faltan = ['IVIRTUAL_USER', 'IVIRTUAL_PASS'].filter((v) => !process.env[v]);
+    if (faltan.length) {
+      return `Faltan credenciales para entrar a iVirtual: ${faltan.join(', ')}. Configuralas en Ajustes de DVPotro.`;
+    }
+
+    const upload = require(path.join(REPO, 'electron', 'handlers', 'assignment-upload.js'));
+
+    const cabecera = [
+      encontrada.cabecera,
+      '',
+      `# Quitar archivo de "${a.nombre}"`,
+      `${a.materia} · ${a.profesor || 'sin profesor en caché'}`,
+      '',
+    ];
+
+    try {
+      const info = await upload.getUploadInfo(a.url);
+
+      if (!info.success) {
+        return [...cabecera, `No se pudo leer el formulario de entrega: ${detalleError(info)}`].join('\n');
+      }
+
+      const subidos = info.archivosEnBorrador || [];
+
+      if (!info.puedeEntregar) {
+        return [...cabecera, 'La ventana está cerrada: el portal no deja editar esta entrega.'].join('\n');
+      }
+
+      if (!subidos.length) {
+        return [...cabecera, 'No hay ningún archivo en esta entrega; no hay nada que sacar.'].join('\n');
+      }
+
+      const listado = subidos.map((n) => `- ${n}`).join('\n');
+
+      if (!archivo) {
+        return [...cabecera, `## Archivos en la entrega (${subidos.length})`, listado, '', 'Pasá `archivo` con el nombre EXACTO del que querés sacar.'].join('\n');
+      }
+
+      // Nombre exacto y nada de matcheo parcial: acá un "el PDF ese" que matchea
+      // de más saca el archivo bueno, y lo que se pierde es una entrega.
+      if (!subidos.includes(archivo)) {
+        return [...cabecera, `"${archivo}" no está en la entrega. Lo que hay es:`, listado].join('\n');
+      }
+
+      // Si la actividad ya tiene nota, lo que hay arriba ya lo miró el profesor.
+      const nota = Number(String(a.rawGrade || '').replace(',', '.'));
+      if (Number.isFinite(nota)) {
+        return [...cabecera, `Esta actividad ya está calificada (${a.rawGrade}). No la toco: sacar el archivo ahora no cambia la nota y sí te deja sin el respaldo.`].join('\n');
+      }
+
+      const quedaVacia = subidos.length === 1;
+
+      if (!confirmar) {
+        return [
+          ...cabecera,
+          `## ENSAYO — no se sacó nada`,
+          `Sacaría: ${archivo}`,
+          `Quedarían ${subidos.length - 1} archivo(s) en la entrega.`,
+          // Una entrega sin archivos pero marcada "Submitted for grading" es
+          // peor que no haber entregado: el profesor la abre y no hay nada.
+          quedaVacia
+            ? '\nATENCIÓN: es el único archivo. La entrega quedaría VACÍA pero seguiría marcada como enviada, que es peor que no haber entregado. Si lo que querés es cambiarlo, usá dvpotro_entregar con el archivo nuevo (y reemplazar:true si se llama igual) en vez de sacar este.'
+            : '',
+          '',
+          'Para sacarlo, volvé a llamarme con confirmar:true.',
+        ].filter(Boolean).join('\n');
+      }
+
+      const res = await upload.removeDraftFile(a.url, archivo);
+
+      if (!res.success) {
+        return [...cabecera, '## NO SE SACÓ', detalleError(res)].join('\n');
+      }
+
+      return [
+        ...cabecera,
+        '## SACADO',
+        `Quitado: ${archivo}`,
+        `Quedan en la entrega: ${(res.archivosEnBorrador || []).join(', ') || 'nada'}`,
+        quedaVacia ? '\nLa entrega quedó SIN archivos. Subí el que corresponda con dvpotro_entregar antes de que cierre la ventana.' : '',
+        '\nLa caché quedó vieja: corré dvpotro_sync con modulo:"actividades".',
+      ].filter(Boolean).join('\n');
+    } finally {
+      await upload.closeSession('mcp').catch(() => {});
+    }
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Transporte MCP (JSON-RPC 2.0 por stdio, mensajes separados por \n)

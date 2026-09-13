@@ -195,58 +195,10 @@ app.whenReady().then(() => {
       await shell.openExternal(url);
     }
   });
-  ipcMain.removeHandler('sync:all');
-  ipcMain.handle('sync:all', async () => {
-    const { getActivitiesWithCache, clearActivitiesCache } = require('./handlers/scraper');
-    const { getHorarioWithCache, clearHorarioCache } = require('./handlers/horario');
-    const { getCalificacionesWithCache, clearCIACache } = require('./handlers/cia');
-
-    clearActivitiesCache();
-    clearHorarioCache();
-    clearCIACache();
-    calendarioHandler.clearCache();
-
-    const [actividades, horario, calificaciones, calendario] = await Promise.allSettled([
-      getActivitiesWithCache(),
-      getHorarioWithCache(),
-      getCalificacionesWithCache(),
-      calendarioHandler.run({}),
-    ]);
-
-    const summaryParts = [];
-    if (actividades.status === 'fulfilled' && !actividades.value?.error) {
-      summaryParts.push(`${(actividades.value?.activities || []).length} actividades`);
-    }
-    if (horario.status === 'fulfilled' && !horario.value?.error) {
-      summaryParts.push(`${(horario.value?.materias || []).length} materias`);
-    }
-    if (calificaciones.status === 'fulfilled' && !calificaciones.value?.error) {
-      summaryParts.push(`${(calificaciones.value?.materias || []).length} boletas`);
-    }
-    if (calendario.status === 'fulfilled' && !calendario.value?.error) {
-      summaryParts.push(`${(calendario.value?.events || []).length} eventos del calendario`);
-    }
-    if (summaryParts.length > 0) {
-      notificationCenter.emitSyncAllSummary(summaryParts);
-    }
-
-    return {
-      actividades:
-        actividades.status === 'fulfilled'
-          ? actividades.value
-          : { error: actividades.reason?.message },
-      horario:
-        horario.status === 'fulfilled' ? horario.value : { error: horario.reason?.message },
-      calificaciones:
-        calificaciones.status === 'fulfilled'
-          ? calificaciones.value
-          : { error: calificaciones.reason?.message },
-      calendario:
-        calendario.status === 'fulfilled'
-          ? calendario.value
-          : { error: calendario.reason?.message },
-    };
-  });
+  // El sync-all real lo orquesta `handleSyncAll` en App.jsx, que sí incluye
+  // material y asistencia. Acá vivía un segundo registro que nadie llamaba y
+  // que había quedado atrás: arreglar el equivocado es exactamente cómo
+  // calificaciones terminó sin sincronizarse nunca.
   registerPowerMonitor();
   createMainWindow();
   registerMediaKeys();

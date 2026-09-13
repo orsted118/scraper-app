@@ -28,6 +28,7 @@
     "spike:attendance": "node scripts/spike-attendance-recon.cjs",
     "test:prompt": "node scripts/test-prompt-builder.cjs",
     "test:drive": "node scripts/test-drive-normalizacion.cjs",
+    "test:calificaciones": "node scripts/test-calificaciones.cjs",
     "test:clasificacion": "node scripts/test-clasificacion.cjs",
     "test:fechas": "node scripts/test-fechas.cjs",
     "mcp": "node mcp/dvpotro-mcp.js",

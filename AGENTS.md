@@ -149,10 +149,11 @@ scraper-app/
 
 ### 3) CIA Calificaciones (`electron/handlers/cia.js`)
 
-- Login CIA con credenciales separadas.
-- Flujo Boleta + Report Manager.
-- Descarga PDF de boleta y parsea texto/posiciones.
-- Construye materias con `clave`, `nombre`, `calificaciones[]`, `promedio`, `estado`.
+- Login CIA vía `electron/utils/ciaSession.js` (compartido con horario y el test de Ajustes).
+- Fuente: **Mis Calificaciones** (`SA_LEARNER_SERVICES.SS_ES_GRADE_LIST.GBL`), HTML — ya no la Boleta en PDF.
+- Recorre los ciclos del selector y mapea la tabla **por encabezado**, no por posición.
+- Devuelve `{ cicloActual, ciclos: [{ id, nombre, enCurso, promedio, creditos, materias[] }], expediente }`.
+- Detalle del flujo y de las trampas del portal en `docs/SCRAPERS.md`.
 
 ---
 
@@ -171,7 +172,7 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_horario` | horario semanal con aula o enlace de videollamada; filtra por día | `horario-cache.json` |
 | `dvpotro_material` | recursos por materia y sección; sin filtro devuelve solo conteos | `material.json` |
 | `dvpotro_asistencia` | porcentaje, puntos y detalle de sesiones | `attendance.json` |
-| `dvpotro_calificaciones` | boleta: parciales, promedio, estado y componentes de laboratorio | `cia-cache.json` |
+| `dvpotro_calificaciones` | calificación oficial por materia y ciclo, con promedio del ciclo | `cia-cache.json` |
 | `dvpotro_notas` | notas personales tipo Keep | `notes.json` |
 | `dvpotro_calendario` | calendario escolar del ITSON en una ventana de días | `calendario-cache.json` |
 | `dvpotro_buscar` | un texto a la vez en actividades, material, notas y calendario | varias |
@@ -300,7 +301,7 @@ Patrones visuales:
 |---|---|---|
 | Actividades iVirtual | ✅ | Clasificación por ventana de entrega + adjuntos, enlaces y rúbrica |
 | Horario CIA + links | ⚠️ | Funcional, pero dependiente de estabilidad de frames/estructura CIA |
-| Calificaciones CIA | ⚠️ | Funcional por PDF/Report Manager, sensible a cambios de flujo CIA |
+| Calificaciones CIA | ✅ | HTML de Mis Calificaciones, los 3 ciclos; verificado contra el portal 2026-09-12 |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
 | Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 26 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |

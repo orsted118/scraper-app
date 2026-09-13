@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
+  GraduationCap,
   Info,
   Library,
   Loader2,
@@ -30,6 +31,10 @@ const NAV_ITEMS = [
   { id: 'activities', label: 'Actividades', icon: BookOpen, target: 'activities' },
   { id: 'calendario', label: 'Calendario', icon: CalendarDays, target: 'calendario' },
   { id: 'horario', label: 'Horario', icon: Clock, target: 'horario' },
+  // Sin filtro condicional: la página tiene que ser alcanzable siempre, aunque
+  // sea para mostrar el empty state o el error de credenciales. Filtrarla por
+  // "¿ya hay calificaciones?" es lo que la dejó inaccesible.
+  { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap, target: 'calificaciones' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, target: 'notifications' },
   { id: 'musica', label: 'Música', icon: Music, target: 'musica' },
   { id: 'notas', label: 'Notas', icon: StickyNote, target: 'notas' },
@@ -143,7 +148,6 @@ function Sidebar({
   calendarCount = 0,
   diasConClases = [],
   errorHorario = '',
-  hasFinales = false,
   horario = [],
   horarioData = null,
   onNavigate,

@@ -74,6 +74,16 @@ check('y es fresca', Date.now() - cache.timestamp < 60_000, true);
   check('sync-all fuerza horario', /runHorario\?\.\(\{ force: true \}\)/.test(app), true);
   check('sync-all fuerza calendario', /runCalendario\?\.\(\{ force: true \}\)/.test(app), true);
   check('sync-all incluye material', /id: 'material', promise: scraperApi\.material\?\.sync/.test(app), true);
+  // El gate `if (hasFinales)` que había acá exigía una calificación final ya
+  // cargada para sincronizar calificaciones, así que durante el ciclo nunca
+  // corría y por lo tanto nunca llegaba a haber una final cargada. Este check
+  // es el que faltaba para atajarlo.
+  check(
+    'sync-all incluye calificaciones SIN condicionar',
+    /\{ id: 'calificaciones', promise: scraperApi\.runCIA\?\.\(\{ force: true \}\) \}/.test(app),
+    true,
+  );
+  check('no quedó ningún gate hasFinales', /hasFinales/.test(app), false);
   check('botón individual fuerza si no es silent', /runScraper\(\{ force: !silent \}\)/.test(app), true);
 
   fs.rmSync(userData, { recursive: true, force: true });

@@ -86,7 +86,10 @@ function App() {
   const [activities, setActivities] = useState([]);
   const [horario, setHorario] = useState({ materias: [], diasConClases: [] });
   const [calendarData, setCalendarData] = useState({ events: [], calendarTypes: [], timestamp: null, error: null });
-  const [calificaciones, setCalificaciones] = useState([]);
+  // Payload completo del handler: { schemaVersion, timestamp, cicloActual,
+  // ciclos: [...], expediente }. Era un array de materias cuando la fuente era
+  // la boleta y no había ciclos.
+  const [calificaciones, setCalificaciones] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingHorario, setLoadingHorario] = useState(false);
   const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
@@ -116,14 +119,6 @@ function App() {
   const ActivePage = pageConfig.component;
 
   const api = typeof window !== 'undefined' ? window.scraperApp : null;
-  const hasFinales = calificaciones.some(
-    (materia) =>
-      Array.isArray(materia.calificaciones) &&
-      materia.calificaciones.some(
-        (calificacion) =>
-          calificacion.parcial === 'Final' && calificacion.calificacion !== null,
-      ),
-  );
   const proximaEntrega = useMemo(() => {
     const pending = (activities || []).filter(
       (activity) => activity.estado === 'pendiente' || activity.estado === 'retrasada',
@@ -224,11 +219,6 @@ function App() {
       const noteId = new URLSearchParams(qs || '').get('note');
       // objeto nuevo cada vez: fuerza el efecto aunque sea el mismo noteId.
       setNotasDeepLink(noteId ? { noteId, ts: Date.now() } : null);
-    }
-
-    if (nextPage === 'calificaciones' && !hasFinales) {
-      setActivePage('activities');
-      return;
     }
 
     setActivePage(nextPage);
@@ -380,69 +370,53 @@ function App() {
     }
   };
 
-  const loadCalificaciones = async ({ clearCacheFirst = false, silent = false } = {}) => {
+  // `silent` controla el spinner, NO si se reporta el error: la carga al entrar
+  // a la página es silent, y descartar ahí el error dejaba la pantalla vacía sin
+  // ninguna explicación de por qué.
+  const loadCalificaciones = async ({ silent = false } = {}) => {
     let response;
 
     if (silent) {
       addSyncingModule('calificaciones');
     } else {
       setLoadingCIA(true);
-      setErrorCIA('');
-      setErrorCIACode('');
     }
+
+    setErrorCIA('');
+    setErrorCIACode('');
 
     try {
       if (!api) {
-        if (!silent) {
-          setErrorCIA('DVPotro debe ejecutarse dentro de Electron.');
-          setErrorCIACode('');
-          setCalificaciones([]);
-        }
+        setErrorCIA('DVPotro debe ejecutarse dentro de Electron.');
         return;
       }
 
-      if (clearCacheFirst) {
-        const cacheResult = await api.clearCIACache();
+      // No se borra la caché antes de scrapear: si el scrape falla, el usuario
+      // se quedaba sin nada. `force` la reemplaza sólo cuando hay reemplazo.
+      response = await api.runCIA({ force: !silent });
 
-        if (cacheResult?.success === false) {
-          if (!silent) {
-            setErrorCIA(cacheResult.error || 'No fue posible limpiar el caché local del CIA.');
-            setErrorCIACode(cacheResult.error || '');
-            setCalificaciones([]);
-          }
-          return;
-        }
-      }
-
-      response = await api.runCIA();
-
-      if (response?.error) {
-        if (!silent) {
-          setErrorCIACode(response.error);
-          setErrorCIA(getFriendlyIVirtualError(response.error));
-          if (!calificaciones.length) {
-            setCalificaciones([]);
-          }
-        }
+      if (response?.error && !response?.ciclos?.length) {
+        setErrorCIACode(response.error);
+        setErrorCIA(getFriendlyIVirtualError(response.error));
         return;
       }
 
-      const materiasList = Array.isArray(response?.materias) ? response.materias : [];
-      setCalificaciones(materiasList);
-      setErrorCIA('');
-      setErrorCIACode('');
+      // Con `stale` el handler devuelve la caché vieja junto al error: se
+      // muestran los datos y se avisa que están desactualizados.
+      if (response?.stale && response?.error) {
+        setErrorCIACode(response.error);
+        setErrorCIA(getFriendlyIVirtualError(response.error));
+      }
+
+      setCalificaciones(response ?? null);
+
       if (response?.timestamp) {
         setLastSyncCIA(new Date(response.timestamp).toISOString());
       }
     } catch (_error) {
       const rawError = response?.error || _error?.message || 'Error desconocido.';
-      if (!silent) {
-        setErrorCIACode(rawError);
-        setErrorCIA(getFriendlyIVirtualError(rawError));
-        if (!calificaciones.length) {
-          setCalificaciones([]);
-        }
-      }
+      setErrorCIACode(rawError);
+      setErrorCIA(getFriendlyIVirtualError(rawError));
     } finally {
       if (silent) {
         removeSyncingModule('calificaciones');
@@ -612,9 +586,7 @@ function App() {
     addSyncingModule('calendario');
     addSyncingModule('material');
     addSyncingModule('attendance');
-    if (hasFinales) {
-      addSyncingModule('calificaciones');
-    }
+    addSyncingModule('calificaciones');
 
     try {
       // force: true en todos. Actividades cachea 6 h y horario/calendario 24 h,
@@ -629,11 +601,11 @@ function App() {
         // (attendance:mark) y sale de que el usuario apriete el botón: una sync
         // jamás debe marcar presencia por su cuenta.
         { id: 'attendance', promise: scraperApi.attendance?.sync?.() },
+        // Sin condición: el gate que había acá exigía una calificación final
+        // ya cargada para sincronizar calificaciones, o sea que durante el ciclo
+        // nunca corría y por lo tanto nunca llegaba a haber una final cargada.
+        { id: 'calificaciones', promise: scraperApi.runCIA?.({ force: true }) },
       ];
-
-      if (hasFinales) {
-        calls.push({ id: 'calificaciones', promise: scraperApi.runCIA?.() });
-      }
 
       const results = await Promise.allSettled(calls.map((call) => call.promise));
       let hasErrors = false;
@@ -711,8 +683,7 @@ function App() {
         }
 
         if (moduleId === 'calificaciones') {
-          const materiasList = Array.isArray(response?.materias) ? response.materias : [];
-          setCalificaciones(materiasList);
+          setCalificaciones(response ?? null);
           setErrorCIA('');
           setErrorCIACode('');
           if (response?.timestamp) {
@@ -736,9 +707,7 @@ function App() {
       removeSyncingModule('activities');
       removeSyncingModule('horario');
       removeSyncingModule('calendario');
-      if (hasFinales) {
-        removeSyncingModule('calificaciones');
-      }
+      removeSyncingModule('calificaciones');
     }
   };
 
@@ -809,12 +778,6 @@ function App() {
   }, [activePage, ciaCargado]);
 
   useEffect(() => {
-    if (activePage === 'calificaciones' && !hasFinales) {
-      setActivePage('activities');
-    }
-  }, [activePage, hasFinales]);
-
-  useEffect(() => {
     if (!api) return;
 
     api.onProgress((data) => {
@@ -841,7 +804,6 @@ function App() {
           calendarCount={calendarCount}
           diasConClases={horario?.diasConClases ?? []}
           errorHorario={errorHorario}
-          hasFinales={hasFinales}
           horario={horario?.materias ?? []}
           horarioData={horario}
           onSyncAll={handleSyncAll}
@@ -931,7 +893,7 @@ function App() {
                   onAutoSyncChanged={refreshAutoSyncSettings}
                   onSync={activePage === 'calendario' ? loadCalendar : handleSyncActivities}
                   onSyncHorario={loadHorario}
-                  onSyncCIA={() => loadCalificaciones({ clearCacheFirst: true })}
+                  onSyncCIA={() => loadCalificaciones()}
                   onNavigate={handleNavigate}
                   onToggleFullscreen={toggleNowPlaying}
                   deepLink={activePage === 'notas' ? notasDeepLink : null}

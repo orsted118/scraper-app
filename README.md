@@ -115,7 +115,7 @@ Todo en `app.getPath('userData')` — en Windows, `%APPDATA%\dvpotro\`.
 | `horario-cache.json` | horario semanal | 2 |
 | `material.json` | material por materia | 3 |
 | `attendance.json` | asistencia | 1 |
-| `cia-cache.json` | calificaciones | — |
+| `cia-cache.json` | calificaciones por ciclo | 1 |
 | `calendario-cache.json` | calendario escolar | — |
 | `notes.json` + `notes-attachments/` | notas e imágenes | — |
 | `notifications.json` + `snapshots/` | avisos y estado anterior para el diff | — |

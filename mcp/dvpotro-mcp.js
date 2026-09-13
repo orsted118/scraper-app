@@ -79,6 +79,7 @@ const SCHEMA = {
   'actividades-cache.json': { campo: 'schemaVersion', esperada: 6 },
   'material.json': { campo: 'version', esperada: 3 },
   'horario-cache.json': { campo: 'schemaVersion', esperada: 2 },
+  'cia-cache.json': { campo: 'schemaVersion', esperada: 1 },
   'attendance.json': { campo: 'version', esperada: 1 },
   'notifications.json': { campo: 'version', esperada: 1 },
   'prompt-cache.json': { campo: 'version', esperada: 1 },
@@ -393,7 +394,11 @@ tool(
       // está cada módulo no informa nada.
       ['notes.json', 'notas', (d) => `${Array.isArray(d) ? d.length : 0} notas`, (d) => maxFecha(d, 'updatedAt')],
       ['notifications.json', 'notificaciones', (d) => `${d.items?.length || 0} items`, (d) => maxFecha(d?.items, 'timestamp')],
-      ['cia-cache.json', 'calificaciones', (d) => `${d.materias?.length || 0} materias`],
+      ['cia-cache.json', 'calificaciones', (d) => {
+        const ciclos = d.ciclos || [];
+        const materias = ciclos.reduce((sum, c) => sum + (c.materias?.length || 0), 0);
+        return `${ciclos.length} ciclo(s), ${materias} materias`;
+      }],
       [path.join('profile-cache', 'profile.json'), 'perfil', (d) => d.fullName || 'sin nombre'],
       ['prompt-cache.json', 'prompts', (d) => `${Object.keys(d.prompts || {}).length} guardados`, (d) => maxFecha(Object.values(d?.prompts || {}), 'generadoEn')],
     ];
@@ -819,49 +824,67 @@ tool(
 
 tool(
   'dvpotro_calificaciones',
-  'La boleta de CIA: parciales, final, promedio y estado por materia (aprobada, en riesgo, reprobada, sin calificación). Las materias con laboratorio traen además el desglose por componente.',
+  'El registro académico oficial del CIA: la calificación final de cada materia por ciclo, con su estado (aprobada, reprobada, acreditada, sin calificar) y el promedio del ciclo. El ciclo en curso aparece sin calificaciones: se publican al cierre del semestre.',
   {
     type: 'object',
     properties: {
-      materia: { type: 'string', description: 'Nombre, clave o parte del nombre. Sin esto devuelve todas.' },
-      solo_en_riesgo: { type: 'boolean', description: 'Solo las reprobadas o en riesgo.' },
+      ciclo: { type: 'string', description: 'STRM ("3147") o parte del nombre ("enero-mayo"). Sin esto devuelve todos.' },
+      materia: { type: 'string', description: 'Nombre, catálogo o parte del nombre.' },
+      solo_reprobadas: { type: 'boolean', description: 'Solo las materias por debajo de 7.' },
     },
   },
-  ({ materia, solo_en_riesgo = false }) => {
+  ({ ciclo, materia, solo_reprobadas = false }) => {
     const res = cargar('cia-cache.json', 'Sincronizá Calificaciones en DVPotro, o pedí dvpotro_sync con modulo:"calificaciones".');
     if (res.fallo) return res.fallo;
 
-    // La boleta guarda `null` mientras el parcial no se capturó. Mostrar "0"
-    // ahí sería inventar un reprobado que el profesor todavía no puso.
-    const nota = (c) => (Number.isFinite(c?.calificacion) ? `${c.calificacion}/${c.sobre ?? 10}` : '—');
-    const enRiesgo = (m) => m.estado === 'reprobada' || m.estado === 'en_riesgo';
+    // Vacío mientras el ciclo corre: mostrar "0" ahí sería inventar un
+    // reprobado que el profesor todavía no puso.
+    const nota = (m) => m.literal || (Number.isFinite(m.calificacion) ? String(m.calificacion) : '—');
+    const esReprobada = (m) => m.estado === 'reprobada' || m.estado === 'no_acreditada';
 
-    const materias = (res.data.materias || [])
-      .filter((m) => !materia || incluye(m.nombre, materia) || incluye(m.codigo || m.clave, materia))
-      .filter((m) => !solo_en_riesgo || enRiesgo(m));
+    const ciclos = (res.data.ciclos || [])
+      .filter((c) => !ciclo || incluye(c.nombre, ciclo) || incluye(c.id, ciclo));
 
-    const bloques = materias.map((m) => {
-      const parciales = (m.calificaciones || []).map((c) => `${c.etiqueta || c.nombre} ${nota(c)}`).join('  ');
+    if (!ciclos.length) {
+      const disponibles = (res.data.ciclos || []).map((c) => `${c.id} (${c.nombre})`).join(', ');
+      return `${res.cabecera}\n\nNingún ciclo coincide con "${ciclo}". Disponibles: ${disponibles || 'ninguno'}.`;
+    }
 
-      const componentes = (m.componentes || []).map(
-        (c) => `   ${c.tipo}: ${(c.calificaciones || []).map((x) => `${x.etiqueta || x.nombre} ${nota(x)}`).join('  ')}`
-          + `${Number.isFinite(c.promedio) ? `  → ${c.promedio}` : ''}`,
+    const bloques = ciclos.map((c) => {
+      const materias = (c.materias || [])
+        .filter((m) => !materia || incluye(m.nombre, materia) || incluye(m.codigo, materia))
+        .filter((m) => !solo_reprobadas || esReprobada(m));
+
+      if (!materias.length) return null;
+
+      const filas = materias.map(
+        (m) => `   ${(m.codigo || '—').padEnd(8)} ${nota(m).padStart(2)}  ${m.nombre}`
+          + `${m.estado === 'sin_calificacion' ? '  (sin calificar)' : ''}`
+          + `${m.profesor ? ` · ${m.profesor}` : ''}`,
       );
 
-      return [
-        `${m.codigo || m.clave || '—'}  ${m.nombre}${m.profesor ? ` · ${m.profesor}` : ''}`,
-        `   ${parciales || 'sin capturar'}`,
-        `   promedio: ${Number.isFinite(m.promedio) ? m.promedio : '—'} · ${m.estado}`,
-        ...componentes,
-      ].join('\n');
-    });
+      // El promedio del ciclo promedia TODAS las numéricas, reprobadas
+      // incluidas — es la fórmula que usa la boleta oficial del ITSON, distinta
+      // de la del promedio global (solo aprobadas).
+      const encabezado = `${c.nombre} (${c.id})`
+        + `${Number.isFinite(c.promedio) ? ` · promedio ${c.promedio}` : ''}`
+        + `${c.enCurso ? ' · EN CURSO' : ''}`;
 
-    const riesgo = (res.data.materias || []).filter(enRiesgo);
-    const aviso = !materia && !solo_en_riesgo && riesgo.length
-      ? `\n\nATENCIÓN: ${riesgo.length} materia(s) por debajo de 7 — ${riesgo.map((m) => m.nombre).join(', ')}`
+      return [encabezado, ...filas].join('\n');
+    }).filter(Boolean);
+
+    const exp = res.data.expediente;
+    const global = exp
+      ? `\n\nExpediente (RPA): promedio global ${exp.promedioGlobal} · ${exp.avance}% de avance`
+        + ` · ${exp.creditos?.acreditados ?? '—'} de ${exp.creditos?.obligatorios ?? '—'} créditos`
       : '';
 
-    return `${res.cabecera}\n\n${lista(bloques)}${aviso}`;
+    const reprobadas = ciclos.flatMap((c) => (c.materias || []).filter(esReprobada));
+    const aviso = !materia && !solo_reprobadas && reprobadas.length
+      ? `\n\nATENCIÓN: ${reprobadas.length} materia(s) por debajo de 7 — ${reprobadas.map((m) => m.nombre).join(', ')}`
+      : '';
+
+    return `${res.cabecera}\n\n${lista(bloques)}${global}${aviso}`;
   },
 );
 
@@ -1500,16 +1523,23 @@ const SINCRONIZABLES = {
     },
   },
   calificaciones: {
-    descripcion: 'boleta y promedios de CIA',
+    descripcion: 'calificaciones oficiales por ciclo del CIA',
     credenciales: ['CIA_USER', 'CIA_PASS'],
-    segundos: 120,
+    segundos: 60,
     ejecutar: async () => {
       const cia = require(path.join(REPO, 'electron', 'handlers', 'cia.js'));
-      const res = await cia.getCalificacionesWithCache();
+      const res = await cia.getCalificacionesWithCache({ force: true });
 
-      if (res?.error) return { error: res.error };
+      if (res?.error && !res?.ciclos?.length) return { error: res.error };
 
-      return { resumen: `${res.materias?.length || 0} materias` };
+      const ciclos = res.ciclos || [];
+      const materias = ciclos.reduce((sum, c) => sum + (c.materias?.length || 0), 0);
+      const actual = ciclos.find((c) => c.id === res.cicloActual);
+
+      return {
+        resumen: `${ciclos.length} ciclo(s), ${materias} materias`
+          + (Number.isFinite(actual?.promedio) ? ` · promedio ${actual.promedio} en ${actual.nombre}` : ''),
+      };
     },
   },
 

@@ -127,27 +127,52 @@ Si no encuentra, `meetLink = null`.
 
 ### Flujo actual
 
-1. Login CIA con `CIA_USER` / `CIA_PASS`
-2. Abrir “Boleta de Calificación”
-3. Ejecutar consulta con selects configurados en flujo actual
-4. Abrir Report Manager y ubicar PDF
-5. Descargar PDF
-6. Parsear texto y reconstruir materias/calificaciones
+Fuente: **Autoservicio > Registros Académicos > Mis Calificaciones**
+(`SA_LEARNER_SERVICES.SS_ES_GRADE_LIST.GBL`), **HTML puro**.
+
+1. Login CIA con `CIA_USER` / `CIA_PASS` (vía `electron/utils/ciaSession.js`)
+2. Abrir Autoservicio → “Mis Calificaciones”
+3. Leer las opciones del selector de ciclo `#DERIVED_AA3_DERIVED_STERM`
+4. Por cada ciclo: elegirlo y pegarle al link “cambiar” `#DERIVED_AA2_DERIVED_LINK3`
+5. Leer `table[id^="STDNT_GRAD_SSVW"]` y mapear **por encabezado**
+
+**No se usa la Boleta (PDF/SQR), que era el flujo anterior.** Su matriz de
+evaluaciones viene entera en guiones —el pie del propio PDF aclara que esas
+columnas no se usaron para la calificación final—, así que los “parciales” que
+reconstruía el handler viejo no existen en el portal. Además su run control solo
+logra encolar un ciclo. La Boleta sigue siendo la única fuente del **promedio
+oficial por ciclo**, y el RPA la del **expediente global**: ver `expediente`.
 
 ### Campos devueltos
 
-- `clave`
-- `nombre`
-- `profesor` (puede venir vacío)
-- `calificaciones[]` (parciales/final)
-- `promedio`
-- `estado` (`aprobada`, `en_riesgo`, `reprobada`, `sin_calificacion`)
+`{ schemaVersion, timestamp, cicloActual, ciclos: [...], expediente }`
+
+Cada ciclo: `id` (STRM), `value`, `nombre`, `enCurso`, `promedio`, `creditos`,
+`materias[]`.
+
+Cada materia: `codigo` (catálogo), `clave` (alias), `area`, `nombre`,
+`profesor` (del horario; vacío fuera del ciclo en curso), `calificacion`
+(number|null), `literal` (`A`/`NA`|null), `unidades`, `estado`.
+
+`estado`: `aprobada` (≥7), `reprobada` (<7), `acreditada` (`A`),
+`no_acreditada` (`NA`), `sin_calificacion` (ciclo en curso).
+
+**Dos fórmulas de promedio distintas, no unificarlas.** La del ciclo promedia
+todas las numéricas incluidas las reprobadas (coincide con la Boleta oficial);
+la global promedia solo las aprobadas (coincide con el RPA).
 
 ### Caché
 
 - Ruta: `app.getPath('userData')/cia-cache.json`
-- TTL: `30 minutos`
-- invalidación automática si caché corrupto
+- Esquema: `1`. Un caché **sin** `schemaVersion` es el formato viejo de la
+  boleta y se descarta, no se trata como v1.
+- TTL: `6 horas` (las notas oficiales cambian de a semanas)
+- Ante un error de scrape con caché existente se devuelve la caché con
+  `stale: true`: un error de acceso no es evidencia de que lo guardado esté mal.
+
+### Recursos bloqueados
+
+`image`, `media`, `font`, `stylesheet`.
 
 ### Códigos de credenciales
 

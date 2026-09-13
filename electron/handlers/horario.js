@@ -6,6 +6,7 @@ const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
 const notificationCenter = require('./notification-center');
 const { isTimeoutError, withTimeout } = require('../utils/withTimeout');
+const ciaSession = require('../utils/ciaSession');
 
 const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
 const IVIRTUAL_LOGIN_URL = 'https://ivirtual.itson.edu.mx/login/index.php';
@@ -855,41 +856,13 @@ async function switchScheduleView(frame, viewPatterns) {
   return false;
 }
 
+// El login vive en utils/ciaSession para que calificaciones y el test de
+// conexión de Ajustes usen exactamente el mismo. Este wrapper solo traduce el
+// error al formato de este handler, y existe para no tocar sus call sites.
 async function loginToCIA(page, user, password) {
-  await gotoWithRetry(page, CIA_ENTRY_URL, {
-    timeout: CIA_LOGIN_TIMEOUT_MS,
-    waitUntil: 'domcontentloaded',
-  });
+  const result = await ciaSession.loginToCIA(page, user, password);
 
-  await page.locator('#txtITSONET').fill(user).catch(() => {});
-  await page.locator('#btnConexionTrayectorias').click().catch(() => {});
-
-  // The ITSONET step lands either on an intermediate "Continuar" page or
-  // directly on the PeopleSoft login form; wait for whichever shows first.
-  await Promise.race([
-    page.getByRole('button', { name: /continuar/i }).first().waitFor({ state: 'visible', timeout: PSOFT_SETTLE_SHORT_MS }),
-    page.locator('#userid').waitFor({ state: 'visible', timeout: PSOFT_SETTLE_SHORT_MS }),
-  ]).catch(() => {});
-
-  const continueButton = page.getByRole('button', { name: /continuar/i }).first();
-  if (await continueButton.count().catch(() => 0)) {
-    await continueButton.click().catch(() => {});
-  }
-
-  await page.locator('#userid').waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
-  await page.locator('#userid').fill(user);
-  await page.locator('#pwd').fill(password);
-  await page.getByRole('button', { name: /iniciar sesi[oó]n/i }).click();
-
-  await page.waitForLoadState('domcontentloaded', { timeout: CIA_LOGIN_TIMEOUT_MS }).catch(() => {});
-  await page
-    .getByRole('link', { name: /autoservicio/i })
-    .last()
-    .waitFor({ state: 'visible', timeout: NAV_SETTLE_TIMEOUT_MS })
-    .catch(() => {});
-
-  const autoservicioLink = page.getByRole('link', { name: /autoservicio/i }).last();
-  if (!(await autoservicioLink.count().catch(() => 0))) {
+  if (result?.error) {
     console.error('Inicio de sesión fallido en CIA');
     return buildHorarioError('Credenciales CIA inválidas o no configuradas.');
   }

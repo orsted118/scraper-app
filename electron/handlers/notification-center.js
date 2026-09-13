@@ -47,9 +47,17 @@ const FRIENDLY_SYNC_ERRORS = {
   CIA_NO_CREDENTIALS: 'No hay credenciales del CIA configuradas. Revísalas en Ajustes.',
   CIA_NO_USER: 'Falta tu usuario del CIA. Revísalo en Ajustes.',
   CIA_NO_PASSWORD: 'Falta tu contraseña del CIA. Revísala en Ajustes.',
+  CIA_LOGIN_FAILED: 'El CIA rechazó las credenciales. Revísalas en Ajustes.',
 };
 
+// Solo los de credenciales: `CIA_GRADES_UNAVAILABLE` y `CIA_TIMEOUT` son fallas
+// del portal, no del usuario, y mandarlo a Ajustes por ellas sería desviarlo.
 const CREDENTIAL_ERROR_CODES = new Set(Object.keys(FRIENDLY_SYNC_ERRORS));
+
+const OTHER_SYNC_ERRORS = {
+  CIA_GRADES_UNAVAILABLE: 'El CIA no devolvió la hoja de calificaciones. Suele ser temporal.',
+  CIA_TIMEOUT: 'El CIA tardó demasiado en responder. Intentá de nuevo más tarde.',
+};
 
 let reminderInterval = null;
 let noticesInterval = null;
@@ -420,63 +428,70 @@ function diffHorario(materias) {
   }
 }
 
-function diffCalificaciones(materias) {
-  const list = Array.isArray(materias) ? materias : [];
-  const next = list.map((materia) => ({
-    key: String(materia.clave || materia.nombre || ''),
-    nombre: materia.nombre || 'Materia',
-    promedio: Number.isFinite(Number(materia.promedio)) ? Number(materia.promedio) : null,
-    califs: (Array.isArray(materia.calificaciones) ? materia.calificaciones : []).reduce(
-      (acc, entry) => {
-        if (entry?.parcial && entry.calificacion !== null && entry.calificacion !== undefined) {
-          acc[entry.parcial] = entry.calificacion;
-        }
-        return acc;
-      },
-      {},
-    ),
+// El payload es `{ ciclos: [{ id, promedio, materias: [...] }] }`. La clave es
+// ciclo+catálogo porque una misma materia recursada aparece en dos ciclos con
+// el mismo código y notas distintas.
+function diffCalificaciones(payload) {
+  const ciclos = Array.isArray(payload?.ciclos) ? payload.ciclos : [];
+
+  const next = ciclos.flatMap((ciclo) =>
+    (ciclo.materias || []).map((materia) => ({
+      key: `${ciclo.id}:${materia.codigo || materia.nombre || ''}`,
+      nombre: materia.nombre || 'Materia',
+      ciclo: ciclo.nombre || ciclo.id,
+      calificacion: Number.isFinite(materia.calificacion) ? materia.calificacion : null,
+      estado: materia.estado || 'sin_calificacion',
+    })));
+
+  const promediosPorCiclo = ciclos.map((ciclo) => ({
+    id: ciclo.id,
+    nombre: ciclo.nombre || ciclo.id,
+    promedio: Number.isFinite(ciclo.promedio) ? ciclo.promedio : null,
   }));
+
   const previous = readSnapshot('calificaciones');
-  writeSnapshot('calificaciones', { items: next });
+  writeSnapshot('calificaciones', { items: next, promedios: promediosPorCiclo });
 
   if (!Array.isArray(previous?.items)) {
-    return;
+    return; // Primera sincronización: todo sería "nuevo" y sería ruido.
   }
 
   const prevMap = new Map(previous.items.map((item) => [item.key, item]));
 
   for (const current of next) {
     const prev = prevMap.get(current.key);
+    if (!prev) continue;
 
-    if (!prev) {
-      continue; // Materia nueva en boleta: sus calificaciones aparecerán en el próximo diff.
-    }
-
-    for (const [parcial, valor] of Object.entries(current.califs)) {
-      if (prev.califs?.[parcial] === undefined) {
-        emit({
-          key: `cal-nueva-${current.key}-${parcial}`,
-          source: 'calificaciones',
-          category: 'nueva',
-          priority: 'normal',
-          title: `Calificación publicada: ${current.nombre}`,
-          body: `${parcial}: ${valor}`,
-        });
-      }
-    }
-
-    if (
-      prev.promedio !== null &&
-      current.promedio !== null &&
-      Math.abs(current.promedio - prev.promedio) > 0.3
-    ) {
+    // Lo que importa es el salto de "sin nota" a "con nota": es el momento en
+    // que el profesor publicó la calificación oficial del ciclo.
+    if (prev.calificacion === null && current.calificacion !== null) {
       emit({
-        key: `cal-prom-${current.key}-${current.promedio}`,
+        key: `cal-nueva-${current.key}-${current.calificacion}`,
+        source: 'calificaciones',
+        category: 'nueva',
+        priority: current.estado === 'reprobada' ? 'alta' : 'normal',
+        title: `Calificación publicada: ${current.nombre}`,
+        body: `${current.calificacion} · ${current.estado}`,
+        actionUrl: 'app://calificaciones',
+      });
+    }
+  }
+
+  const prevPromedios = new Map((previous.promedios || []).map((p) => [p.id, p.promedio]));
+
+  for (const actual of promediosPorCiclo) {
+    const anterior = prevPromedios.get(actual.id);
+
+    if (anterior !== null && anterior !== undefined && actual.promedio !== null
+      && Math.abs(actual.promedio - anterior) > 0.3) {
+      emit({
+        key: `cal-prom-${actual.id}-${actual.promedio}`,
         source: 'calificaciones',
         category: 'cambio',
         priority: 'normal',
-        title: `Tu promedio cambió: ${current.nombre}`,
-        body: `De ${prev.promedio} a ${current.promedio}`,
+        title: `Tu promedio cambió: ${actual.nombre}`,
+        body: `De ${anterior} a ${actual.promedio}`,
+        actionUrl: 'app://calificaciones',
       });
     }
   }
@@ -544,7 +559,7 @@ function processSyncError(source, code) {
     if (!normalized) return;
 
     const label = SOURCE_LABELS[source] || source;
-    const friendly = FRIENDLY_SYNC_ERRORS[normalized] || normalized;
+    const friendly = FRIENDLY_SYNC_ERRORS[normalized] || OTHER_SYNC_ERRORS[normalized] || normalized;
     const isCredentialIssue = CREDENTIAL_ERROR_CODES.has(normalized);
 
     emit(

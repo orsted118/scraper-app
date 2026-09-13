@@ -191,9 +191,15 @@ async function testConnection({ portal, user, password } = {}) {
     const page = await browser.newPage();
 
     if (normalizedPortal === 'cia') {
-      // Require perezoso: evita cargar el scraper completo al iniciar la app.
-      const { loginToCIA } = require('./cia');
-      await loginToCIA(page, normalizedUser, normalizedPassword);
+      // `loginToCIA` DEVUELVE el error, no lo lanza: descartar su retorno hacía
+      // que este test reportara ok incluso con credenciales inválidas.
+      const { loginToCIA } = require('../utils/ciaSession');
+      const loginResult = await loginToCIA(page, normalizedUser, normalizedPassword);
+
+      if (loginResult?.error) {
+        return { ok: false, error: 'El CIA rechazó las credenciales.' };
+      }
+
       return { ok: true };
     }
 

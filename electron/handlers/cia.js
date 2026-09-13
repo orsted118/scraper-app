@@ -1,49 +1,65 @@
+// LEER ANTES DE TOCAR NADA — recon del portal, verificado 2026-09-11 contra la
+// cuenta real.
+//
+// Fuente: Autoservicio > Registros Académicos > Mis Calificaciones
+//   componente SA_LEARNER_SERVICES.SS_ES_GRADE_LIST.GBL, HTML puro.
+//
+//   NO se usa la Boleta (SQR ITSR0001), que es lo que había acá antes: su
+//   matriz de evaluaciones UC/EV viene entera en guiones —el propio pie del PDF
+//   dice que esas columnas no se usaron para la calificación final— así que el
+//   modelo de "parciales" que armaba el handler viejo modelaba algo que el
+//   portal no publica. Además su run control solo logra encolar el ciclo 3147:
+//   con 3145 y 3153 el submit sale limpio y el Process Scheduler no encola nada.
+//
+// Trampas del portal, todas pagadas con horas:
+//  - Los frames NAV y TargetContent se solapan e interceptan pointer events: un
+//    locator.click() de Playwright nunca llega. Se dispara el javascript: del
+//    portal (ver utils/ciaSession).
+//  - Identificar frames por URL no sirve: el shell /psp/ y el UniversalHeader
+//    llevan el nombre del componente en sus query params.
+//  - El <select> de ciclo NO hace postback solo: hay que pegarle al link
+//    "cambiar" (#DERIVED_AA2_DERIVED_LINK3) después de elegir.
+//  - El ciclo en curso trae las materias con Calificación Oficial VACÍA, y esa
+//    fila llega al DOM con UNA CELDA MENOS. No es un error: es un semestre
+//    corriendo. Por eso jamás se filtran celdas vacías al leer la tabla.
+//  - Dos fórmulas de promedio distintas, NO unificarlas: la del ciclo promedia
+//    TODAS las numéricas (3147: 47/6 = 7.83, coincide con la boleta oficial);
+//    la global promedia SOLO las aprobadas (72/9 = 8.000, coincide con el RPA).
+
 const fs = require('fs');
 const path = require('path');
 const electron = require('electron');
 const app = electron?.app;
 const ipcMain = electron?.ipcMain;
 const { chromium } = require('playwright');
-const pdfjsLib = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
 const notificationCenter = require('./notification-center');
 const { buildInstructorIndex, lookupInstructor } = require('../utils/instructorLookup');
-// require perezoso del horario handler para evitar riesgo de ciclo en la carga.
-function readHorarioCacheLazy() {
-  try {
-    return require('./horario').readHorarioCache();
-  } catch (_error) {
-    return null;
-  }
+const ciaSession = require('../utils/ciaSession');
+
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // las notas oficiales cambian de a semanas
+const GLOBAL_TIMEOUT_MS = 180_000;
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
+
+// 1 → notas oficiales por ciclo desde HTML. Un caché SIN este campo es el
+//     formato viejo de la boleta (parciales inventados): se descarta, no se
+//     trata como v1.
+const CALIFICACIONES_CACHE_SCHEMA_VERSION = 1;
+
+const SELECT_CICLO = '#DERIVED_AA3_DERIVED_STERM';
+const LINK_CAMBIAR = '#DERIVED_AA2_DERIVED_LINK3';
+const TABLA_NOTAS = 'table[id^="STDNT_GRAD_SSVW"]';
+
+const CALIFICACION_MINIMA_APROBATORIA = 7;
+
+let activeController = null;
+
+function log(...args) {
+  console.log('[calificaciones]', ...args);
 }
 
-// Match preferente por `codigo` de la boleta contra el código de PeopleSoft;
-// fallback por nombre normalizado. Se aplica en cada return (fresh o cache) para
-// que un horario sincronizado después llene los huecos sin re-scrapear el CIA.
-function enrichWithInstructors(materias) {
-  const index = buildInstructorIndex(readHorarioCacheLazy());
-  return (Array.isArray(materias) ? materias : []).map((materia) => ({
-    ...materia,
-    profesor:
-      materia.profesor ||
-      lookupInstructor(index, { codigo: materia.codigo || materia.clave, nombre: materia.nombre }),
-  }));
-}
+// ---------------------------------------------------------------- Persistencia
 
-const CIA_ENTRY_URL = 'https://apps9.itson.edu.mx/CIA/index.aspx';
-const REPORT_MANAGER_URL = 'http://smartweb3.itson.edu.mx:9500/psp/ITSONPRD_1/EMPLOYEE/PSFT_HR/c/REPORT_MANAGER.CONTENT_LIST.GBL?Page=CDM_CONTLIST&Action=U&';
-const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
-const PAGE_TIMEOUT_MS = 20_000;
-const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
-
-function normalizeWhitespace(value) {
-  return (value || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function getCIACachePath() {
-  return path.join(getCIAUserDataPath(), 'cia-cache.json');
-}
-
-function getCIAUserDataPath() {
+function getUserDataPath() {
   if (app && typeof app.getPath === 'function') {
     return app.getPath('userData');
   }
@@ -53,638 +69,469 @@ function getCIAUserDataPath() {
   return fallbackPath;
 }
 
-function discardCIACache(cachePath) {
-  if (fs.existsSync(cachePath)) {
-    fs.unlinkSync(cachePath);
-  }
+// Función y no constante de módulo: los tests stubean app.getPath.
+function getCachePath() {
+  return path.join(getUserDataPath(), 'cia-cache.json');
 }
 
-function readCIACache() {
-  const cachePath = getCIACachePath();
+function discardFile(cachePath) {
+  if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
+}
 
-  if (!fs.existsSync(cachePath)) {
-    return null;
-  }
+function readCache() {
+  const cachePath = getCachePath();
 
   try {
+    if (!fs.existsSync(cachePath)) return null;
+
     const parsed = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
 
-    if (!parsed || typeof parsed.timestamp !== 'number' || !Array.isArray(parsed.materias)) {
-      discardCIACache(cachePath);
+    // Un caché sin `schemaVersion` es el formato de la boleta, incompatible en
+    // forma: no se trata como v1, se tira.
+    if (parsed?.schemaVersion !== CALIFICACIONES_CACHE_SCHEMA_VERSION) {
+      log('caché con esquema distinto: se descarta y se vuelve a extraer');
+      discardFile(cachePath);
+      return null;
+    }
+
+    if (!Array.isArray(parsed.ciclos) || typeof parsed.timestamp !== 'number') {
+      log('caché con forma inesperada: se descarta');
+      discardFile(cachePath);
       return null;
     }
 
     return parsed;
-  } catch (error) {
-    console.error('[cia] Error leyendo caché de calificaciones:', error?.message || error);
-    discardCIACache(cachePath);
+  } catch (_error) {
+    discardFile(cachePath);
     return null;
   }
 }
 
-function writeCIACache(materias) {
-  const cachePayload = {
+function writeCache(payload) {
+  const anterior = readCache();
+
+  const registro = {
+    schemaVersion: CALIFICACIONES_CACHE_SCHEMA_VERSION,
     timestamp: Date.now(),
-    materias,
+    cicloActual: payload.cicloActual || null,
+    ciclos: Array.isArray(payload.ciclos) ? payload.ciclos : [],
+    // El expediente lo llena el RPA, que corre aparte y puede no haber corrido
+    // en esta pasada: conservar el anterior en vez de borrarlo.
+    expediente: payload.expediente ?? anterior?.expediente ?? null,
   };
 
-  fs.writeFileSync(getCIACachePath(), JSON.stringify(cachePayload, null, 2), 'utf8');
-
-  return cachePayload;
+  fs.writeFileSync(getCachePath(), JSON.stringify(registro, null, 2), 'utf8');
+  return registro;
 }
 
 function clearCIACache() {
-  const cachePath = getCIACachePath();
-
-  if (fs.existsSync(cachePath)) {
-    fs.unlinkSync(cachePath);
-  }
-
+  discardFile(getCachePath());
   return { success: true };
 }
 
-function buildCIAError(message) {
-  try {
-    clearCIACache();
-  } catch (_error) {
-    // Ignore cache cleanup failures.
-  }
+// ------------------------------------------------------------------- Parseo
 
-  return { error: message };
+// La celda "Curso" viene como "M 1172M" / "IDIOMA 1043D" / "TUTORIA 1132T":
+// área + catálogo. El catálogo es el último token.
+function parseCurso(celda) {
+  const tokens = String(celda || '').trim().split(/\s+/).filter(Boolean);
+
+  if (!tokens.length) return { area: '', codigo: '' };
+  if (tokens.length === 1) return { area: '', codigo: tokens[0] };
+
+  return { area: tokens.slice(0, -1).join(' '), codigo: tokens[tokens.length - 1] };
 }
+
+// La escala oficial del ITSON es entera 0-10, mínimo 7 para aprobar. Los cursos
+// adicionales (laboratorios, tutorías) usan A/NA en vez de número.
+function parseCalificacion(celda) {
+  const texto = String(celda || '').trim();
+
+  if (!texto) return { calificacion: null, literal: null };
+
+  if (/^N\/?A$/i.test(texto)) return { calificacion: null, literal: 'NA' };
+  if (/^A$/i.test(texto)) return { calificacion: null, literal: 'A' };
+
+  const numero = Number(texto.replace(',', '.'));
+  if (Number.isFinite(numero)) return { calificacion: numero, literal: null };
+
+  return { calificacion: null, literal: texto.toUpperCase() };
+}
+
+// Sin `en_riesgo`: un 6 está reprobado, no en riesgo — el RPA lista los 6 bajo
+// ASIGNATURAS REPROBADAS. Ese umbral solo tenía sentido para parciales.
+function getEstado({ calificacion, literal }) {
+  if (literal === 'A') return 'acreditada';
+  if (literal === 'NA') return 'no_acreditada';
+  if (!Number.isFinite(calificacion)) return 'sin_calificacion';
+  return calificacion >= CALIFICACION_MINIMA_APROBATORIA ? 'aprobada' : 'reprobada';
+}
+
+function media(valores) {
+  if (!valores.length) return null;
+  const suma = valores.reduce((acc, v) => acc + v, 0);
+  return Number((suma / valores.length).toFixed(2));
+}
+
+// Promedio del ciclo: TODAS las numéricas, reprobadas incluidas.
+function promedioCiclo(materias) {
+  return media(
+    (materias || []).map((m) => m.calificacion).filter((c) => Number.isFinite(c)),
+  );
+}
+
+// Promedio global: SOLO las aprobadas. Es la fórmula del RPA, distinta de la
+// del ciclo a propósito.
+function promedioGlobalCalculado(ciclos) {
+  const aprobadas = (ciclos || [])
+    .flatMap((ciclo) => ciclo.materias || [])
+    .map((m) => m.calificacion)
+    .filter((c) => Number.isFinite(c) && c >= CALIFICACION_MINIMA_APROBATORIA);
+
+  return media(aprobadas);
+}
+
+// El value del <option> es "000002790093145LIC ITSON": matrícula + STRM + grado.
+function cicloIdFromValue(value) {
+  return String(value || '').replace(/\s+/g, '').slice(11, 15);
+}
+
+const ES_UNIDADES = /^\d+\.\d{2}$/;
+
+// Mapea por ENCABEZADO, no por posición fija: el ciclo en curso devuelve una
+// celda menos y un mapeo posicional le asignaría las unidades a la calificación.
+function filasAMaterias(filas) {
+  const normalizar = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+  const indiceEncabezado = (filas || []).findIndex((fila) => {
+    const texto = fila.map(normalizar).join(' | ').toLowerCase();
+    return texto.includes('curso') && texto.includes('nombre clase');
+  });
+
+  if (indiceEncabezado === -1) return [];
+
+  const encabezado = filas[indiceEncabezado].map((c) => normalizar(c).toLowerCase());
+  const col = {
+    curso: encabezado.findIndex((c) => c.includes('curso')),
+    nombre: encabezado.findIndex((c) => c.includes('nombre')),
+    calificacion: encabezado.findIndex((c) => c.includes('calificaci')),
+    unidades: encabezado.findIndex((c) => c.includes('unidades')),
+  };
+
+  return filas
+    .slice(indiceEncabezado + 1)
+    .map((fila) => {
+      const celdas = fila.map(normalizar);
+
+      // El breadcrumb ("Mi Informe Calificaciones > ...") llega como fila de una
+      // sola celda.
+      if (celdas.length < 2) return null;
+
+      let curso;
+      let nombre;
+      let calificacionCruda;
+      let unidadesCrudas;
+
+      if (celdas.length === encabezado.length) {
+        curso = celdas[col.curso];
+        nombre = celdas[col.nombre];
+        calificacionCruda = celdas[col.calificacion];
+        unidadesCrudas = celdas[col.unidades];
+      } else {
+        // Ciclo en curso: falta la celda de calificación. Se reconstruye por
+        // forma desde la derecha — las unidades son el "N.NN" final.
+        const ultima = celdas[celdas.length - 1];
+        const tieneUnidades = ES_UNIDADES.test(ultima);
+
+        curso = celdas[0];
+        unidadesCrudas = tieneUnidades ? ultima : '';
+        nombre = celdas.slice(1, tieneUnidades ? -1 : undefined).join(' ');
+        calificacionCruda = '';
+      }
+
+      const { area, codigo } = parseCurso(curso);
+      if (!codigo) return null;
+
+      const { calificacion, literal } = parseCalificacion(calificacionCruda);
+      const unidades = ES_UNIDADES.test(unidadesCrudas) ? Number(unidadesCrudas) : null;
+
+      return {
+        codigo,
+        clave: codigo,
+        area,
+        nombre: normalizar(nombre),
+        profesor: '',
+        calificacion,
+        literal,
+        unidades,
+        estado: getEstado({ calificacion, literal }),
+      };
+    })
+    .filter(Boolean);
+}
+
+// ------------------------------------------------------------ Enriquecimiento
+
+function readHorarioCacheLazy() {
+  try {
+    return require('./horario').readHorarioCache();
+  } catch (_error) {
+    return null;
+  }
+}
+
+// El horario trae el número de clase (14753) y el CIA el catálogo (1172M), así
+// que el match pega por nombre normalizado, no por código.
+function enrichWithInstructors(ciclos) {
+  const index = buildInstructorIndex(readHorarioCacheLazy());
+
+  return (ciclos || []).map((ciclo) => ({
+    ...ciclo,
+    materias: (ciclo.materias || []).map((materia) => ({
+      ...materia,
+      profesor:
+        materia.profesor ||
+        lookupInstructor(index, { codigo: materia.codigo, nombre: materia.nombre }),
+    })),
+  }));
+}
+
+// --------------------------------------------------------------- Scraping
 
 async function applyResourceBlocking(page) {
   await page.route('**/*', (route) => {
-    const resourceType = route.request().resourceType();
-
-    if (BLOCKED_RESOURCE_TYPES.has(resourceType)) {
+    if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) {
       route.abort();
       return;
     }
-
     route.continue();
   });
 }
 
-async function waitForFrameText(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
+const LEER_TABLA = (selector) => {
+  const limpio = (s) => (s || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  const tabla = document.querySelector(selector);
+  if (!tabla) return { filas: [], breadcrumb: '' };
 
-  while (Date.now() < deadline) {
-    for (const frame of page.frames()) {
-      const text = await frame.locator('body').textContent().catch(() => '');
-      const normalized = normalizeWhitespace(text);
-
-      if (!normalized) {
-        continue;
-      }
-
-      if (matcher instanceof RegExp ? matcher.test(normalized) : normalized.includes(matcher)) {
-        return frame;
-      }
-    }
-
-    await page.waitForTimeout(250);
-  }
-
-  throw new Error(`No se encontró el contenido esperado: ${matcher}`);
-}
-
-async function waitForFrameWithSelector(page, selector, timeoutMs = PAGE_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const frame of page.frames()) {
-      const count = await frame.locator(selector).count().catch(() => 0);
-
-      if (count > 0) {
-        return frame;
-      }
-    }
-
-    await page.waitForTimeout(250);
-  }
-
-  throw new Error(`No se encontró el frame con el selector esperado: ${selector}`);
-}
-
-async function waitForFrameUrl(page, matcher, timeoutMs = PAGE_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const frame of page.frames()) {
-      const url = frame.url() || '';
-
-      if (matcher instanceof RegExp ? matcher.test(url) : url.includes(matcher)) {
-        return frame;
-      }
-    }
-
-    await page.waitForTimeout(250);
-  }
-
-  throw new Error(`No se encontró el frame esperado: ${matcher}`);
-}
-
-async function loginToCIA(page, user, password) {
-  await page.goto(CIA_ENTRY_URL, { waitUntil: 'domcontentloaded' });
-  await page.locator('#txtITSONET').fill(user);
-  await page.locator('#btnConexionTrayectorias').click();
-  await page.getByRole('button', { name: 'Continuar' }).waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS }).catch(() => {});
-
-  await page.getByRole('button', { name: 'Continuar' }).click();
-  await page.locator('#userid').waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
-
-  await page.locator('#userid').fill(user);
-  await page.locator('#pwd').fill(password);
-  await page.getByRole('button', { name: 'Iniciar Sesión' }).click();
-
-  await page.getByRole('link', { name: 'Autoservicio', exact: true })
-    .last()
-    .waitFor({ state: 'visible', timeout: 15_000 })
-    .catch(() => {});
-
-  const autoservicioLink = page.getByRole('link', { name: 'Autoservicio', exact: true }).last();
-
-  if (!(await autoservicioLink.count().catch(() => 0))) {
-    throw new Error('Credenciales CIA inválidas o no configuradas.');
-  }
-
-  await autoservicioLink.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
-}
-
-async function openBoletaPage(page) {
-  const autoservicioLink = page.getByRole('link', { name: 'Autoservicio', exact: true }).last();
-  await autoservicioLink.click();
-  await page.waitForFunction(
-    () =>
-      Array.from(document.querySelectorAll('iframe')).some(
-        (f) => f.src && f.src.includes('CO_EMPLOYEE_SELF_SERVICE'),
-      ),
-    { timeout: 15_000 },
-  ).catch(() => {});
-
-  const navFrame = page.frames().find(
-    (frame) =>
-      frame.url().includes('PortalCacheContent=true') &&
-      frame.url().includes('CO_EMPLOYEE_SELF_SERVICE&FolderPath'),
-  );
-
-  if (!navFrame) {
-    throw new Error('No fue posible abrir el menú de Autoservicio.');
-  }
-
-  const boletaLink = navFrame.getByRole('link', { name: 'Boleta de Calificación', exact: true });
-  await boletaLink.click();
-
-  const boletaFrame = await waitForFrameUrl(
-    page,
-    /ITSR_MENU\.ITSR_BOL_CAL_GBL\.GBL.*PortalCRefLabel=Boleta/i,
-  );
-
-  if (!boletaFrame) {
-    throw new Error('No fue posible abrir el formulario de Boleta de Calificación.');
-  }
-
-  await boletaFrame.locator('#ITSR_RUN_BOLCAL_EMPLID').waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
-
-  return boletaFrame;
-}
-
-async function openReportManagerList(page) {
-  await page.goto(REPORT_MANAGER_URL, { waitUntil: 'domcontentloaded' });
-  return waitForFrameText(page, /Lista Informes/i);
-}
-
-async function setSelectValueWithoutPostback(frame, selector, value) {
-  await frame.locator(selector).evaluate((element, nextValue) => {
-    if (element instanceof HTMLSelectElement) {
-      element.value = nextValue;
-    }
-  }, value);
-}
-
-function isGradeCode(value) {
-  return /^(?=.*[A-Z])(?=.*\d)[A-Z0-9-]{4,}$/.test(value || '');
-}
-
-function parseFinalGrade(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (/^\s*-+\s*$/.test(value) || /^[A-Z]\s*$/i.test(value)) {
-    return null;
-  }
-
-  const normalized = String(value).replace(',', '.');
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getGradeStatus(promedio, calificaciones = []) {
-  const hasGrades = calificaciones.some((item) => Number.isFinite(item?.calificacion));
-
-  if (!hasGrades || !Number.isFinite(promedio)) {
-    return 'sin_calificacion';
-  }
-
-  if (promedio >= 7) {
-    return 'aprobada';
-  }
-
-  if (promedio >= 6) {
-    return 'en_riesgo';
-  }
-
-  return 'reprobada';
-}
-
-function normalizeCourseCode(value = '') {
-  return normalizeWhitespace(value).replace(/\s+/g, '').toUpperCase();
-}
-
-function cleanCourseName(value = '') {
-  return normalizeWhitespace(
-    value
-      .replace(/\s+-\s*/g, ' ')
-      .replace(/\s{2,}/g, ' '),
-  );
-}
-
-function buildPartialEntries(cells) {
-  const relevantCells = cells
-    .filter((item) => item.x >= 220 && item.x < 705)
-    .filter((item) => /^-?\d+(?:[.,]\d+)?$/.test(item.text) || /^\s*-+\s*$/.test(item.text));
-
-  const visiblePartials = relevantCells
-    .filter((item) => Number.isFinite(parseFinalGrade(item.text)))
-    .map((item, index) => ({
-      nombre: `Parcial ${index + 1}`,
-      etiqueta: `P${index + 1}`,
-      parcial: `P${index + 1}`,
-      calificacion: parseFinalGrade(item.text),
-      sobre: 10,
-    }));
-
-  if (visiblePartials.length > 0) {
-    return visiblePartials;
-  }
-
-  // The current CIA PDF often renders partial columns as "-" even when final
-  // grades are visible. Keep explicit partial slots so the UI can distinguish
-  // "no partial uploaded yet" from "only final was parsed".
-  return Array.from({ length: Math.min(3, Math.max(1, relevantCells.length || 3)) }, (_, index) => ({
-    nombre: `Parcial ${index + 1}`,
-    etiqueta: `P${index + 1}`,
-    parcial: `P${index + 1}`,
-    calificacion: null,
-    sobre: 10,
-  }));
-}
-
-function buildComponentFromRow(row, fallbackTipo = 'Teoría') {
   return {
-    tipo: row.componente || fallbackTipo,
-    calificaciones: row.calificaciones,
-    promedio: row.promedio,
+    // Sin filtrar celdas vacías: la celda ausente de calificación en el ciclo
+    // en curso es justamente la señal que distingue ese caso.
+    filas: Array.from(tabla.rows).map((tr) => Array.from(tr.cells).map((c) => limpio(c.innerText))),
+    breadcrumb: limpio(tabla.rows[0]?.innerText || ''),
   };
-}
+};
 
-function groupMateriasByCode(rows) {
-  const groups = new Map();
+async function abrirMisCalificaciones(page) {
+  const autoservicio = page.getByRole('link', { name: /autoservicio/i }).last();
+  await autoservicio.click().catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, ciaSession.PSOFT_SETTLE_MS));
 
-  rows.forEach((row) => {
-    const code = normalizeCourseCode(row.codigo || row.clave);
-    if (!code) return;
-
-    if (!groups.has(code)) {
-      groups.set(code, []);
-    }
-
-    groups.get(code).push(row);
-  });
-
-  return [...groups.entries()].map(([codigo, groupRows]) => {
-    const primary = groupRows[0];
-    const numericPromedios = groupRows
-      .map((row) => row.promedio)
-      .filter((value) => Number.isFinite(value));
-    const promedio =
-      numericPromedios.length > 0
-        ? Number((numericPromedios.reduce((sum, value) => sum + value, 0) / numericPromedios.length).toFixed(2))
-        : null;
-    const hasLabInName = /(?:c\/lab|\/lab|laboratorio)/i.test(primary.nombre);
-    const hasMultipleComponents = groupRows.length > 1;
-    const tieneComponentes = hasMultipleComponents || hasLabInName;
-    let componentes = [];
-
-    if (hasMultipleComponents) {
-      componentes = groupRows.map((row, index) => buildComponentFromRow(row, index === 0 ? 'Teoría' : 'Laboratorio'));
-    } else if (hasLabInName) {
-      componentes = [
-        buildComponentFromRow(primary, 'Teoría'),
-        {
-          tipo: 'Laboratorio',
-          calificaciones: primary.calificaciones,
-          promedio: primary.promedio,
-        },
-      ];
-    }
-
-    const calificaciones = primary.calificaciones || [];
-
-    return {
-      codigo,
-      clave: codigo,
-      nombre: primary.nombre,
-      profesor: primary.profesor || '',
-      calificaciones,
-      promedio,
-      estado: getGradeStatus(promedio, calificaciones),
-      tieneComponentes,
-      componentes,
-    };
-  });
-}
-
-function extractMateriasFromPage(pageTextItems) {
-  const groupedRows = new Map();
-
-  pageTextItems.forEach((item) => {
-    const rowKey = Math.round(item.y * 2) / 2;
-
-    if (!groupedRows.has(rowKey)) {
-      groupedRows.set(rowKey, []);
-    }
-
-    groupedRows.get(rowKey).push(item);
-  });
-
-  const rows = [];
-
-  [...groupedRows.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .forEach(([, rowItems]) => {
-      const sortedItems = rowItems
-        .map((item) => ({
-          text: normalizeWhitespace(item.str),
-          x: item.x,
-        }))
-        .filter((item) => item.text)
-        .sort((a, b) => a.x - b.x);
-
-      if (sortedItems.length === 0) {
-        return;
-      }
-
-      const codeIndex = sortedItems.findIndex((item) => item.x >= 20 && item.x <= 75 && isGradeCode(item.text));
-
-      if (codeIndex < 0) {
-        return;
-      }
-
-      const codigo = normalizeCourseCode(sortedItems[codeIndex].text);
-      const nombre = cleanCourseName(
-        sortedItems
-          .filter((item) => item.x > 70 && item.x < 225)
-          .map((item) => item.text)
-          .filter((text) => text && !/^(?:TOTAL|CALIF|FALTAS|-+)$/i.test(text))
-          .join(' '),
-      );
-
-      if (!nombre || /^(?:REGISTRO DE EVALUACIONES|INSTITUTO TECNOL[ÓO]GICO|CICLO LECTIVO|PLAN\b|NOMBRE\b|PROGRAMA\b|ID ALUMNO)/i.test(nombre)) {
-        return;
-      }
-
-      const finalGradeItem = sortedItems
-        .filter((item) => item.x >= 740)
-        .sort((a, b) => b.x - a.x)
-        .find((item) => /^-?\d+(?:[.,]\d+)?$/.test(item.text) || /^\s*-+\s*$/.test(item.text) || /^[A-Z]\s*$/i.test(item.text));
-      const finalGrade = parseFinalGrade(finalGradeItem?.text);
-      const partialEntries = buildPartialEntries(sortedItems);
-      const calificaciones = [
-        ...partialEntries,
-        {
-          nombre: 'Final',
-          etiqueta: 'Final',
-          parcial: 'Final',
-          calificacion: finalGrade,
-          sobre: 10,
-        },
-      ];
-
-      const promedio = Number.isFinite(finalGrade) ? finalGrade : null;
-
-      rows.push({
-        codigo,
-        clave: codigo,
-        nombre,
-        profesor: '',
-        calificaciones,
-        promedio,
-        estado: getGradeStatus(promedio, calificaciones),
+  for (const frame of page.frames()) {
+    const link = frame.getByRole('link', { name: /mis calificaciones/i }).first();
+    if (await link.count().catch(() => 0)) {
+      await link.click({ timeout: 10_000 }).catch(async () => {
+        const id = await frame
+          .evaluate(() => {
+            const a = Array.from(document.querySelectorAll('a[id]')).find((x) =>
+              /mis calificaciones/i.test(x.textContent || ''));
+            return a?.id || null;
+          })
+          .catch(() => null);
+        if (id) await ciaSession.submitAction(frame, id).catch(() => {});
       });
-    });
-
-  return groupMateriasByCode(rows);
-}
-
-async function extractCalificacionesFromPdf(buffer) {
-  const doc = await pdfjsLib.getDocument({ data: buffer }).promise;
-  const allItems = [];
-
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const content = await page.getTextContent();
-
-    content.items.forEach((item) => {
-      allItems.push({
-        str: item.str,
-        x: item.transform[4],
-        y: item.transform[5],
-      });
-    });
+      break;
+    }
   }
 
-  return extractMateriasFromPage(allItems);
+  return ciaSession.findFrameBySelector(page, SELECT_CICLO);
 }
 
-async function scrapeCIAWithPlaywright() {
+async function scrapeCalificaciones(controller = {}, onProgress) {
   const user = process.env.CIA_USER?.trim();
   const password = process.env.CIA_PASS?.trim();
 
-  if (!user && !password) {
-    return buildCIAError('CIA_NO_CREDENTIALS');
-  }
-
-  if (!user) {
-    return buildCIAError('CIA_NO_USER');
-  }
-
-  if (!password) {
-    return buildCIAError('CIA_NO_PASSWORD');
-  }
+  if (!user && !password) return { error: 'CIA_NO_CREDENTIALS' };
+  if (!user) return { error: 'CIA_NO_USER' };
+  if (!password) return { error: 'CIA_NO_PASSWORD' };
 
   const browser = await chromium.launch({ headless: true });
+  controller.browser = browser;
 
   try {
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    page.setDefaultTimeout(ciaSession.PAGE_TIMEOUT_MS);
     await applyResourceBlocking(page);
-    await loginToCIA(page, user, password);
 
-    const boletaFrame = await openBoletaPage(page);
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_INSTITUTION', 'ITSON');
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_ACAD_CAREER', 'LIC');
+    const loginResult = await ciaSession.loginToCIA(page, user, password);
+    if (loginResult?.error) return loginResult;
 
-    const latestSemester = await boletaFrame.evaluate(() => {
-      const select = document.getElementById('ITSR_RUN_BOLCAL_STRM');
-      if (!select) return null;
-      const options = Array.from(select.options).filter((o) => o.value && o.value.trim() !== '');
-      return options.length > 0 ? options[options.length - 1].value : null;
-    });
+    const frameNotas = await abrirMisCalificaciones(page);
+    if (!frameNotas) return { error: 'CIA_GRADES_UNAVAILABLE' };
 
-    if (!latestSemester) {
-      throw new Error('No se encontró un semestre disponible en el formulario de boleta.');
-    }
+    const opciones = await frameNotas.evaluate((selector) => {
+      const select = document.querySelector(selector);
+      if (!select) return { ciclos: [], seleccionado: null };
 
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_STRM', latestSemester);
+      const ciclos = Array.from(select.options)
+        .map((o) => ({ value: o.value, nombre: (o.textContent || '').trim() }))
+        .filter((o) => o.nombre && o.value.trim());
 
-    const academicProgram = await boletaFrame.evaluate(() => {
-      const select = document.getElementById('ITSR_RUN_BOLCAL_ACAD_PROG');
-      if (!select) return null;
-      const options = Array.from(select.options).filter((o) => o.value && o.value.trim() !== '');
-      return options.length > 0 ? options[options.length - 1].value : null;
-    });
+      return { ciclos, seleccionado: select.value };
+    }, SELECT_CICLO);
 
-    if (!academicProgram) {
-      throw new Error('No se encontró un programa académico en el formulario de boleta.');
-    }
+    if (!opciones.ciclos.length) return { error: 'CIA_GRADES_UNAVAILABLE' };
 
-    await setSelectValueWithoutPostback(boletaFrame, '#ITSR_RUN_BOLCAL_ACAD_PROG', academicProgram);
-    await boletaFrame.locator('#ITSRDERIVBOLCAL_PUSH').click();
+    const ciclos = [];
 
-    let reportFrame = null;
+    for (let i = 0; i < opciones.ciclos.length; i += 1) {
+      const opcion = opciones.ciclos[i];
+      onProgress?.({ done: i, total: opciones.ciclos.length, ciclo: opcion.nombre });
 
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      reportFrame = await openReportManagerList(page);
-      const rowDetailLink = reportFrame.locator('a[href*="CDM_WRK_INDEX_BTN"]').first();
-      if (await rowDetailLink.count().catch(() => 0)) {
-        await rowDetailLink.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
-        break;
+      try {
+        const frameActual = await ciaSession.findFrameBySelector(page, SELECT_CICLO);
+        if (!frameActual) continue;
+
+        await frameActual.selectOption(SELECT_CICLO, opcion.value);
+
+        // El select no hace postback solo: el link "cambiar" es el que aplica.
+        const frameCambiado = await ciaSession.submitAndWait(
+          page,
+          SELECT_CICLO,
+          LINK_CAMBIAR.replace('#', ''),
+          (frame) =>
+            frame.evaluate(
+              (args) => {
+                const tabla = document.querySelector(args.selector);
+                return Boolean(tabla) && (tabla.innerText || '').includes(args.nombre);
+              },
+              { selector: TABLA_NOTAS, nombre: opcion.nombre },
+            ),
+        );
+
+        const frameLectura = frameCambiado || (await ciaSession.findFrameBySelector(page, SELECT_CICLO));
+        if (!frameLectura) continue;
+
+        const { filas } = await frameLectura.evaluate(LEER_TABLA, TABLA_NOTAS);
+        const materias = filasAMaterias(filas);
+        if (!materias.length) continue;
+
+        ciclos.push({
+          id: cicloIdFromValue(opcion.value),
+          value: opcion.value,
+          nombre: opcion.nombre,
+          enCurso: materias.some((m) => m.estado === 'sin_calificacion'),
+          promedio: promedioCiclo(materias),
+          creditos: Number(
+            materias.reduce((sum, m) => sum + (Number.isFinite(m.unidades) ? m.unidades : 0), 0).toFixed(2),
+          ),
+          materias,
+        });
+      } catch (error) {
+        // Un ciclo que falla el postback no invalida los demás.
+        log(`ciclo "${opcion.nombre}" no se pudo leer:`, String(error?.message || error).slice(0, 120));
       }
-
-      reportFrame = null;
-      await page.waitForTimeout(1500);
     }
 
-    if (!reportFrame) {
-      throw new Error('No fue posible localizar el informe de la boleta en Report Manager.');
-    }
+    onProgress?.({ done: opciones.ciclos.length, total: opciones.ciclos.length });
 
-    const detLink = reportFrame.locator('a[href*="CDM_WRK_INDEX_BTN"]').first();
-    await detLink.click({ force: true });
+    if (!ciclos.length) return { error: 'CIA_GRADES_UNAVAILABLE' };
 
-    const detailFrame = await waitForFrameWithSelector(page, 'a[href*="/psreports/"][href$=".PDF"]');
-    const pdfHref = await detailFrame
-      .locator('a[href*="/psreports/"][href$=".PDF"]')
-      .first()
-      .getAttribute('href');
-
-    if (!pdfHref) {
-      throw new Error('No fue posible ubicar el PDF de la boleta.');
-    }
-
-    const pdfUrl = new URL(pdfHref, page.url()).href;
-    const pdfResponse = await page.context().request.get(pdfUrl);
-
-    if (!pdfResponse.ok()) {
-      throw new Error('No fue posible descargar el PDF de la boleta.');
-    }
-
-    const materias = await extractCalificacionesFromPdf(Buffer.from(await pdfResponse.body()));
+    ciclos.sort((a, b) => String(b.id).localeCompare(String(a.id)));
 
     return {
-      materias,
-      timestamp: Date.now(),
+      cicloActual: cicloIdFromValue(opciones.seleccionado) || ciclos[0]?.id || null,
+      ciclos,
+      expediente: null,
     };
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
+    controller.browser = null;
   }
 }
 
-async function getCalificacionesWithCache() {
-  const cached = readCIACache();
+// ------------------------------------------------------------- Orquestador
 
-  if (cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
-    return {
-      materias: enrichWithInstructors(cached.materias),
-      timestamp: cached.timestamp,
-      fromCache: true,
-    };
+async function getCalificacionesWithCache({ force = false } = {}, onProgress) {
+  if (activeController) {
+    return { error: 'Ya hay una sincronización de calificaciones en progreso.' };
   }
+
+  const cached = readCache();
+
+  if (!force && cached && Date.now() - cached.timestamp < CACHE_MAX_AGE_MS) {
+    return { ...cached, ciclos: enrichWithInstructors(cached.ciclos), fromCache: true };
+  }
+
+  const controller = {};
+  activeController = controller;
+
+  let timeoutId = null;
 
   try {
-    const response = await scrapeCIAWithPlaywright();
+    const result = await Promise.race([
+      scrapeCalificaciones(controller, onProgress),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => {
+          controller.browser?.close().catch(() => {});
+          resolve({ error: 'CIA_TIMEOUT' });
+        }, GLOBAL_TIMEOUT_MS);
+      }),
+    ]);
 
-    if (response?.error) {
-      notificationCenter.processSyncError('calificaciones', response.error);
-      return response;
+    if (result?.error) {
+      notificationCenter.processSyncError?.('calificaciones', result.error);
+
+      // Una caché vencida es mejor que una pantalla vacía: un error de acceso no
+      // es evidencia de que lo guardado esté mal.
+      if (cached) {
+        return {
+          ...cached,
+          ciclos: enrichWithInstructors(cached.ciclos),
+          fromCache: true,
+          stale: true,
+          error: result.error,
+        };
+      }
+
+      return result;
     }
 
-    if (Array.isArray(response.materias)) {
-      writeCIACache(response.materias);
-      notificationCenter.processSync('calificaciones', response.materias);
-    }
+    const enriquecido = { ...result, ciclos: enrichWithInstructors(result.ciclos) };
+    const registro = writeCache(enriquecido);
 
-    return {
-      ...response,
-      materias: enrichWithInstructors(response.materias),
-      fromCache: false,
-    };
-  } catch (error) {
-    const message = error?.message || '';
+    notificationCenter.processSync?.('calificaciones', registro);
 
-    // Solo login/credenciales indica contraseña mala. Un timeout real de red
-    // (Report Manager lento) NO debe reportarse como "credenciales inválidas".
-    if (
-      message.includes('Credenciales CIA inválidas o no configuradas') ||
-      /login/i.test(message)
-    ) {
-      notificationCenter.processSyncError('calificaciones', 'CIA_NO_CREDENTIALS');
-      return { error: 'Credenciales CIA inválidas o no configuradas.' };
-    }
-
-    if (/timeout|timed out/i.test(message)) {
-      const timeoutError = 'La conexión al CIA tardó demasiado. Intenta de nuevo.';
-      notificationCenter.processSyncError('calificaciones', timeoutError);
-      return { error: timeoutError };
-    }
-
-    const fallbackError = message
-      ? `Falló la extracción del CIA: ${message}`
-      : 'Falló la extracción del CIA por un error no identificado.';
-    notificationCenter.processSyncError('calificaciones', fallbackError);
-
-    return { error: fallbackError };
+    return { ...registro, ciclos: enriquecido.ciclos, fromCache: false };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    activeController = null;
   }
 }
 
+// -------------------------------------------------------------------- IPC
+
 function registerCIAHandlers() {
-  ipcMain.handle('cia:run', async () => getCalificacionesWithCache());
+  if (!ipcMain?.handle) return; // los tests stubean electron con ipcMain: null
+
+  ipcMain.handle('cia:run', async (_event, options) => getCalificacionesWithCache(options || {}));
   ipcMain.handle('cia:clear-cache', async () => clearCIACache());
 }
 
 module.exports = {
+  CALIFICACIONES_CACHE_SCHEMA_VERSION,
+  parseCurso,
+  parseCalificacion,
+  getEstado,
+  promedioCiclo,
+  promedioGlobalCalculado,
+  cicloIdFromValue,
+  filasAMaterias,
+  getCachePath,
+  readCache,
+  writeCache,
   clearCIACache,
-  extractCalificacionesFromPdf,
-  getCIACachePath,
+  scrapeCalificaciones,
   getCalificacionesWithCache,
-  loginToCIA,
-  openBoletaPage,
-  openReportManagerList,
-  readCIACache,
   registerCIAHandlers,
-  scrapeCIAWithPlaywright,
-  waitForFrameText,
-  writeCIACache,
 };

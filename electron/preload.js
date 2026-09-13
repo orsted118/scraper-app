@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('scraperApp', {
   clearCache: () => ipcRenderer.invoke('scraper:clear-cache'),
   runScraper: (payload) => ipcRenderer.invoke('scraper:run', payload),
-  runCIA: () => ipcRenderer.invoke('cia:run'),
+  runCIA: (options) => ipcRenderer.invoke('cia:run', options || {}),
   runHorario: (options) => ipcRenderer.invoke('horario:run', options || {}),
   runCalendario: (options) => ipcRenderer.invoke('calendario:run', options || {}),
   clearCIACache: () => ipcRenderer.invoke('cia:clear-cache'),
@@ -46,7 +46,6 @@ contextBridge.exposeInMainWorld('scraperApp', {
   inspectFile: (payload) => ipcRenderer.invoke('files:inspect', payload),
   parseFile: (payload) => ipcRenderer.invoke('files:parse', payload),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
-  syncAll: () => ipcRenderer.invoke('sync:all'),
   notifications: {
     list: () => ipcRenderer.invoke('notifications:list'),
     markRead: (id) => ipcRenderer.invoke('notifications:mark-read', id),

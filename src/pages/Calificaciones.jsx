@@ -1,121 +1,203 @@
-import {
-  AlertCircle,
-  AlertTriangle,
-  BookOpen,
-  CheckCircle2,
-  GraduationCap,
-  RefreshCw,
-  XCircle,
-} from 'lucide-react';
-import GradeCard from '../components/GradeCard';
+import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { AlertCircle, GraduationCap, RefreshCw } from 'lucide-react';
 import { formatLastSync } from '../utils/formatLastSync';
 
-const ciaFriendlyErrors = {
-  CIA_NO_CREDENTIALS: 'No has configurado tus credenciales del CIA. Ve a Ajustes para hacerlo.',
-  CIA_NO_USER: 'Falta tu usuario del CIA en la configuración. Ve a Ajustes.',
-  CIA_NO_PASSWORD: 'Falta tu contraseña del CIA en la configuración. Ve a Ajustes.',
-};
-
-const ciaSettingsErrorCodes = new Set([
+// Códigos que el usuario puede resolver él mismo yendo a Ajustes. El resto son
+// fallas del portal y mandarlo a Ajustes por ellas solo lo desvía.
+const CODIGOS_DE_AJUSTES = new Set([
   'CIA_NO_CREDENTIALS',
   'CIA_NO_USER',
   'CIA_NO_PASSWORD',
+  'CIA_LOGIN_FAILED',
 ]);
 
-function formatGrade(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return '—';
-  }
+const ESTADOS = {
+  aprobada: { etiqueta: 'Aprobada', texto: 'var(--success-text)', borde: 'var(--success-border)' },
+  acreditada: { etiqueta: 'Acreditada', texto: 'var(--success-text)', borde: 'var(--success-border)' },
+  reprobada: { etiqueta: 'Reprobada', texto: 'var(--error-text)', borde: 'var(--error-border)' },
+  no_acreditada: { etiqueta: 'No acreditada', texto: 'var(--error-text)', borde: 'var(--error-border)' },
+  sin_calificacion: { etiqueta: 'Sin calificar', texto: 'var(--text-muted)', borde: 'var(--border-subtle)' },
+};
 
-  return Number(value).toFixed(1);
+const MONO = { fontFamily: 'var(--font-mono, monospace)', fontVariantNumeric: 'tabular-nums' };
+
+function formatGrade(materia) {
+  if (materia.literal) return materia.literal;
+  if (!Number.isFinite(materia.calificacion)) return '—';
+  return String(materia.calificacion);
 }
 
-function getMateriaStatus(materia) {
-  const promedio = typeof materia.promedio === 'number' ? materia.promedio : null;
-  const hasGrades = Array.isArray(materia.calificaciones)
-    ? materia.calificaciones.some((item) => typeof item.calificacion === 'number')
-    : false;
-
-  if (!hasGrades || promedio === null) {
-    return 'sin_calificacion';
-  }
-
-  if (promedio >= 7) {
-    return 'aprobada';
-  }
-
-  if (promedio >= 6) {
-    return 'en_riesgo';
-  }
-
-  return 'reprobada';
-}
-
-
-function getFriendlyCIAErrorMessage(errorCode, fallbackMessage = '') {
-  return ciaFriendlyErrors[errorCode] || fallbackMessage;
-}
-
-function StatCard({ icon: Icon, label, value, tone = 'default' }) {
-  const toneStyles = {
-    default: { background: 'rgba(0, 109, 182, 0.12)', color: 'var(--accent-hover)' },
-    emerald: { background: 'var(--success-bg)', color: 'var(--success-text)' },
-    orange: { background: 'var(--retrasada-bg)', color: 'var(--retrasada-text)' },
-    red: { background: 'var(--error-bg)', color: 'var(--error-text)' },
-  };
-
+function Header({ onSync, loading, timestamp, stale }) {
   return (
-    <article
-      className="border p-5"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
-    >
-      <div className="flex items-center gap-3">
-        <span className="p-3" style={{ ...(toneStyles[tone] || toneStyles.default), borderRadius: 'var(--radius-badge, 0px)' }}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <div>
-          <p className="text-xs uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-semibold" style={{ color: 'var(--text)' }}>
-            {value}
-          </p>
-        </div>
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 className="text-2xl" style={{ color: 'var(--text-strong)', fontFamily: 'var(--font-display, sans-serif)' }}>
+          Calificaciones
+        </h1>
+        <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+          Registro académico oficial del CIA
+          {timestamp ? ` · ${formatLastSync(new Date(timestamp).toISOString())}` : ''}
+          {stale ? ' · sin actualizar' : ''}
+        </p>
       </div>
-    </article>
+
+      <button
+        type="button"
+        onClick={onSync}
+        disabled={loading}
+        className="flex items-center gap-2 border px-3 py-2 text-xs uppercase disabled:opacity-50"
+        style={{
+          borderColor: 'var(--border-subtle)',
+          color: 'var(--text-normal)',
+          letterSpacing: '0.1em',
+          borderRadius: 'var(--radius-card, 0px)',
+        }}
+      >
+        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        {loading ? 'Sincronizando' : 'Sincronizar'}
+      </button>
+    </div>
   );
 }
 
+function StatCard({ label, value, hint, tone }) {
+  return (
+    <div
+      className="border px-4 py-3"
+      style={{ borderColor: 'var(--border-subtle)', borderRadius: 'var(--radius-card, 0px)' }}
+    >
+      <p className="text-xs uppercase" style={{ color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+        {label}
+      </p>
+      <p className="mt-1 text-2xl" style={{ ...MONO, color: tone || 'var(--text-strong)' }}>
+        {value}
+      </p>
+      {hint ? (
+        <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function EmptyState({ title, detail, action }) {
+  return (
+    <div
+      className="flex flex-col items-center gap-3 border border-dashed px-6 py-12 text-center"
+      style={{ borderColor: 'var(--border-subtle)', borderRadius: 'var(--radius-card, 0px)' }}
+    >
+      <GraduationCap size={28} style={{ color: 'var(--text-muted)' }} />
+      <p className="text-sm" style={{ color: 'var(--text-strong)' }}>{title}</p>
+      <p className="max-w-sm text-xs" style={{ color: 'var(--text-muted)' }}>{detail}</p>
+      {action}
+    </div>
+  );
+}
+
+function TablaCiclo({ ciclo }) {
+  // El profesor sale del horario, que solo cubre el ciclo en curso: en los
+  // cerrados la columna quedaría entera en guiones.
+  const hayProfesores = ciclo.materias.some((m) => m.profesor);
+  const columnas = hayProfesores
+    ? ['Curso', 'Materia', 'Profesor', 'Calificación', 'Créditos']
+    : ['Curso', 'Materia', 'Calificación', 'Créditos'];
+  const alineaDerechaDesde = hayProfesores ? 3 : 2;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[520px] border-collapse text-xs">
+        <thead>
+          <tr style={{ color: 'var(--text-muted)' }}>
+            {columnas.map((head, index) => (
+              <th
+                key={head}
+                className={`border-b pb-2 font-semibold uppercase ${index >= alineaDerechaDesde ? 'text-right' : 'text-left'}`}
+                style={{ borderColor: 'var(--border-subtle)', letterSpacing: '0.1em' }}
+              >
+                {head}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {ciclo.materias.map((materia) => {
+            const estado = ESTADOS[materia.estado] || ESTADOS.sin_calificacion;
+
+            return (
+              <tr
+                key={`${ciclo.id}-${materia.codigo}`}
+                className="border-b last:border-b-0"
+                style={{ borderColor: 'var(--border-subtle)', borderLeft: `3px solid ${estado.borde}` }}
+              >
+                <td className="py-2 pl-3 text-left" style={{ ...MONO, color: 'var(--text-muted)' }}>
+                  {materia.codigo}
+                </td>
+                <td className="py-2 text-left" style={{ color: 'var(--text-normal)' }}>
+                  {materia.nombre}
+                  <span className="ml-2 text-xs" style={{ color: estado.texto }}>{estado.etiqueta}</span>
+                </td>
+                {hayProfesores ? (
+                  <td className="py-2 text-left" style={{ color: 'var(--text-muted)' }}>
+                    {materia.profesor || '—'}
+                  </td>
+                ) : null}
+                <td className="py-2 text-right" style={{ ...MONO, color: estado.texto }}>
+                  {formatGrade(materia)}
+                </td>
+                <td className="py-2 pr-3 text-right" style={{ ...MONO, color: 'var(--text-muted)' }}>
+                  {Number.isFinite(materia.unidades) ? materia.unidades.toFixed(2) : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// `calificaciones` es el payload completo del handler, no un array de materias:
+// { schemaVersion, timestamp, cicloActual, ciclos: [...], expediente }.
 function Calificaciones({
-  calificaciones = [],
-  errorCIA,
-  errorCIACode,
-  lastSyncCIA,
-  loadingCIA,
+  calificaciones: data = null,
+  errorCIA = '',
+  errorCIACode = '',
+  loadingCIA = false,
   onNavigate,
   onSyncCIA,
 }) {
-  const materias = Array.isArray(calificaciones) ? calificaciones : [];
-  const aprobadas = materias.filter((materia) => getMateriaStatus(materia) === 'aprobada').length;
-  const enRiesgo = materias.filter((materia) => getMateriaStatus(materia) === 'en_riesgo').length;
-  const reprobadas = materias.filter((materia) => getMateriaStatus(materia) === 'reprobada').length;
-  const numericAverages = materias
-    .map((materia) => (typeof materia.promedio === 'number' ? materia.promedio : null))
-    .filter((value) => value !== null);
-  const averageGeneral =
-    numericAverages.length > 0
-      ? numericAverages.reduce((sum, value) => sum + value, 0) / numericAverages.length
-      : null;
-  const friendlyCIAError = getFriendlyCIAErrorMessage(errorCIACode, errorCIA);
-  const credentialError =
-    ciaSettingsErrorCodes.has(errorCIACode) ||
-    /credenciales cia|cia inválidas|cia no configuradas/i.test(errorCIA || '');
+  const ciclos = useMemo(() => (Array.isArray(data?.ciclos) ? data.ciclos : []), [data]);
+  const [cicloId, setCicloId] = useState(null);
 
-  return (
-    <div className="space-y-6">
-      {friendlyCIAError ? (
+  const cicloActivo = useMemo(
+    () => ciclos.find((c) => c.id === cicloId) || ciclos.find((c) => c.id === data?.cicloActual) || ciclos[0],
+    [ciclos, cicloId, data],
+  );
+
+  const resumen = useMemo(() => {
+    const materias = cicloActivo?.materias || [];
+    return {
+      aprobadas: materias.filter((m) => m.estado === 'aprobada' || m.estado === 'acreditada').length,
+      reprobadas: materias.filter((m) => m.estado === 'reprobada' || m.estado === 'no_acreditada').length,
+      sinCalificar: materias.filter((m) => m.estado === 'sin_calificacion').length,
+    };
+  }, [cicloActivo]);
+
+  const irAAjustes = CODIGOS_DE_AJUSTES.has(errorCIACode) && onNavigate;
+  const header = (
+    <Header onSync={onSyncCIA} loading={loadingCIA} timestamp={data?.timestamp} stale={data?.stale} />
+  );
+
+  // Solo es pantalla de error si además no hay nada que mostrar: con caché vieja
+  // el error se degrada a un aviso arriba de los datos.
+  if (errorCIA && !ciclos.length) {
+    return (
+      <div className="space-y-6">
+        {header}
         <div
-          className="flex items-start justify-between gap-4 border px-4 py-4 text-sm"
+          className="border px-4 py-4 text-sm"
           style={{
             borderColor: 'var(--error-border)',
             background: 'var(--error-bg)',
@@ -123,128 +205,123 @@ function Calificaciones({
             borderRadius: 'var(--radius-card, 0px)',
           }}
         >
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.5} />
-            <div className="space-y-1">
-              <p>{friendlyCIAError}</p>
-              {credentialError ? (
-                <p className="text-xs" style={{ opacity: 0.85 }}>
-                  Revisa tus credenciales CIA desde Ajustes.
-                </p>
-              ) : null}
-            </div>
-          </div>
-          {credentialError && typeof onNavigate === 'function' ? (
+          <p>{errorCIA}</p>
+          {irAAjustes ? (
             <button
               type="button"
-              onClick={() => onNavigate('ajustes')}
-              className="border px-4 py-2 text-xs font-semibold transition"
-              style={{
-                borderColor: 'var(--error-border)',
-                color: 'var(--error-text)',
-                borderRadius: 'var(--radius-button, 0px)',
-              }}
+              onClick={() => onNavigate('settings')}
+              className="mt-3 border px-3 py-1.5 text-xs uppercase"
+              style={{ borderColor: 'var(--error-border)', color: 'var(--error-text)', letterSpacing: '0.1em' }}
             >
               Ir a Ajustes
             </button>
           ) : null}
         </div>
-      ) : null}
+      </div>
+    );
+  }
 
-      <section
-        className="border p-6"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
-      >
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-4">
-            <div
-              className="inline-flex items-center gap-2 border px-3 py-1 text-xs uppercase tracking-[0.25em]"
-              style={{
-                borderColor: 'var(--accent)',
-                color: 'var(--accent)',
-                borderRadius: 'var(--radius-badge, 0px)',
-                fontFamily: 'var(--font-mono, monospace)',
-              }}
-            >
-              <GraduationCap className="h-3.5 w-3.5" strokeWidth={1.5} />
-              CIA ITSON
-            </div>
-            <div>
-              <h3 className="text-2xl font-semibold" style={{ color: 'var(--text-strong)' }}>
-                Calificaciones
-              </h3>
-              <p className="mt-3 max-w-2xl text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
-                Consulta el registro académico del semestre actual desde el CIA con caché local,
-                sincronización manual y acceso directo a tu información institucional.
-              </p>
-            </div>
-          </div>
+  if (loadingCIA && !ciclos.length) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <EmptyState
+          title="Consultando el CIA…"
+          detail="Entrando a Mis Calificaciones y recorriendo cada ciclo del portal."
+        />
+      </div>
+    );
+  }
 
-          <div className="space-y-3">
+  if (!ciclos.length) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <EmptyState
+          title="Sin calificaciones sincronizadas"
+          detail="Sincronizá para traer tu registro académico del CIA."
+          action={(
             <button
               type="button"
               onClick={onSyncCIA}
-              disabled={loadingCIA}
-              className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-1 border px-3 py-1.5 text-xs uppercase"
+              style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-normal)', letterSpacing: '0.1em' }}
             >
-              <RefreshCw className={`h-4 w-4 ${loadingCIA ? 'animate-spin' : ''}`} strokeWidth={1.5} />
-              {loadingCIA ? 'Sincronizando...' : 'Sincronizar'}
+              Sincronizar ahora
             </button>
-
-            <p
-              className="text-xs uppercase tracking-[0.25em]"
-              style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)' }}
-            >
-              {formatLastSync(lastSyncCIA)}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon={BookOpen} label="Total de materias" value={materias.length} />
-        <StatCard icon={CheckCircle2} label="Materias aprobadas" value={aprobadas} tone="emerald" />
-        <StatCard icon={AlertTriangle} label="Materias en riesgo" value={enRiesgo} tone="orange" />
-        <StatCard icon={XCircle} label="Materias reprobadas" value={reprobadas} tone="red" />
-        <StatCard
-          icon={GraduationCap}
-          label="Promedio general"
-          value={averageGeneral === null ? '—' : formatGrade(averageGeneral)}
+          )}
         />
-      </section>
+      </div>
+    );
+  }
 
-      {loadingCIA ? (
-        <div className="space-y-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="animate-pulse border p-6"
-              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)' }}
-            >
-              <div className="h-5 w-64 rounded" style={{ background: 'var(--bg-tertiary)' }} />
-              <div className="mt-4 h-4 w-40 rounded" style={{ background: 'var(--bg-tertiary)' }} />
-              <div className="mt-6 h-20 rounded" style={{ background: 'var(--bg-secondary)' }} />
-            </div>
-          ))}
-        </div>
-      ) : materias.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3">
-          {materias.map((materia, index) => (
-            <GradeCard key={`${materia.codigo || materia.clave || materia.nombre || 'materia'}-${index}`} materia={materia} />
-          ))}
-        </div>
-      ) : (
+  const expediente = data?.expediente;
+
+  return (
+    <div className="space-y-6">
+      {header}
+
+      {errorCIA ? (
         <div
-          className="flex min-h-48 flex-col items-center justify-center border border-dashed px-6 py-10 text-center"
-          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-card)', borderRadius: 'var(--radius-card, 0px)' }}
+          className="border px-4 py-3 text-xs"
+          style={{
+            borderColor: 'var(--error-border)',
+            color: 'var(--error-text)',
+            borderRadius: 'var(--radius-card, 0px)',
+          }}
         >
-          <BookOpen className="h-8 w-8" style={{ color: 'var(--text-muted)' }} strokeWidth={1.5} />
-          <p className="mt-4 max-w-md text-sm leading-6" style={{ color: 'var(--text-normal)' }}>
-            Las calificaciones finales estarán disponibles al cierre del semestre.
-            Cuando CIA las publique, esta sección se activará automáticamente.
-          </p>
+          <AlertCircle size={14} className="mr-2 inline align-text-bottom" />
+          {errorCIA} Se muestran los últimos datos guardados.
         </div>
-      )}
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Promedio del ciclo"
+          value={Number.isFinite(cicloActivo?.promedio) ? cicloActivo.promedio.toFixed(2) : '—'}
+          hint={cicloActivo?.enCurso ? 'Parcial: ciclo en curso' : 'Oficial'}
+        />
+        <StatCard label="Aprobadas" value={resumen.aprobadas} tone="var(--success-text)" />
+        <StatCard label="Reprobadas" value={resumen.reprobadas} tone={resumen.reprobadas ? 'var(--error-text)' : undefined} />
+        <StatCard
+          label={expediente ? 'Promedio global' : 'Sin calificar'}
+          value={expediente ? expediente.promedioGlobal.toFixed(2) : resumen.sinCalificar}
+          hint={expediente ? `${expediente.avance}% de avance` : undefined}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        {ciclos.map((ciclo) => {
+          const activo = ciclo.id === cicloActivo?.id;
+
+          return (
+            <button
+              key={ciclo.id}
+              type="button"
+              onClick={() => setCicloId(ciclo.id)}
+              className="relative px-3 py-2 text-xs"
+              style={{ color: activo ? 'var(--text-strong)' : 'var(--text-muted)' }}
+            >
+              {ciclo.nombre}
+              {activo ? (
+                <motion.div
+                  layoutId="ciclo-activo"
+                  className="absolute inset-x-0 bottom-0 h-px"
+                  style={{ background: 'var(--accent)' }}
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {cicloActivo?.enCurso ? (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Ciclo en curso: las calificaciones oficiales se publican al cierre del semestre.
+        </p>
+      ) : null}
+
+      {cicloActivo ? <TablaCiclo ciclo={cicloActivo} /> : null}
     </div>
   );
 }

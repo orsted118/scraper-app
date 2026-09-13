@@ -494,116 +494,47 @@ MOCK_HORARIO_MATERIAS.push({
 
 const MOCK_DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-// Boleta de ejemplo. Réplica de la forma que arma groupMateriasByCode en
-// electron/handlers/cia.js: promedio de materia con componentes es el promedio
-// de los promedios por componente, no de las parciales sueltas.
-// Los códigos coinciden con MOCK_HORARIO_MATERIAS a propósito: así Horario y
-// Calificaciones muestran las mismas materias en capturas de pantalla.
-// `final` no es opcional por estética: App.jsx oculta la página Calificaciones
-// salvo que alguna materia traiga un `parcial: 'Final'` con nota. Sin esa
-// entrada el módulo entero queda invisible.
-function parciales(valores, final = null) {
-  const items = valores.map((calificacion, index) => ({
-    nombre: `Parcial ${index + 1}`,
-    etiqueta: `P${index + 1}`,
-    parcial: `P${index + 1}`,
-    calificacion,
-    sobre: 10,
-  }));
-
-  if (final === null) {
-    return items;
-  }
-
-  return [...items, { nombre: 'Final', etiqueta: 'Final', parcial: 'Final', calificacion: final, sobre: 10 }];
-}
-
-const MOCK_CALIFICACIONES = [
-  {
-    codigo: 'DAW-401',
-    clave: 'DAW-401',
-    nombre: 'Desarrollo de Aplicaciones Web con React y Node',
-    profesor: 'Dra. Martínez López',
-    calificaciones: parciales([9.2, 9.5, 9.0], 9.2),
-    promedio: 9.23,
-    estado: 'aprobada',
-    tieneComponentes: false,
-    componentes: [],
-  },
-  {
-    // Única materia con Teoría + Laboratorio: ejercita el render de componentes.
-    codigo: 'BD-301',
-    clave: 'BD-301',
-    nombre: 'Bases de Datos c/Lab',
-    profesor: 'Ing. Rodríguez',
-    calificaciones: parciales([9.0, 8.6, 9.2], 9.3),
-    promedio: 9.28,
-    estado: 'aprobada',
-    tieneComponentes: true,
-    componentes: [
-      { tipo: 'Teoría', calificaciones: parciales([9.0, 8.6, 9.2], 8.9), promedio: 8.93 },
-      { tipo: 'Laboratorio', calificaciones: parciales([9.5, 9.8, 9.6], 9.6), promedio: 9.63 },
-    ],
-  },
-  {
-    // Tercer parcial aún sin subir: el hueco debe verse como "—", no como cero.
-    codigo: 'RC-302',
-    clave: 'RC-302',
-    nombre: 'Redes de Computadoras',
-    profesor: 'Dr. García Torres',
-    calificaciones: parciales([7.5, 8.0, null]),
-    promedio: 7.75,
-    estado: 'aprobada',
-    tieneComponentes: false,
-    componentes: [],
-  },
-  {
-    // Promedio entre 6 y 7: dispara el estado en_riesgo en la UI.
-    codigo: 'ET-201',
-    clave: 'ET-201',
-    nombre: 'Ética Profesional',
-    profesor: 'Mtro. Hernández',
-    calificaciones: parciales([6.4, 6.0, null]),
-    promedio: 6.2,
-    estado: 'en_riesgo',
-    tieneComponentes: false,
-    componentes: [],
-  },
-  {
-    codigo: 'IS-402',
-    clave: 'IS-402',
-    nombre: 'Ingeniería de Software',
-    profesor: 'Dra. Sánchez',
-    calificaciones: parciales([8.8, 9.1, 8.5], 8.8),
-    promedio: 8.8,
-    estado: 'aprobada',
-    tieneComponentes: false,
-    componentes: [],
-  },
-  {
-    codigo: 'MAT-105',
-    clave: 'MAT-105',
-    nombre: 'Matemáticas para Ingeniería',
-    profesor: 'Mtra. Valenzuela',
-    calificaciones: parciales([7.0, 7.8, 8.2], 7.7),
-    promedio: 7.67,
-    estado: 'aprobada',
-    tieneComponentes: false,
-    componentes: [],
-  },
-  {
-    // Materia sin ninguna parcial cargada: estado sin_calificacion.
-    codigo: 'API-001',
-    clave: 'API-001',
-    nombre: 'Asesoría de Proyecto Integrador y Titulación Profesional',
-    profesor: 'Dr. Peralta',
-    calificaciones: parciales([null, null, null]),
-    promedio: null,
-    estado: 'sin_calificacion',
-    tieneComponentes: false,
-    componentes: [],
-  },
-];
+// Registro académico de ejemplo, con la forma que devuelve
+// electron/handlers/cia.js. Dos ciclos a propósito: uno cerrado con notas
+// —incluidas una reprobada y una acreditada por literal— y uno en curso con la
+// calificación vacía, que es lo que la UI muestra durante el semestre.
+const MOCK_CALIFICACIONES = {
+  schemaVersion: 1,
+  timestamp: Date.now(),
+  cicloActual: '3153',
+  ciclos: [
+    {
+      id: '3153',
+      value: '000000000003153LIC ITSON',
+      nombre: 'agosto-diciembre de 2026',
+      enCurso: true,
+      promedio: null,
+      creditos: 22.48,
+      materias: [
+        { codigo: '1147C', clave: '1147C', area: 'C', nombre: 'Estructuras de Datos', profesor: 'Dra. Sánchez', calificacion: null, literal: null, unidades: 5.62, estado: 'sin_calificacion' },
+        { codigo: '1148C', clave: '1148C', area: 'C', nombre: 'Bases de Datos', profesor: 'Mtro. Hernández', calificacion: null, literal: null, unidades: 5.62, estado: 'sin_calificacion' },
+        { codigo: '1172M', clave: '1172M', area: 'M', nombre: 'Algebra Lineal', profesor: '', calificacion: null, literal: null, unidades: 5.62, estado: 'sin_calificacion' },
+        { codigo: '1190M', clave: '1190M', area: 'M', nombre: 'Matematicas Computacionales', profesor: '', calificacion: null, literal: null, unidades: 5.62, estado: 'sin_calificacion' },
+      ],
+    },
+    {
+      id: '3147',
+      value: '000000000003147LIC ITSON',
+      nombre: 'enero-mayo de 2026',
+      enCurso: false,
+      promedio: 7.83,
+      creditos: 54.35,
+      materias: [
+        { codigo: '1115C', clave: '1115C', area: 'C', nombre: 'Tecnologia y Empresa', profesor: '', calificacion: 9, literal: null, unidades: 5.62, estado: 'aprobada' },
+        { codigo: '1124C', clave: '1124C', area: 'C', nombre: 'Programacion II c/Lab', profesor: '', calificacion: 9, literal: null, unidades: 11.25, estado: 'aprobada' },
+        { codigo: '1043D', clave: '1043D', area: 'IDIOMA', nombre: 'Ingles Universitario A1', profesor: '', calificacion: 7, literal: null, unidades: 9.37, estado: 'aprobada' },
+        { codigo: '1165M', clave: '1165M', area: 'M', nombre: 'Precálculo', profesor: '', calificacion: 6, literal: null, unidades: 9.37, estado: 'reprobada' },
+        { codigo: '1132T', clave: '1132T', area: 'TUTORIA', nombre: 'Tutoria 2 (INSOF)', profesor: '', calificacion: null, literal: 'A', unidades: null, estado: 'acreditada' },
+      ],
+    },
+  ],
+  expediente: null,
+};
 
 const MOCK_CALENDAR_TYPES = ['Profesional Asociado y Licenciatura', 'Posgrado', 'Medicina'];
 
@@ -1178,7 +1109,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
       return { success: true };
     },
     clearHorarioCache: async () => ({ success: true }),
-    runCIA: async () => ({ materias: MOCK_CALIFICACIONES, timestamp: Date.now(), fromCache: true }),
+    runCIA: async () => ({ ...MOCK_CALIFICACIONES, fromCache: true }),
     clearCIACache: async () => ({ success: true }),
     runCalendario: async (options = {}) => ({
       events: MOCK_CALENDAR_EVENTS,

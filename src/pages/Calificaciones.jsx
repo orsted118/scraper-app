@@ -96,6 +96,47 @@ function EmptyState({ title, detail, action }) {
   );
 }
 
+// Expediente completo de la carrera, del PDF del RPA. Es global, no del ciclo:
+// va en su propia franja para que no se confunda con las métricas de arriba.
+function Expediente({ datos }) {
+  const { creditos, asignaturas } = datos;
+
+  const campos = [
+    { label: 'Promedio global', valor: datos.promedioGlobal?.toFixed(3), hint: 'solo materias aprobadas' },
+    { label: 'Avance', valor: `${datos.avance}%`, hint: asignaturas ? `${asignaturas.acreditadas} de ${asignaturas.obligatorias} materias` : null },
+    { label: 'Créditos', valor: creditos ? creditos.acreditados.toFixed(2) : '—', hint: creditos ? `de ${creditos.obligatorios.toFixed(2)} · faltan ${creditos.faltan.toFixed(2)}` : null },
+    { label: 'Reprobadas', valor: datos.reprobadas, hint: `índice ${datos.indiceReprobacion}%` },
+  ];
+
+  return (
+    <div
+      className="border px-4 py-4"
+      style={{ borderColor: 'var(--border-subtle)', borderRadius: 'var(--radius-card, 0px)' }}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs uppercase" style={{ color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
+          Expediente de la carrera
+        </p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Reporte de Progreso Académico
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {campos.map((campo) => (
+          <div key={campo.label}>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{campo.label}</p>
+            <p className="text-lg" style={{ ...MONO, color: 'var(--text-strong)' }}>{campo.valor ?? '—'}</p>
+            {campo.hint ? (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{campo.hint}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TablaCiclo({ ciclo }) {
   // El profesor sale del horario, que solo cubre el ciclo en curso: en los
   // cerrados la columna quedaría entera en guiones.
@@ -283,12 +324,10 @@ function Calificaciones({
         />
         <StatCard label="Aprobadas" value={resumen.aprobadas} tone="var(--success-text)" />
         <StatCard label="Reprobadas" value={resumen.reprobadas} tone={resumen.reprobadas ? 'var(--error-text)' : undefined} />
-        <StatCard
-          label={expediente ? 'Promedio global' : 'Sin calificar'}
-          value={expediente ? expediente.promedioGlobal.toFixed(2) : resumen.sinCalificar}
-          hint={expediente ? `${expediente.avance}% de avance` : undefined}
-        />
+        <StatCard label="Sin calificar" value={resumen.sinCalificar} />
       </div>
+
+      {expediente ? <Expediente datos={expediente} /> : null}
 
       <div className="flex flex-wrap gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
         {ciclos.map((ciclo) => {

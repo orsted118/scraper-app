@@ -145,6 +145,77 @@ cia.writeCache({ cicloActual: '3153', ciclos: [], expediente: { promedioGlobal: 
 cia.writeCache({ cicloActual: '3153', ciclos: [] });
 check('writeCache conserva el expediente previo', cia.readCache()?.expediente, { promedioGlobal: 8 });
 
+// --- expediente (RPA) --------------------------------------------------------
+
+const { parseRPA, tresEnteros, tresDecimales } = require(path.join(__dirname, '..', 'electron', 'utils', 'rpaParser.js'));
+
+// El reporte imprime los tres enteros PEGADOS ("55946"). Lo que desambigua es
+// que obligatorias = acreditadas + faltantes.
+check('desambigua 55946 como 55/9/46', tresEnteros('55946'), { obligatorias: 55, acreditadas: 9, faltantes: 46 });
+check('desambigua 000 como 0/0/0', tresEnteros('000'), { obligatorias: 0, acreditadas: 0, faltantes: 0 });
+check('desambigua 101 como 1/0/1', tresEnteros('101'), { obligatorias: 1, acreditadas: 0, faltantes: 1 });
+check('devuelve null si ninguna particion cierra', tresEnteros('123'), null);
+check('parte los creditos por forma', tresDecimales('378.4773.09305.38'), { obligatorios: 378.47, acreditados: 73.09, faltan: 305.38 });
+
+// Texto real del RPA del 2026-09-10, con los renglones pegados como salen del
+// PDF. La fila de "Sist Operativos y Arq de Comp" queda con UN solo espacio
+// antes de su calificación: es el nombre más largo de la tabla y exigir dos
+// espacios la perdía en silencio.
+const RPA_REAL = [
+  'CONDICIONES ACADÉMICAS',
+  'Reprobadas Plan2',
+  'Promedio:8.000',
+  'Asignaturas Plan55946',
+  'Total de Reprobadas2',
+  'Indice de Reprobación18.18',
+  '% Avance:19%',
+  'Créditos Totales378.4773.09305.38',
+  'ASIGNATURAS APROBADAS DEL PLAN DE ESTUDIOS VIGENTE',
+  'Ciclo          Período      Catalogo       Nombre                                       Calificación         CréditosAgo-Dic 25011030F     Analisis Información y Com    8  5.62Ago-Dic 25011112C     Introd a la Ing en Software   7  5.62Ago-Dic 25011113C     Programación I c/Lab          8  11.25Ago-Dic 25011029F     Salud y Desarrollo Personal   8  5.62Ene-May 26021043D     Ingles Universitario A1       7  9.37Ene-May 26021178M     Matematicas Discretas         7  9.37Ene-May 26021124C     Programacion II c/Lab         9  11.25Ene-May 26021123C     Sist Operativos y Arq de Comp 9  9.37Ene-May 26021115C     Tecnologia y Empresa          9  5.62',
+  'ASIGNATURAS REPROBADAS DEL PLAN DE ESTUDIOS VIGENTE',
+  'Ciclo          Período      Catalogo       Nombre                                       Calificación         CréditosEne-May 26011165M     Precálculo                    6  9.37Ago-Dic 25011042D     Ingles Introductorio          6  5.62',
+  'CURSOS ADICIONALES (*)',
+  'Ciclo          Período      Catalogo       Nombre                                       Calificación         CréditosEne-May 26OC1132T     Tutoria 2 (INSOF)             A  0.01',
+].join('\n');
+
+const exp = parseRPA(RPA_REAL);
+
+check('promedio global del RPA', exp?.promedioGlobal, 8);
+check('% avance', exp?.avance, 19);
+check('indice de reprobacion', exp?.indiceReprobacion, 18.18);
+check('creditos', exp?.creditos, { obligatorios: 378.47, acreditados: 73.09, faltan: 305.38 });
+check('asignaturas', exp?.asignaturas, { obligatorias: 55, acreditadas: 9, faltantes: 46 });
+
+check('las 9 aprobadas, ninguna perdida', exp?.materias.aprobadas.length, 9);
+check('lee el nombre mas largo de la tabla', exp?.materias.aprobadas[7]?.nombre, 'Sist Operativos y Arq de Comp');
+check('las 2 reprobadas', exp?.materias.reprobadas.length, 2);
+check('el curso adicional con literal', { l: exp?.materias.adicionales[0]?.literal, c: exp?.materias.adicionales[0]?.calificacion }, { l: 'A', c: null });
+check('nombre con numero adentro no se parte', exp?.materias.aprobadas[6]?.nombre, 'Programacion II c/Lab');
+check('periodo OC de los adicionales', exp?.materias.adicionales[0]?.periodo, 'OC');
+
+// Coherencia interna: si el parseo se desalinea, estas dos dejan de cerrar
+// contra las cifras que el propio reporte imprime.
+const totalCursadas = exp.materias.aprobadas.length + exp.materias.reprobadas.length;
+check(
+  'indice calculado == impreso',
+  Number(((exp.materias.reprobadas.length / totalCursadas) * 100).toFixed(2)),
+  exp.indiceReprobacion,
+);
+check(
+  'creditos de aprobadas == acreditados impresos',
+  Number(exp.materias.aprobadas.reduce((s, m) => s + m.creditos, 0).toFixed(2)),
+  exp.creditos.acreditados,
+);
+check('acreditadas impresas == filas aprobadas', exp.asignaturas.acreditadas, exp.materias.aprobadas.length);
+
+check('texto que no es un RPA devuelve null', parseRPA('cualquier cosa'), null);
+
+// `undefined` significa "el RPA no corrió": el expediente anterior sobrevive.
+// `null` sí sería un valor y lo pisaría.
+cia.writeCache({ cicloActual: '3153', ciclos: [], expediente: { promedioGlobal: 8, actualizado: 1 } });
+cia.writeCache({ cicloActual: '3153', ciclos: [], expediente: undefined });
+check('expediente sobrevive si el RPA no corrió', cia.readCache()?.expediente?.promedioGlobal, 8);
+
 fs.rmSync(userData, { recursive: true, force: true });
 
 console.log('');

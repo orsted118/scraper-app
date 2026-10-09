@@ -35,9 +35,14 @@ const { chromium } = require('playwright');
 const notificationCenter = require('./notification-center');
 const { buildInstructorIndex, lookupInstructor } = require('../utils/instructorLookup');
 const ciaSession = require('../utils/ciaSession');
+const { extraerTexto } = require('../utils/sqrPdfText');
+const { parseRPA } = require('../utils/rpaParser');
 
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // las notas oficiales cambian de a semanas
 const GLOBAL_TIMEOUT_MS = 180_000;
+// El expediente agrega el Process Scheduler y el Gestor de Informes al flujo:
+// con el timeout normal la corrida completa queda al borde.
+const GLOBAL_TIMEOUT_CON_EXPEDIENTE_MS = 300_000;
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
 
 // 1 → notas oficiales por ciclo desde HTML. Un caché SIN este campo es el
@@ -48,6 +53,16 @@ const CALIFICACIONES_CACHE_SCHEMA_VERSION = 1;
 const SELECT_CICLO = '#DERIVED_AA3_DERIVED_STERM';
 const LINK_CAMBIAR = '#DERIVED_AA2_DERIVED_LINK3';
 const TABLA_NOTAS = 'table[id^="STDNT_GRAD_SSVW"]';
+
+// Reporte de Progreso Académico: Centro de Alumnado > "Reporte Prog Academico"
+// > página de parámetros (precargada) > Ejecutar > Gestor de Informes.
+const LINK_RPA = '#ITSR_DERIVED_PUSH';
+const BOTON_RPA = '#ITSRPROGACA_WRK_PUSH';
+const LINK_INFORME = '[id^="CONTENT_LINK"]';
+
+// El expediente cambia cuando cierra un semestre, no durante: no tiene sentido
+// pagar el Process Scheduler en cada sync.
+const EXPEDIENTE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const CALIFICACION_MINIMA_APROBATORIA = 7;
 
@@ -346,7 +361,124 @@ async function abrirMisCalificaciones(page) {
   return ciaSession.findFrameBySelector(page, SELECT_CICLO);
 }
 
-async function scrapeCalificaciones(controller = {}, onProgress) {
+// --------------------------------------------------- Expediente (RPA, PDF)
+
+// El expediente sale de un informe que hay que ENCOLAR en el Process Scheduler
+// y después recoger del Gestor de Informes. Es caro (~40 s) y falla más que el
+// HTML, así que nunca es fatal: si no sale, el sync sigue siendo exitoso.
+async function scrapeExpediente(page, context) {
+  // Después de recorrer los ciclos estamos en la hoja de Mis Calificaciones,
+  // no en el Centro de Alumnado: hay que volver o el enlace del RPA no existe.
+  await page.getByRole('link', { name: /autoservicio/i }).last().click().catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, ciaSession.PSOFT_SETTLE_MS));
+
+  for (const frame of page.frames()) {
+    const link = frame.getByRole('link', { name: /centro de alumnado/i }).first();
+    if (await link.count().catch(() => 0)) {
+      await link.click({ timeout: 10_000 }).catch(() => {});
+      break;
+    }
+  }
+  await new Promise((resolve) => setTimeout(resolve, ciaSession.PSOFT_SETTLE_MS));
+
+  const centro = await ciaSession.findFrameBySelector(page, LINK_RPA);
+  if (!centro) { log('expediente: no se volvió al Centro de Alumnado'); return null; }
+
+  await ciaSession.submitAction(centro, LINK_RPA.replace('#', ''));
+  await new Promise((resolve) => setTimeout(resolve, ciaSession.PSOFT_SETTLE_MS));
+
+  const params = await ciaSession.findFrameBySelector(page, BOTON_RPA);
+  if (!params) { log('expediente: no se abrió la página de parámetros del RPA'); return null; }
+
+  // No se usa submitAndWait acá: ese helper re-busca el frame por el MISMO
+  // selector después de accionar, y este submit cambia de componente, con lo
+  // que el botón deja de existir y la verificación nunca podría dar verdadero.
+  //
+  // El botón además responde de forma intermitente: el portal pierde submits
+  // entre nodos del balanceador, y a veces sólo anda el click nativo.
+  let lista = null;
+
+  for (let intento = 1; intento <= 3 && !lista; intento += 1) {
+    const actual = await ciaSession.findFrameBySelector(page, BOTON_RPA, 5000);
+    if (!actual) break; // ya salió de la página de parámetros
+
+    await actual
+      .evaluate((id) => {
+        const boton = document.getElementById(id);
+        if (!boton) return;
+        if (typeof window.submitAction_win0 === 'function') window.submitAction_win0(boton.form, boton.name);
+        else boton.click();
+      }, BOTON_RPA.replace('#', ''))
+      .catch(() => {});
+
+    lista = await ciaSession.findFrameBySelector(page, LINK_INFORME, 30_000);
+    if (!lista) log(`expediente: intento ${intento} no llegó al Gestor`);
+  }
+
+  if (!lista) { log('expediente: el informe no llegó al Gestor'); return null; }
+
+  // El SQR tarda: la fila queda en "Enviado" recién cuando el PDF está servible.
+  for (let intento = 1; intento <= 10; intento += 1) {
+    const listo = await lista
+      .evaluate(() => /Enviado|Generado|Posted/i.test(document.body.innerText || ''))
+      .catch(() => false);
+    if (listo) break;
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+  }
+
+  // El Detalle, no la Descripción: la Descripción abre una ventana que queda en
+  // about:blank mientras PeopleSoft redirige por dentro. Además, pasar por el
+  // Detalle es lo que autoriza /psreports/ para esta sesión — armar la URL a
+  // mano desde los ids de la tabla devuelve 403.
+  const esperaVentana = context.waitForEvent('page', { timeout: 20_000 }).catch(() => null);
+  const actual = (await ciaSession.findFrameBySelector(page, LINK_INFORME)) || lista;
+  await ciaSession.submitAction(actual, 'CDM_WRK_INDEX_BTN$0').catch(() => {});
+
+  const ventana = await esperaVentana;
+  if (ventana) {
+    await ventana.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+    await ventana.waitForTimeout(6000);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  const urls = new Set();
+  for (const p of [page, ...context.pages()]) {
+    for (const frame of p.frames()) {
+      const hrefs = await frame
+        .evaluate(() => Array.from(document.querySelectorAll('a'))
+          .map((a) => a.href)
+          .filter((h) => /\.pdf$/i.test(h)))
+        .catch(() => []);
+      hrefs.forEach((h) => urls.add(h));
+    }
+  }
+
+  log(`expediente: ${urls.size} PDF(s) en el Detalle`);
+
+  for (const url of urls) {
+    // El request context reusa la cookie de sesión, que /psreports/ exige.
+    const res = await context.request.get(url).catch(() => null);
+    const archivo = url.split('/').pop();
+
+    if (!res?.ok()) { log(`expediente: ${archivo} -> ${res?.status() ?? 'sin respuesta'}`); continue; }
+
+    const buffer = await res.body();
+    const parsed = parseRPA(extraerTexto(buffer));
+
+    if (Number.isFinite(parsed?.promedioGlobal)) {
+      log(`expediente: ${archivo} parseado, promedio ${parsed.promedioGlobal}`);
+      return { ...parsed, actualizado: Date.now() };
+    }
+
+    // Un ITSR0001 es una Boleta, no el RPA: rechazarla es correcto.
+    log(`expediente: ${archivo} (${buffer.length} bytes) no es un RPA parseable`);
+  }
+
+  log('expediente: ningún PDF del Gestor pudo parsearse como RPA');
+  return null;
+}
+
+async function scrapeCalificaciones(controller = {}, onProgress, conExpediente = false) {
   const user = process.env.CIA_USER?.trim();
   const password = process.env.CIA_PASS?.trim();
 
@@ -439,10 +571,26 @@ async function scrapeCalificaciones(controller = {}, onProgress) {
 
     ciclos.sort((a, b) => String(b.id).localeCompare(String(a.id)));
 
+    // El expediente es el único lugar del portal con el promedio global. Se
+    // recoge en la misma sesión, pero nunca es fatal: se devuelve `undefined`
+    // para que writeCache conserve el que ya había.
+    let expediente;
+
+    if (conExpediente) {
+      onProgress?.({ done: opciones.ciclos.length, total: opciones.ciclos.length, ciclo: 'expediente académico' });
+
+      try {
+        expediente = (await scrapeExpediente(page, context)) ?? undefined;
+        if (!expediente) log('el expediente (RPA) no se pudo recoger; se conserva el anterior');
+      } catch (error) {
+        log('expediente (RPA) falló:', String(error?.message || error).slice(0, 120));
+      }
+    }
+
     return {
       cicloActual: cicloIdFromValue(opciones.seleccionado) || ciclos[0]?.id || null,
       ciclos,
-      expediente: null,
+      expediente,
     };
   } finally {
     await browser.close().catch(() => {});
@@ -466,16 +614,22 @@ async function getCalificacionesWithCache({ force = false } = {}, onProgress) {
   const controller = {};
   activeController = controller;
 
+  // El expediente pasa por el Process Scheduler y suma ~40 s: solo cuando el
+  // usuario pidió la sync a mano y el que hay ya venció.
+  const expedienteVencido = !cached?.expediente?.actualizado
+    || Date.now() - cached.expediente.actualizado > EXPEDIENTE_MAX_AGE_MS;
+  const conExpediente = force && expedienteVencido;
+
   let timeoutId = null;
 
   try {
     const result = await Promise.race([
-      scrapeCalificaciones(controller, onProgress),
+      scrapeCalificaciones(controller, onProgress, conExpediente),
       new Promise((resolve) => {
         timeoutId = setTimeout(() => {
           controller.browser?.close().catch(() => {});
           resolve({ error: 'CIA_TIMEOUT' });
-        }, GLOBAL_TIMEOUT_MS);
+        }, conExpediente ? GLOBAL_TIMEOUT_CON_EXPEDIENTE_MS : GLOBAL_TIMEOUT_MS);
       }),
     ]);
 

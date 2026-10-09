@@ -11,3 +11,4 @@ scripts/spike-output/
 
 # Estado local de herramientas de asistencia
 .claude/
+__pycache__/

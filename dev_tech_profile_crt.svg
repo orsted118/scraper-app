@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Dark Background -->
+  <rect width="500" height="500" fill="#121212" />
+  
+  <!-- Outer circle matching Facebook avatar frame -->
+  <circle cx="250" cy="250" r="235" fill="none" stroke="#2a2a2a" stroke-width="2" stroke-dasharray="8 8" opacity="0.4" />
+
+  <!-- CRT Monitor Bezel -->
+  <rect x="90" y="80" width="320" height="260" rx="24" ry="24" fill="#1c1c1c" stroke="#333333" stroke-width="4" />
+  <!-- Screen Area -->
+  <rect x="110" y="100" width="280" height="220" rx="12" ry="12" fill="#0d0d0d" />
+  
+  <!-- Screen Stand -->
+  <path d="M 190,340 L 310,340 L 330,400 L 170,400 Z" fill="#1c1c1c" stroke="#333333" stroke-width="4" stroke-linejoin="round" />
+  
+  <!-- Amber CRT elements -->
+  <g filter="url(#glow)">
+    <!-- Terminal prompt symbol inside the screen -->
+    <text x="140" y="210" font-family="'Courier New', Courier, monospace" font-size="72" font-weight="bold" fill="#ffb000">&gt;_</text>
+    <!-- Small tech text at bottom of screen -->
+    <text x="140" y="270" font-family="'Courier New', Courier, monospace" font-size="20" fill="#ffb000" opacity="0.7">dt_os v1.0</text>
+    
+    <!-- Power LED indicator -->
+    <circle cx="370" cy="370" r="5" fill="#ffb000" />
+  </g>
+</svg>

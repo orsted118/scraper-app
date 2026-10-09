@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- CRT scanline pattern -->
+    <pattern id="scanlines" width="100" height="4" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="100" y2="0" stroke="#000000" stroke-width="1.5" opacity="0.35" />
+    </pattern>
+    <!-- Glowing amber filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Dark Background -->
+  <rect width="500" height="500" fill="#121212" />
+  
+  <!-- Outer circle guide -->
+  <circle cx="250" cy="250" r="235" fill="none" stroke="#2a2a2a" stroke-width="2" stroke-dasharray="8 8" opacity="0.4" />
+
+  <!-- CRT Monitor Bezel -->
+  <rect x="90" y="80" width="320" height="260" rx="24" ry="24" fill="#1c1c1c" stroke="#333333" stroke-width="4" />
+  
+  <!-- Screen Area -->
+  <rect x="110" y="100" width="280" height="210" rx="12" ry="12" fill="#0d0d0d" />
+  
+  <!-- Physical Brand Badge at bottom of monitor bezel -->
+  <rect x="180" y="318" width="140" height="16" rx="2" ry="2" fill="#0d0d0d" stroke="#2a2a2a" stroke-width="1" />
+  <text x="250" y="331" font-family="'Courier New', Courier, monospace" font-size="11" font-weight="bold" fill="#a0a4a8" text-anchor="middle" letter-spacing="1">DEV TECH</text>
+
+  <!-- Screen Stand -->
+  <path d="M 190,340 L 310,340 L 330,400 L 170,400 Z" fill="#1c1c1c" stroke="#333333" stroke-width="4" stroke-linejoin="round" />
+  
+  <!-- Screen Content -->
+  <g filter="url(#glow)">
+    <!-- Monogram dt centered inside the screen, drawn with vector paths -->
+    <g transform="translate(250, 195) scale(2.2)">
+      <!-- Circle/arc for d -->
+      <path d="M -15,5 A 12,12 0 1,1 -15,-15 L -15,-28 L -15,10" fill="none" stroke="#ffb000" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+      <!-- Path for t -->
+      <path d="M 5,-28 L 5,10 M -3,-14 L 13,-14" fill="none" stroke="#ffb000" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+    
+    <!-- Text prompt at the bottom of screen -->
+    <text x="130" y="280" font-family="'Courier New', Courier, monospace" font-size="14" fill="#ffb000" font-weight="bold">C:\dev_tech&gt; run logo</text>
+    
+    <!-- Power LED -->
+    <circle cx="370" cy="370" r="5" fill="#ffb000" />
+  </g>
+
+  <!-- Scanlines overlay -->
+  <rect x="110" y="100" width="280" height="210" rx="12" ry="12" fill="url(#scanlines)" pointer-events="none" />
+</svg>

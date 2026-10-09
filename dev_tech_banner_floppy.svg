@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 851 315" width="100%" height="100%">
+  <!-- Background -->
+  <rect width="851" height="315" fill="#15181c" />
+
+  <!-- Floppy Disk Group -->
+  <g transform="translate(100, 67)">
+    <!-- Main floppy body -->
+    <!-- Dimensions: 180x180 -->
+    <!-- Top right corner is clipped (typical 3.5 floppy) -->
+    <path d="M 0,0 L 160,0 L 180,20 L 180,180 Q 180,180 180,180 L 0,180 Z" fill="#00a8e8" />
+    
+    <!-- Write protect notch/tab hole -->
+    <rect x="15" y="165" width="20" height="15" fill="#15181c" />
+    <rect x="145" y="165" width="20" height="15" fill="#15181c" />
+
+    <!-- Top Metal Slider Window -->
+    <rect x="35" y="0" width="70" height="55" fill="#a0a4a8" rx="2" ry="2" />
+    <!-- Metal slider details -->
+    <rect x="50" y="10" width="15" height="35" fill="#15181c" rx="1" ry="1" />
+    <!-- Arrow indicating insert direction -->
+    <path d="M 20,20 L 25,15 L 30,20 M 25,15 L 25,35" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7" />
+
+    <!-- Label Area -->
+    <rect x="20" y="70" width="140" height="110" fill="#ffffff" rx="4" ry="4" />
+    <!-- Blue/Cian Stripe on top of label matching monogram -->
+    <rect x="20" y="70" width="140" height="15" fill="#005a94" rx="2" ry="2" />
+    
+    <!-- Monogram dt on the label (matching Option 1 logo) -->
+    <g transform="translate(75, 120)">
+      <!-- Circle/arc for d -->
+      <path d="M -15,5 A 12,12 0 1,1 -15,-15 L -15,-28 L -15,10" fill="none" stroke="#005a94" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+      <!-- Path for t -->
+      <path d="M 5,-28 L 5,10 M -3,-14 L 13,-14" fill="none" stroke="#00a8e8" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+    
+    <!-- Small label lines -->
+    <line x1="30" y1="155" x2="150" y2="155" stroke="#d0d4d8" stroke-width="1.5" />
+    <line x1="30" y1="167" x2="150" y2="167" stroke="#d0d4d8" stroke-width="1.5" />
+  </g>
+
+  <!-- Typography Text Group -->
+  <g transform="translate(330, 95)">
+    <!-- Title -->
+    <text x="0" y="40" font-family="'Courier New', Courier, monospace" font-size="64" font-weight="bold" fill="#ffffff" letter-spacing="1">dev tech</text>
+    <!-- Slogan / Description -->
+    <text x="5" y="85" font-family="'Courier New', Courier, monospace" font-size="22" fill="#00a8e8" font-weight="bold">Desarrollo Web &amp; Apps</text>
+    <text x="5" y="115" font-family="'Courier New', Courier, monospace" font-size="16" fill="#a0a4a8">Navojoa y la región</text>
+  </g>
+</svg>

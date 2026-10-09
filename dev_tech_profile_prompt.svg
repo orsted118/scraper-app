@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Dark Background -->
+  <rect width="500" height="500" fill="#121212" />
+
+  <!-- Outer guide circle -->
+  <circle cx="250" cy="250" r="235" fill="none" stroke="#2a2a2a" stroke-width="2" stroke-dasharray="8 8" opacity="0.4" />
+
+  <!-- Centered glowing prompt -->
+  <g filter="url(#glow)">
+    <text x="250" y="280" font-family="'Courier New', Courier, monospace" font-size="200" font-weight="bold" fill="#ffb000" text-anchor="middle">&gt;_</text>
+  </g>
+</svg>

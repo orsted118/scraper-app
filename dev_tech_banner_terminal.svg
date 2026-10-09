@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 851 315" width="100%" height="100%">
+  <defs>
+    <!-- CRT scanline pattern -->
+    <pattern id="scanlines" width="100" height="4" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="100" y2="0" stroke="#000" stroke-width="1.5" opacity="0.3" />
+    </pattern>
+    <!-- Amber glow filter -->
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="851" height="315" fill="#121212" />
+
+  <!-- CRT Screen Outer Bezel -->
+  <rect x="30" y="25" width="791" height="265" rx="20" ry="20" fill="#1c1c1c" stroke="#2a2a2a" stroke-width="3" />
+  
+  <!-- CRT Screen Active Area -->
+  <rect x="45" y="37" width="761" height="241" rx="10" ry="10" fill="#0d0d0d" />
+
+  <!-- Screen Content -->
+  <g filter="url(#glow)">
+    <!-- Terminal prompt symbol -->
+    <text x="80" y="110" font-family="'Courier New', Courier, monospace" font-size="28" font-weight="bold" fill="#ffb000">C:\&gt;_</text>
+    
+    <!-- Title -->
+    <text x="80" y="175" font-family="'Courier New', Courier, monospace" font-size="54" font-weight="bold" fill="#ffb000" letter-spacing="2">dev tech</text>
+    
+    <!-- Subtitle -->
+    <text x="80" y="225" font-family="'Courier New', Courier, monospace" font-size="20" fill="#ffb000" opacity="0.8">Desarrollo Web &amp; Sistemas a Medida</text>
+    
+    <!-- Location -->
+    <text x="80" y="250" font-family="'Courier New', Courier, monospace" font-size="16" fill="#ffb000" opacity="0.6">Navojoa, Sonora</text>
+  </g>
+
+  <!-- Scanlines overlay -->
+  <rect x="45" y="37" width="761" height="241" rx="10" ry="10" fill="url(#scanlines)" pointer-events="none" />
+
+  <!-- Stylized Retro Computer Icon on the right -->
+  <g transform="translate(600, 85)" filter="url(#glow)">
+    <!-- Monitor outer -->
+    <rect x="0" y="0" width="150" height="110" rx="8" ry="8" fill="none" stroke="#ffb000" stroke-width="4" />
+    <!-- Screen inner -->
+    <rect x="12" y="10" width="126" height="80" rx="4" ry="4" fill="none" stroke="#ffb000" stroke-width="2" />
+    <!-- Small prompt in the icon screen -->
+    <text x="22" y="35" font-family="'Courier New', Courier, monospace" font-size="14" fill="#ffb000">&gt;</text>
+    <rect x="35" y="25" width="12" height="12" fill="#ffb000" />
+    <!-- Stand -->
+    <path d="M 55,110 L 95,110 L 105,135 L 45,135 Z" fill="none" stroke="#ffb000" stroke-width="4" stroke-linejoin="round" />
+    <!-- Disk drive slot below screen -->
+    <line x1="30" y1="125" x2="60" y2="125" stroke="#ffb000" stroke-width="3" />
+    <!-- Power LED -->
+    <circle cx="125" cy="125" r="3" fill="#ffb000" />
+  </g>
+</svg>

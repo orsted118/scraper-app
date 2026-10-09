@@ -533,7 +533,18 @@ const MOCK_CALIFICACIONES = {
       ],
     },
   ],
-  expediente: null,
+  // Del PDF del RPA. El promedio global usa otra fórmula que el del ciclo:
+  // solo las aprobadas.
+  expediente: {
+    promedioGlobal: 8,
+    avance: 19,
+    reprobadas: 2,
+    indiceReprobacion: 18.18,
+    creditos: { obligatorios: 378.47, acreditados: 73.09, faltan: 305.38 },
+    asignaturas: { obligatorias: 55, acreditadas: 9, faltantes: 46 },
+    origen: 'RPA',
+    actualizado: Date.now(),
+  },
 };
 
 const MOCK_CALENDAR_TYPES = ['Profesional Asociado y Licenciatura', 'Posgrado', 'Medicina'];
@@ -1071,6 +1082,180 @@ function mockNoteMatchesFilters(note, filters = {}) {
 let MOCK_HIDDEN_ACTIVITY_IDS = [];
 
 let mockNotificationListener = null;
+
+// Clase en vivo: sesiones grabadas con transcripción y capturas, y una grabación
+// simulada que va "transcribiendo" sola. Reproduce el caso real que motivó la
+// organización de la lista: una clase cortada en tres partes por recesos.
+const MOCK_CLASE_FRASES = [
+  'Vamos a comenzar con la suma binaria, igual que una suma decimal.',
+  'Uno más uno es dos, que en binario es uno cero: anoto cero y llevo uno.',
+  'Si la columna suma cuatro, en binario es uno cero cero.',
+  'Para comprobar, conviertan cada número a decimal con la tabla.',
+  'En la resta, cuando no alcanza, se le pide prestado al vecino.',
+  'La multiplicación es acomodar los renglones y hacer una suma.',
+  'Recuerden que la tarea del viernes es solo de suma y resta.',
+  'El método asíncrono lo vemos la próxima clase.',
+  '¿Dudas hasta aquí? ¿Todo bien?',
+  'Súbanlo hoy como evidencia, no se califica el resultado.',
+];
+
+function mockClaseLineas(cantidad, duracionSeg, semilla = 0) {
+  return Array.from({ length: cantidad }, (_, i) => {
+    const inicio = Math.round((i * duracionSeg * 100) / Math.max(cantidad, 1)) / 100 + 0.5;
+    return { inicio, fin: inicio + 9, reloj: 0, texto: MOCK_CLASE_FRASES[(i + semilla) % MOCK_CLASE_FRASES.length] };
+  });
+}
+
+function mockClaseCapturas(cantidad, duracionSeg) {
+  return Array.from({ length: cantidad }, (_, i) => {
+    const segundo = Math.round(((i + 0.5) * duracionSeg) / cantidad);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="#1f1f1f"/><rect x="40" y="40" width="720" height="370" fill="#f4f4f4"/><text x="80" y="130" font-family="Arial" font-size="44" fill="#111">Lámina ${i + 1}</text><text x="80" y="190" font-family="Arial" font-size="24" fill="#555">Minuto ${Math.floor(segundo / 60)}</text></svg>`;
+    return {
+      archivo: `f_${String(segundo).padStart(5, '0')}s.jpg`,
+      segundo,
+      ruta: `C:/Users/mock/clase/f_${segundo}.jpg`,
+      url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    };
+  });
+}
+
+function crearMockClase() {
+  const alas = (horas, minutos, diasAtras = 0, segundos = 0) => {
+    const dia = new Date();
+    dia.setDate(dia.getDate() - diasAtras);
+    dia.setHours(horas, minutos, segundos, 0);
+    return dia.getTime();
+  };
+  const materia = (codigo) => {
+    const m = MOCK_HORARIO_MATERIAS.find((x) => x.codigo === codigo);
+    return { clave: m.codigo, nombre: m.nombre, profesor: m.instructor, horaInicio: null, horaFin: null, modalidad: m.modalidad };
+  };
+  const pausa = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const claseActual = { ...materia('DAW-401'), horaInicio: '07:00', horaFin: '09:00' };
+
+  let sesiones = [
+    { id: 'mock_1606', inicio: alas(16, 6), fin: alas(16, 57), titulo: 'Matemáticas computacionales - part 1', materia: null, segmentos: 40, estado: 'terminada', modelo: 'small', version: 1 },
+    { id: 'mock_1657', inicio: alas(16, 57, 0, 9), fin: alas(17, 4, 0, 45), titulo: 'Matemáticas computacionales - part 2', materia: null, segmentos: 9, estado: 'terminada', modelo: 'small', version: 1 },
+    { id: 'mock_1710', inicio: alas(17, 10), fin: alas(17, 25), titulo: 'Matemáticas computacionales - part 3', materia: null, segmentos: 16, estado: 'terminada', modelo: 'small', version: 1 },
+    { id: 'mock_bd', inicio: alas(11, 0, 1), fin: alas(11, 48, 1), titulo: null, materia: materia('BD-301'), segmentos: 30, estado: 'terminada', modelo: 'small', version: 1 },
+    { id: 'mock_redes', inicio: alas(9, 0, 3), fin: alas(9, 12, 3), titulo: null, materia: materia('RC-302'), segmentos: 6, estado: 'error', modelo: 'small', version: 1 },
+    {
+      id: 'mock_daw', inicio: alas(7, 0, 6), fin: alas(8, 55, 6), titulo: 'Hooks y estado', materia: materia('DAW-401'), segmentos: 60, estado: 'terminada', modelo: 'medium', retranscrito: alas(20, 0, 6), version: 1,
+      partes: [{ id: 'mock_daw_2', offsetSegundos: 3300, audio: 'audio_parte2.wav', frames: 3, inicio: alas(7, 55, 6), fin: alas(8, 55, 6) }],
+    },
+    { id: 'mock_fantasma', inicio: alas(15, 0, 8), fin: null, titulo: null, materia: null, segmentos: 3, estado: 'grabando', modelo: 'small', version: 1 },
+  ];
+
+  const transcripts = new Map(sesiones.map((s, i) => [s.id, mockClaseLineas(s.segmentos, ((s.fin || s.inicio + 600000) - s.inicio) / 1000, i)]));
+  const capturas = new Map(sesiones.map((s) => [s.id, s.id === 'mock_redes' ? [] : mockClaseCapturas(5, ((s.fin || s.inicio + 600000) - s.inicio) / 1000)]));
+  const oyentes = new Set();
+  const emitir = (evento) => oyentes.forEach((oyente) => oyente(evento));
+  let activa = null;
+
+  const lineasActivas = () => {
+    const segundos = (Date.now() - activa.inicio) / 1000;
+    const cantidad = Math.max(0, Math.floor((segundos - 8) / 4));
+    return mockClaseLineas(cantidad, cantidad * 4, 2).map((linea, i) => ({ ...linea, inicio: i * 4 + 8, fin: i * 4 + 11 }));
+  };
+
+  return {
+    estado: async () => {
+      if (!activa) return { ok: true, grabando: false, sesiones: sesiones.length };
+      return {
+        ok: true, grabando: true, id: activa.id, inicio: activa.inicio,
+        minutos: Math.round((Date.now() - activa.inicio) / 60000), modelo: activa.modelo,
+        materia: activa.materia, titulo: activa.titulo, frames: 2, repetidas: 4, atrasado: false,
+        segmentos: lineasActivas().length, capturado: 0, ultimoEvento: null,
+      };
+    },
+    diagnostico: async () => ({
+      ok: true, listo: true, python: 'C:/Users/mock/.dvpotro/whisper-venv/Scripts/python.exe', error: null,
+      intentos: [], claseActual, carpeta: 'C:/Users/mock/AppData/Roaming/DVPotro/clase',
+    }),
+    iniciar: async ({ modelo = 'small', materia: elegida, titulo } = {}) => {
+      await pausa(900);
+      const inicio = Date.now();
+      activa = { id: `mock_${inicio}`, inicio, modelo, materia: elegida === undefined ? claseActual : elegida, titulo: titulo || null };
+      return { ok: true, id: activa.id, materia: activa.materia, titulo: activa.titulo, modelo };
+    },
+    detener: async () => {
+      if (!activa) return { ok: false, error: 'No hay ninguna grabación corriendo.' };
+      await pausa(1200);
+      const lineas = lineasActivas();
+      const meta = { id: activa.id, inicio: activa.inicio, fin: Date.now(), estado: 'terminada', modelo: activa.modelo, materia: activa.materia, titulo: activa.titulo, segmentos: lineas.length, version: 1 };
+      sesiones = [meta, ...sesiones];
+      transcripts.set(meta.id, lineas);
+      capturas.set(meta.id, mockClaseCapturas(2, Math.max(60, (meta.fin - meta.inicio) / 1000)));
+      activa = null;
+      emitir({ id: meta.id, evt: 'cerrado', codigo: 0 });
+      return { ok: true, id: meta.id, meta };
+    },
+    sesiones: async () => ({ ok: true, sesiones: sesiones.map((s) => ({ ...s })).sort((a, b) => b.inicio - a.inicio) }),
+    transcript: async (id, { desdeByte = 0 } = {}) => {
+      const todas = activa && id === activa.id ? lineasActivas() : (transcripts.get(id) || []);
+      return { ok: true, id, lineas: todas.slice(desdeByte), siguienteByte: todas.length, reiniciado: false };
+    },
+    retranscribir: async (id, modelo) => {
+      for (const avance of [0.2, 0.5, 0.8, 1]) {
+        await pausa(500);
+        emitir({ id, evt: 'retranscribiendo', avance });
+      }
+      sesiones = sesiones.map((s) => (s.id === id ? { ...s, modelo, retranscrito: Date.now() } : s));
+      return { ok: true, id, segmentos: transcripts.get(id)?.length || 0, demora: 2 };
+    },
+    setPython: async () => ({ ok: true }),
+    actualizarMeta: async (id, { titulo, materia: nueva } = {}) => {
+      await pausa(250);
+      const cambios = {};
+      if (titulo !== undefined) cambios.titulo = titulo ? String(titulo).trim() || null : null;
+      if (nueva !== undefined) cambios.materia = nueva;
+      if (activa && activa.id === id) {
+        activa = { ...activa, ...cambios };
+        return { ok: true, id, meta: activa };
+      }
+      sesiones = sesiones.map((s) => (s.id === id ? { ...s, ...cambios } : s));
+      return { ok: true, id, meta: sesiones.find((s) => s.id === id) };
+    },
+    fusionar: async (base, extra) => {
+      await pausa(700);
+      const b = sesiones.find((s) => s.id === base);
+      const e = sesiones.find((s) => s.id === extra);
+      if (!b || !e) return { ok: false, error: 'Una de las dos sesiones no existe.' };
+      const offset = Math.round((e.inicio - b.inicio) / 1000);
+      transcripts.set(base, [
+        ...(transcripts.get(base) || []),
+        ...(transcripts.get(extra) || []).map((l) => ({ ...l, inicio: l.inicio + offset, fin: l.fin + offset })),
+      ]);
+      capturas.set(base, [
+        ...(capturas.get(base) || []),
+        ...(capturas.get(extra) || []).map((c) => ({ ...c, segundo: c.segundo + offset, archivo: `f_${String(c.segundo + offset).padStart(5, '0')}s.jpg` })),
+      ]);
+      const unida = {
+        ...b,
+        fin: e.fin,
+        segmentos: transcripts.get(base).length,
+        partes: [...(b.partes || []), { id: extra, offsetSegundos: offset, audio: 'audio_parte2.wav', frames: (capturas.get(extra) || []).length, inicio: e.inicio, fin: e.fin }],
+      };
+      sesiones = sesiones.filter((s) => s.id !== extra).map((s) => (s.id === base ? unida : s));
+      return { ok: true, id: base, eliminada: extra, meta: unida };
+    },
+    eliminar: async (id) => {
+      await pausa(400);
+      sesiones = sesiones.filter((s) => s.id !== id);
+      return { ok: true, id };
+    },
+    capturas: async (id) => ({ ok: true, id, capturas: capturas.get(id) || [] }),
+    exportar: async (id, formato) => {
+      await pausa(300);
+      const sesion = sesiones.find((s) => s.id === id);
+      return { ok: true, path: `C:/Users/mock/Documents/${sesion?.titulo || sesion?.materia?.nombre || 'clase'}.${formato}` };
+    },
+    onEvento: (oyente) => {
+      oyentes.add(oyente);
+      return () => oyentes.delete(oyente);
+    },
+  };
+}
 
 if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) {
   window.scraperApp = {
@@ -1698,6 +1883,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined' && !window.scraperApp) 
         return { savedPath: 'C:/Users/mock/Documents/Credencial-00000123456.pdf' };
       },
     },
+    clase: crearMockClase(),
     notices: {
       // Simula la llegada de una noticia nueva para probar el push en vivo.
       sync: async () => {

@@ -245,5 +245,27 @@ contextBridge.exposeInMainWorld('scraperApp', {
     currentOrder: () => ipcRenderer.invoke('llm:current-order'),
     selectableBackends: () => ipcRenderer.invoke('llm:selectable-backends'),
   },
+  clase: {
+    estado: () => ipcRenderer.invoke('clase:estado'),
+    diagnostico: () => ipcRenderer.invoke('clase:diagnostico'),
+    iniciar: (opciones) => ipcRenderer.invoke('clase:iniciar', opciones || {}),
+    detener: () => ipcRenderer.invoke('clase:detener'),
+    sesiones: () => ipcRenderer.invoke('clase:sesiones'),
+    transcript: (id, rango) => ipcRenderer.invoke('clase:transcript', { id, ...(rango || {}) }),
+    retranscribir: (id, modelo) => ipcRenderer.invoke('clase:retranscribir', { id, modelo }),
+    setPython: (ruta) => ipcRenderer.invoke('clase:set-python', ruta),
+    actualizarMeta: (id, cambios) => ipcRenderer.invoke('clase:actualizar-meta', { id, ...(cambios || {}) }),
+    fusionar: (base, extra) => ipcRenderer.invoke('clase:fusionar', { base, extra }),
+    eliminar: (id) => ipcRenderer.invoke('clase:eliminar', { id }),
+    capturas: (id) => ipcRenderer.invoke('clase:capturas', { id }),
+    exportar: (id, formato) => ipcRenderer.invoke('clase:exportar', { id, formato }),
+    // Canal propio: el daemon emite varios tipos de evento por minuto y
+    // mezclarlos con scraper:progress obligaría al consumidor a filtrar.
+    onEvento: (callback) => {
+      const listener = (_event, evento) => callback(evento);
+      ipcRenderer.on('clase:evento', listener);
+      return () => ipcRenderer.removeListener('clase:evento', listener);
+    },
+  },
 });
 

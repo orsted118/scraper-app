@@ -9,6 +9,7 @@ import {
   Info,
   Library,
   Loader2,
+  Mic,
   Music,
   Settings,
   StickyNote,
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
   { id: 'musica', label: 'Música', icon: Music, target: 'musica' },
   { id: 'notas', label: 'Notas', icon: StickyNote, target: 'notas' },
   { id: 'material', label: 'Material', icon: Library, target: 'material' },
+  { id: 'clase', label: 'Clase en vivo', icon: Mic, target: 'clase' },
   { id: 'settings', label: 'Ajustes', icon: Settings, target: 'settings' },
 ];
 

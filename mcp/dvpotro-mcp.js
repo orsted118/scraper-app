@@ -456,6 +456,19 @@ tool(
         : `  ${'análisis'.padEnd(16)} ninguna actividad analizada todavía`,
     );
 
+    // Se resuelve al final y no arriba porque `sesionesDeClase` se define
+    // después: las clases grabadas son una carpeta por sesión, no un archivo.
+    const clases = sesionesDeClase();
+    const grabando = clases.find((s) => s.estado === 'grabando');
+
+    filas.push(
+      grabando
+        ? `  ${'clase'.padEnd(16)} GRABANDO ahora: ${grabando.titulo || grabando.materia?.nombre || grabando.id} (dvpotro_clase)`
+        : clases.length
+          ? `  ${'clase'.padEnd(16)} ${clases.length} clase(s) grabadas · última ${edad(clases[0].inicio)} (dvpotro_clase_sesiones)`
+          : `  ${'clase'.padEnd(16)} ninguna clase grabada todavía`,
+    );
+
     return `Datos de DVPotro en ${USER_DATA}\n\n${filas.join('\n')}`;
   },
 );
@@ -1332,6 +1345,223 @@ tool(
     );
 
     return `Últimas ${horas} h · ${items.length} novedades\n\n${bloques.join('\n\n')}`;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Clase en vivo — lo que DVPotro grabó y transcribió de una clase
+// ---------------------------------------------------------------------------
+
+// No pasa por `readJson`: esto no es una caché de un archivo fijo sino una
+// carpeta por sesión. La transcripción se lee mientras el daemon la escribe, así
+// que la última línea puede estar cortada y se descarta — llega entera después.
+const CLASE_META_VERSION = 1;
+
+function sesionesDeClase() {
+  let ids;
+
+  try {
+    ids = fs.readdirSync(path.join(USER_DATA, 'clase'), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch (_error) {
+    return [];
+  }
+
+  return ids
+    .map((id) => {
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'clase', id, 'meta.json'), 'utf8'));
+        return { ...meta, id };
+      } catch (_error) {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.inicio || 0) - (a.inicio || 0));
+}
+
+function lineasDeClase(id) {
+  let crudo;
+
+  try {
+    crudo = fs.readFileSync(path.join(USER_DATA, 'clase', id, 'transcript.jsonl'), 'utf8');
+  } catch (_error) {
+    return [];
+  }
+
+  const lineas = [];
+
+  for (const linea of crudo.split('\n')) {
+    if (!linea.trim()) continue;
+
+    try {
+      lineas.push(JSON.parse(linea));
+    } catch (_error) {
+      // Línea a medio escribir: el daemon sigue grabando.
+    }
+  }
+
+  return lineas;
+}
+
+function rotuloSesion(s) {
+  const nombreMateria = s.materia?.nombre || s.materia?.clave || null;
+  // El título lo puso el alumno a propósito — cuando existe manda sobre el
+  // nombre de la materia, que puede faltar en sesiones viejas o sin horario.
+  const etiqueta = s.titulo && nombreMateria
+    ? `${s.titulo} (${nombreMateria})`
+    : s.titulo || nombreMateria || 'sin materia';
+  const cuando = s.inicio ? new Date(s.inicio).toLocaleString('es-MX') : 'sin fecha';
+  const dur = s.fin && s.inicio ? `${Math.round((s.fin - s.inicio) / 60000)} min` : 'en curso';
+
+  return { etiqueta, cuando, dur };
+}
+
+function relojLegible(ms) {
+  return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+tool(
+  'dvpotro_clase_sesiones',
+  'Las clases que DVPotro grabó y transcribió, de la más nueva a la más vieja. Devuelve id, materia, cuándo fue, cuánto duró y cuántos segmentos tiene. El id es lo que pide dvpotro_clase.',
+  SIN_ARGS,
+  () => {
+    const sesiones = sesionesDeClase();
+
+    if (!sesiones.length) {
+      return 'DVPotro no grabó ninguna clase todavía. Se arranca desde la pestaña Clase en vivo de la app, mientras la clase pasa.';
+    }
+
+    const filas = sesiones.map((s) => {
+      const { etiqueta, cuando, dur } = rotuloSesion(s);
+      const estado = s.estado === 'grabando' ? ' · GRABANDO AHORA' : s.estado === 'error' ? ' · terminó con error' : '';
+      const partes = Array.isArray(s.partes) && s.partes.length ? ` · ${s.partes.length + 1} partes unidas` : '';
+      const aviso = s.version !== CLASE_META_VERSION ? `  ⚠ meta v${s.version ?? '?'} (se espera v${CLASE_META_VERSION})` : '';
+
+      return `  ${s.id}  ${etiqueta}\n      ${cuando} · ${dur} · ${s.segmentos ?? 0} segmentos · modelo ${s.modelo || '?'}${partes}${estado}${aviso}`;
+    });
+
+    return `${sesiones.length} clase(s) grabadas\n\n${filas.join('\n')}`;
+  },
+);
+
+tool(
+  'dvpotro_clase',
+  'Lo que se dijo en una clase grabada. Sin id toma la más reciente, que durante la clase es la que está corriendo. Para preguntar "qué acaba de decir" usar ultimos_minutos; para revisar un momento puntual, desde_minuto y hasta_minuto. Acá aparece la consigna que el profesor dictó de viva voz y que iVirtual nunca publicó.',
+  {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Id de la sesión (dvpotro_clase_sesiones lo lista). Por defecto, la más reciente.' },
+      ultimos_minutos: { type: 'number', description: 'Solo el final: los últimos N minutos de lo transcrito.' },
+      desde_minuto: { type: 'number', description: 'Minuto de la clase desde el que arrancar.' },
+      hasta_minuto: { type: 'number', description: 'Minuto de la clase hasta el que leer.' },
+      buscar: { type: 'string', description: 'Solo los segmentos que contengan este texto, con el minuto en que se dijeron.' },
+    },
+  },
+  ({ id, ultimos_minutos, desde_minuto, hasta_minuto, buscar }) => {
+    const sesiones = sesionesDeClase();
+
+    if (!sesiones.length) {
+      return 'DVPotro no grabó ninguna clase todavía.';
+    }
+
+    const sesion = id ? sesiones.find((s) => s.id === id) : sesiones[0];
+
+    if (!sesion) {
+      return `No hay ninguna sesión con id ${id}. Disponibles: ${sesiones.map((s) => s.id).join(', ')}.`;
+    }
+
+    const todas = lineasDeClase(sesion.id);
+
+    if (!todas.length) {
+      const porque = sesion.estado === 'grabando'
+        ? 'La grabación recién arrancó: el primer tramo tarda entre 20 y 40 segundos en salir.'
+        : 'La sesión terminó sin transcribir nada — puede que no haya entrado audio.';
+
+      return `La sesión ${sesion.id} no tiene transcripción. ${porque}`;
+    }
+
+    const finGrabado = todas[todas.length - 1].fin;
+    const enCurso = sesion.estado === 'grabando';
+    const sinFiltro = ![ultimos_minutos, desde_minuto, hasta_minuto].some(Number.isFinite) && !buscar;
+
+    // Sin filtro y con la clase corriendo, se sirven los últimos 10 minutos. La
+    // pregunta en ese momento es siempre "qué acaba de decir", y volcar dos horas
+    // de clase para contestarla cuesta miles de tokens de los que se usan veinte.
+    const ventanaViva = sinFiltro && enCurso ? 10 : null;
+
+    let desde = 0;
+    let hasta = Infinity;
+
+    if (Number.isFinite(ultimos_minutos) || ventanaViva) {
+      desde = Math.max(0, finGrabado - (ultimos_minutos ?? ventanaViva) * 60);
+    } else {
+      if (Number.isFinite(desde_minuto)) desde = desde_minuto * 60;
+      if (Number.isFinite(hasta_minuto)) hasta = hasta_minuto * 60;
+    }
+
+    let lineas = todas.filter((l) => l.inicio >= desde && l.inicio <= hasta);
+
+    if (buscar) {
+      lineas = lineas.filter((l) => incluye(l.texto, buscar));
+
+      if (!lineas.length) {
+        return `Nada que diga "${buscar}" en la sesión ${sesion.id} (${todas.length} segmentos revisados).`;
+      }
+    }
+
+    const { etiqueta, cuando } = rotuloSesion(sesion);
+
+    // Una clase de dos horas son ~1.500 segmentos. Devolverlos todos quema la
+    // ventana igual que volcar el caché de actividades, que es justo lo que este
+    // servidor existe para no hacer.
+    const TOPE = 400;
+    const recortado = lineas.length > TOPE;
+    const mostrar = recortado ? lineas.slice(-TOPE) : lineas;
+
+    const sello = (s) => `[${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}]`;
+
+    // Buscando, cada resultado lleva su minuto: es exactamente el dato que se fue
+    // a buscar. Leyendo de corrido no: un sello por segmento son 7 caracteres cada
+    // 80 —casi 10% del texto— y además parte la clase en renglones sueltos que se
+    // leen peor que el párrafo corrido. Se marca cada 30 s, que alcanza para
+    // ubicarse y para saltar al momento en la grabación.
+    let cuerpo;
+
+    if (buscar) {
+      cuerpo = mostrar.map((l) => `${sello(l.inicio)} ${l.texto}`).join('\n');
+    } else {
+      const partes = [];
+      let ultimoSello = -Infinity;
+
+      for (const l of mostrar) {
+        if (l.inicio - ultimoSello >= 30) {
+          ultimoSello = l.inicio;
+          partes.push(`\n${sello(l.inicio)} ${l.texto}`);
+          continue;
+        }
+
+        partes.push(l.texto);
+      }
+
+      cuerpo = partes.join(' ').trim();
+    }
+
+    const encabezado = [
+      `[clase ${sesion.id} · ${etiqueta} · ${cuando} · modelo ${sesion.modelo || '?'}${sesion.retranscrito ? ' (reprocesada)' : ''}${enCurso ? ` · GRABANDO, último audio ${relojLegible(todas[todas.length - 1].reloj * 1000)}` : ''}]`,
+      ventanaViva
+        ? `Clase en curso: se muestran los últimos ${ventanaViva} min. Para el resto, desde_minuto/hasta_minuto.`
+        : null,
+      recortado
+        ? `Mostrando los últimos ${TOPE} de ${lineas.length} segmentos. Acotá con desde_minuto/hasta_minuto o buscar.`
+        : null,
+      // La transcripción es automática: darla por textual lleva a citarle al
+      // profesor una fecha de entrega que el modelo escuchó mal.
+      'Transcripción automática — los números y las fechas conviene confirmarlos contra la consigna.',
+    ].filter(Boolean).join('\n');
+
+    return `${encabezado}\n\n${cuerpo}`;
   },
 );
 

@@ -11,6 +11,7 @@ import Calendario from './pages/Calendario';
 import Calificaciones from './pages/Calificaciones';
 import Notificaciones from './pages/Notificaciones';
 import Material from './pages/Material';
+import ClaseEnVivo from './pages/ClaseEnVivo';
 import Musica from './pages/Musica';
 import Notas from './pages/Notas';
 import Ajustes from './pages/Ajustes';
@@ -53,6 +54,11 @@ const pageRegistry = {
     title: 'Notas',
     description: 'Captura ideas, listas y pendientes al estilo Keep.',
     component: Notas,
+  },
+  clase: {
+    title: 'Clase en vivo',
+    description: 'Graba la clase que suena en la computadora y la deja transcrita y buscable.',
+    component: ClaseEnVivo,
   },
   material: {
     title: 'Material',

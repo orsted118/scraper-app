@@ -8,3 +8,6 @@ scratch/
 
 # Salida del spike de reconocimiento: HTML crudo del portal con datos personales
 scripts/spike-output/
+
+# Estado local de herramientas de asistencia
+.claude/

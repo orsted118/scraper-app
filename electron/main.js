@@ -41,6 +41,7 @@ const { registerMaterialHandlers } = require('./handlers/material');
 const { registerAttendanceHandlers } = require('./handlers/attendance');
 const { registerPromptBuilderHandlers } = require('./handlers/prompt-builder');
 const { registerDriveHandlers } = require('./handlers/drive');
+const { detenerAlSalir: detenerClaseAlSalir, registerClaseHandlers, registerClaseImageScheme } = require('./handlers/clase');
 const calendarioHandler = require('./handlers/calendario');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -56,6 +57,7 @@ if (fs.existsSync(envPath)) {
 // Los privilegios de schemes custom deben registrarse ANTES de app.whenReady().
 registerMusicScheme();
 registerNoteImageScheme();
+registerClaseImageScheme();
 
 // Sin AppUserModelID Windows agrupa la ventana bajo "Electron" en la taskbar y
 // pinta el ícono default de Electron, aunque electron-builder puso el nuestro
@@ -186,6 +188,7 @@ app.whenReady().then(() => {
   registerNotesHandlers();
   registerNoteImproverHandlers();
   registerLlmStatusHandlers();
+  registerClaseHandlers();
   notificationCenter.startSchedulers();
   ipcMain.handle('calendario:run', (_event, options) => calendarioHandler.run(options || {}));
   ipcMain.handle('calendario:clear-cache', () => calendarioHandler.clearCache());
@@ -221,6 +224,9 @@ app.on('will-quit', () => {
   // Los watchers mantienen handles de archivo abiertos: sin cerrarlos quedan
   // colgados del proceso al salir.
   stopAllWatchers();
+  // El daemon de la clase es un proceso aparte: sobrevive a la app y seguiría
+  // grabando sin que nadie pueda pararlo desde la UI.
+  detenerClaseAlSalir();
 });
 
 app.on('window-all-closed', () => {

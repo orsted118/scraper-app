@@ -44,7 +44,10 @@ scraper-app/
 │     ├─ assignment-upload.js      # Entrega de archivos a iVirtual (lee el form, valida y sube)
 │     ├─ files.js                  # Descarga de adjuntos via sesión Electron
 │     ├─ drive.js                  # Resuelve los Drive de la consigna a un PDF local (anónimo)
-│     └─ notifications.js          # Notificaciones nativas de pendientes/retrasadas
+│  │  ├─ notifications.js          # Notificaciones nativas de pendientes/retrasadas
+│  │  └─ clase.js                   # Graba y transcribe la clase (spawnea el daemon de Python)
+│  └─ clase/
+│     └─ daemon.py                  # Captura WASAPI loopback + faster-whisper (proceso aparte)
 ├─ src/
 │  ├─ main.jsx                     # Entry renderer
 │  ├─ App.jsx                      # Orquestación de estado, navegación, carga de módulos
@@ -62,7 +65,9 @@ scraper-app/
 │  │  ├─ Actividades.jsx
 │  │  ├─ Horario.jsx
 │  │  ├─ Calificaciones.jsx
-│  │  └─ Ajustes.jsx
+│  │  ├─ Ajustes.jsx
+│  │  ├─ ClaseEnVivo.jsx          # Estado y acciones de Clase en vivo (grabar, historial, detalle)
+│  │  └─ clase/                   # Sus piezas: lista por día, detalle con pestañas, visor, diálogos, formato.js
 │  └─ design-backups/v1/           # Backup local visual (ignorado por git)
 ├─ mcp/
 │  └─ dvpotro-mcp.js               # Servidor MCP sobre las cachés (stdio, sin deps)
@@ -113,10 +118,24 @@ scraper-app/
 | `files:inspect` | `files.js` | payload libre | response base placeholder |
 | `files:parse` | `files.js` | payload libre | response base placeholder |
 | `shell:open-external` | `main.js` | `url` | abre en navegador externo (sin payload rico) |
+| `clase:estado` | `clase.js` | — | `{ grabando, id?, minutos?, segmentos?, frames?, atrasado? }` |
+| `clase:diagnostico` | `clase.js` | — | `{ listo, python, error?, intentos[], claseActual }` |
+| `clase:iniciar` | `clase.js` | `{ modelo?, materia?, conPantalla?, titulo? }` — `materia` undefined = detectar del horario, `null` = sin materia | `{ ok, id, materia, titulo, modelo }` o `{ ok:false, error }` |
+| `clase:detener` | `clase.js` | — | `{ ok, id, meta }` o `{ ok:false, error }` |
+| `clase:sesiones` | `clase.js` | — | `{ ok, sesiones[] }` |
+| `clase:transcript` | `clase.js` | `{ id, desdeMinuto?, hastaMinuto?, desdeByte? }` | `{ ok, id, lineas[], siguienteByte, reiniciado }` |
+| `clase:retranscribir` | `clase.js` | `{ id, modelo? }` | `{ ok, id, segmentos, demora }` o `{ ok:false, error }` |
+| `clase:set-python` | `clase.js` | ruta del `python.exe` | `{ ok }` |
+| `clase:actualizar-meta` | `clase.js` | `{ id, titulo?, materia? }` — materia es objeto `{ clave, nombre, profesor, ... }` o `null` | `{ ok, id, meta }` o `{ ok:false, error }` |
+| `clase:fusionar` | `clase.js` | `{ base, extra }` — base = la que empezó antes | `{ ok, id, eliminada, meta }` o `{ ok:false, error }` |
+| `clase:eliminar` | `clase.js` | `{ id }` | `{ ok, id }` o `{ ok:false, error }` |
+| `clase:capturas` | `clase.js` | `{ id }` | `{ ok, id, capturas: [{ archivo, segundo, ruta, url }] }` — `url` va directo a `<img src>` (scheme `dvpotro-clase-img`) |
+| `clase:exportar` | `clase.js` | `{ id, formato: 'md' \| 'txt' }` | `{ ok, path }` o `{ ok:false, error, cancelado? }` |
 
 ### Evento renderer
 
 - `scraper:progress` (emitido por `scraper.js`) con `{ current, total, curso }`.
+- `clase:evento` (emitido por `clase.js`) con lo que manda el daemon: `dispositivo`, `iniciado`, `modelo_listo`, `tramo`, `cola`, `atraso`, `audio_faltante`, `dispositivo_perdido`, `parando`, `detenido`, y en la segunda pasada `retranscribiendo` / `retranscrito`. Canal propio porque son varios eventos por minuto y mezclarlos con `scraper:progress` obligaría a filtrar.
 - `drive:progress` (emitido por `drive.js`) con `{ done, total, fileId, nombre, estado }`. Canal propio y no `scraper:progress`: ese payload es `{current, total, curso}` y reusarlo haría que la barra de materias se recargue desde cero después de llegar a 100%.
 
 ---
@@ -188,6 +207,8 @@ Arquitectura y reglas en `CLAUDE.md`.
 | `dvpotro_nota` | UNA nota entera en markdown, sin el recorte a 400 caracteres de `dvpotro_notas` | `notes.json` |
 | `dvpotro_nota_crear` | **escribe caché local**: crea una nota de texto o checklist en la app, para que lo hablado en la terminal no muera en el scrollback | `notes.json` |
 | `dvpotro_ocultar` | **escribe caché local**: lista, oculta o restaura una actividad. Sin argumentos muestra las ocultas, que era lo único invisible desde el chat | `hidden-activities.json` |
+| `dvpotro_clase_sesiones` | las clases que DVPotro grabó y transcribió, con id, materia, duración y cantidad de segmentos | `clase/<id>/meta.json` |
+| `dvpotro_clase` | lo que se dijo en una clase. Sin id, la más reciente. `ultimos_minutos` para "qué acaba de decir", `buscar` para un tema puntual. **Acá aparece la consigna que el profesor dictó de viva voz y que iVirtual nunca publicó** | `clase/<id>/transcript.jsonl` |
 | `dvpotro_sync` | **escribe caché**: sale al portal y la refresca. 40-120 s por módulo | — |
 | `dvpotro_entregar` | **ESCRIBE EN EL PORTAL**: la única que manda algo. Sin `archivo` informa qué formatos acepta la actividad, el tope de tamaño, cuántos archivos admite y si la ventana sigue abierta. Con `archivo` valida contra el formulario real; solo sube con `confirmar:true`. Delega en `assignment-upload.js` | `actividades-cache.json` |
 | `dvpotro_quitar_archivo` | **ESCRIBE EN EL PORTAL**: saca un archivo de una entrega. Complemento de `dvpotro_entregar`, que con un nombre nuevo SUMA en vez de reemplazar. Solo con `confirmar:true` | `actividades-cache.json` |
@@ -304,4 +325,5 @@ Patrones visuales:
 | Calificaciones CIA | ✅ | HTML de Mis Calificaciones, los 3 ciclos; verificado contra el portal 2026-09-12 |
 | Ajustes credenciales | ✅ | UI + persistencia `.env` dev/prod |
 | Reportes (`generate-report.js`) | ✅ | v2 con stats + diff por archivo + verificación |
-| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 26 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |
+| Clase en vivo (`clase.js` + `clase/daemon.py`) | ✅ | Captura WASAPI loopback + faster-whisper local. En vivo con `small` (RTF 0.20 medido); `--retranscribir` hace la pasada fina después contra el wav. Verificado con `npm run test:clase`: 81 s capturados de 82 s grabando, lectura incremental y dedupe de capturas. Necesita un Python 3.12 aparte con `faster-whisper` y `pyaudiowpatch` |
+| Servidor MCP (`mcp/dvpotro-mcp.js`) | ✅ | 28 tools. Lectura de caché; `dvpotro_adjuntos` y `dvpotro_material_leer` bajan archivos; `dvpotro_sync` refresca caché (8 módulos); `dvpotro_nota_crear` y `dvpotro_ocultar` escriben caché local; `dvpotro_entregar` y `dvpotro_quitar_archivo` son las únicas que escriben en el PORTAL. Registrado en `.mcp.json` del repo y a nivel usuario |

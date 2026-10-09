@@ -44,6 +44,8 @@ npm run test:drive                     # Normalización y clasificación de link
 npm run test:drive:red                 # Descarga real contra ids reales, DENTRO de Electron (con red)
 npm run test:drive:llm                 # El texto del PDF llegando al prompt y al extractor de requisitos
 npm run test:mcp-drive                 # El MCP sirviendo lo resuelto (JSON-RPC contra el server real)
+npm run test:clase                     # Grabación de clase punta a punta DENTRO de Electron.
+                                       # Con AUDIO_PRUEBA=<mp4> reproduce audio real y verifica la transcripción
 npm run test:mcp-entrega               # Defensas y ensayo de dvpotro_entregar (no sube nada)
 npm run drive:resolve                  # Corre la cola de Drive una vez contra la caché real
 ```
@@ -203,6 +205,172 @@ repo — el archivo con todas las claves.
 
 Spawneá el proceso y hablale JSON-RPC (`initialize` → `tools/list` → `tools/call`).
 **No hagas `require()` del archivo**: arranca el listener de stdin y cuelga el proceso.
+
+---
+
+## Clase en vivo (`electron/handlers/clase.js` + `electron/clase/daemon.py`)
+
+Graba lo que suena en la máquina durante una clase y lo deja transcrito en
+`userData/clase/<sesion>/`. Existe por un caso real: el 2026-09-14 la profesora dictó la
+consigna completa de viva voz y la actividad quedó en iVirtual **sin consigna publicada**.
+El scraper no puede leer lo que nadie escribió.
+
+El reparto es: Electron maneja el ciclo de vida de la sesión y las capturas de pantalla;
+Python hace la captura de audio y la transcripción, porque faster-whisper es ctranslate2
+y el único equivalente en Node implicaría mandar el audio de la clase a un servicio ajeno.
+La transcripción **no pasa por IPC**: el daemon la escribe a `transcript.jsonl` y todos
+—handler, UI y servidor MCP— la leen de ahí. Si la app se cierra en medio de la clase el
+daemon sigue grabando; si el daemon muere, lo transcrito ya está en disco.
+
+### No se empaqueta un Python
+
+ctranslate2 y los modelos son cientos de MB y la mayoría no va a usar este módulo. El
+handler busca un intérprete que ya tenga `faster_whisper`, `pyaudiowpatch` y `numpy`, en
+este orden: `DVPOTRO_PYTHON`, lo guardado en `clase/config.json`, `~/.dvpotro/whisper-venv`,
+`~/.claude/tools/whisper-venv`, y `python` del PATH. Si no encuentra ninguno, la UI explica
+qué instalar en vez de tirar un ImportError. **Python 3.12**: ctranslate2 no publica wheels
+para las versiones más nuevas.
+
+### Elegir modelo es LA decisión de rendimiento del módulo
+
+Todo lo demás es ruido al lado de whisper. Medido sobre 120 s de clase real en el
+Ryzen 5 7520U (4 físicos / 8 lógicos), con `vad_filter` activo:
+
+| modelo | 4 hilos | 8 hilos |
+|---|---|---|
+| tiny | RTF 0.04 | 0.04 |
+| small | **0.20** | 0.22 |
+| base | 0.21 | 0.36 |
+| medium | 0.59 | 0.63 |
+
+Tres cosas que salen de ahí y que están cableadas en el código:
+
+- **`small` en vivo, no `medium`.** Con 1.7x de margen, `medium` se atrasa apenas
+  Teams y la app aprietan el CPU, y desde ahí no se recupera: la cola crece sola.
+  `small` da 4.9x. La diferencia de calidad entre los dos es modesta —los dos
+  fallan con los nombres propios— y no justifica perder el margen.
+- **Más hilos es MÁS LENTO.** `cpu_threads` va a los núcleos físicos: ctranslate2
+  se pelea consigo mismo con los hilos SMT, y de paso los deja libres para la
+  captura, que es lo único que no puede esperar. Ver `hilos_por_defecto()`.
+- **La calidad se recupera después, no en vivo.** `--retranscribir` vuelve a pasar
+  el `audio.wav` con el modelo que se quiera, archivando la versión en vivo como
+  `transcript-vivo.jsonl`. Ahí el reloj no importa.
+
+No hace falta saltear el silencio a mano: `vad_filter` ya lo descarta casi gratis
+(RTF 0.031 sobre silencio puro, 0.003 sobre ruido de sala).
+
+### Lo que NO vale la pena optimizar
+
+Medido, para no volver a intentarlo:
+
+- **La conversión de audio cuesta 1.5 ms por segundo de audio** — 0.15% de un
+  núcleo. Ya está en numpy y con `CHUNK=4096`; más allá de eso no hay nada.
+- **`wave.writeframes` vs `writeframesraw`**: 0.238 contra 0.069 ms por segundo de
+  audio. Ahorra 0.017% de un núcleo y obliga a usar API privada para parchear la
+  cabecera a mano. No se hace.
+
+### Lo que sí crecía con la duración de la clase
+
+Era el único costo que empeoraba cuanto más larga la clase, y se notaba justo al
+final, que es cuando dictan la tarea:
+
+- **`leerTranscript` acepta `desdeByte`** y devuelve `siguienteByte`. La UI
+  refresca cada 5 s: sin offset, una clase de 2 h releía y re-parseaba ~1.750
+  líneas / 210 KB unas 1.440 veces. El corte se hace en el último salto de línea
+  completo, porque el daemon puede estar escribiendo justo ahí.
+- **`estado()` ya no cuenta líneas leyendo el archivo.** La cuenta se acumula de
+  los eventos `tramo`, que ya la traen.
+- **Las capturas de pantalla se deduplican** contra una firma de 32x18 en gris
+  (`firmaDe` / `bastanteDistinta`). Una pantalla quieta no deja archivo: en la
+  prueba, 5 de 6 tics se descartaron. Sin esto, 2 h dejaban ~600 JPEG y 28 MB de
+  la misma lámina.
+- **`dvpotro_clase` sin filtros y con la clase en curso devuelve los últimos 10
+  minutos**, no todo. La pregunta en ese momento es siempre "qué acaba de decir":
+  medido sobre una clase de 2 h simulada, 3.100 tokens en vez de 9.700.
+
+### Los bugs que ya costaron caro
+
+Los tres terminaban igual — **audio faltante y CERO errores**. El wav salía corto y no se
+notaba hasta escucharlo, que en una clase significa perder minutos enteros.
+
+- **Convertir el audio en Python puro no le gana al tiempo real.** A 48 kHz estéreo son
+  96.000 iteraciones por segundo de audio: el proceso tardaba más en convertir un bloque
+  que lo que ese bloque duraba, PyAudio descartaba lo que no se leía a tiempo y 70 s
+  entraban como 15. Por eso `a_mono_16k` es numpy y no un bucle.
+- **`import numpy` perezoso pelea el lock de módulo con `faster_whisper`.** El hilo
+  principal quedaba esperando a que el hilo del transcriptor terminara de importar, y
+  entre `iniciado` y la primera lectura de audio pasaban entre 8 y 20 segundos — justo los
+  segundos en que el profesor dice de qué se trata la clase. numpy va importado **arriba
+  del archivo**, y el stream se abre **antes** de arrancar el transcriptor.
+- **Un cliente de loopback invalidado sigue contestando `is_active() == True`.** Cuando el
+  endpoint queda ocioso y otra app lo engancha, Windows lo reinicializa y el loopback deja
+  de entregar sin excepción ni aviso. De ahí salen dos defensas: el stream de silencio de
+  `_mantener_despierto()` (que parece no hacer nada y no es opcional) y `mudo()`, que
+  decide por ausencia de bloques y **no** por `is_active()`.
+
+El daemon se auto-vigila: cada 5 s compara audio capturado contra reloj y emite
+`audio_faltante` si se quedó atrás. Es la única señal que agarra a toda esa familia de bugs.
+
+### Se para por stdin, no con kill
+
+En Windows `proceso.kill()` es `TerminateProcess` y el daemon no llega a transcribir el
+último tramo — justo donde el profesor dicta la tarea. El handler le escribe `parar` por
+stdin y espera hasta 90 s; el kill queda de último recurso. `detenerAlSalir()` cuelga de
+`will-quit` porque un daemon huérfano sigue grabando sin forma de pararlo desde la UI.
+
+### Unir sesiones (`fusionar`)
+
+Una clase cortada por un receso deja dos carpetas. `fusionar` pega la de después a la
+de antes: corre `inicio`/`fin` del transcript por el desfasaje de reloj entre las dos,
+copia las capturas renombradas con ese offset, guarda el wav como `audio_parteN.wav`
+(sin reencodear) y anota todo en `meta.partes`. Recién con eso escrito borra la extra.
+Tres cosas que parecen detalles y no lo son:
+
+- **`reloj` NO se desplaza.** Es la hora de pared absoluta (epoch) en que se dijo la
+  frase; sumarle el offset la corría la duración entera de la primera parte, y el
+  "último audio" del MCP mentía por una hora.
+- **Una sesión unida no se re-transcribe.** El daemon rehace `transcript.jsonl` desde
+  `audio.wav` solo, y borraría en silencio el texto de las otras partes. `retranscribir`
+  se niega; hay que re-transcribir cada parte ANTES de unirlas.
+- **"Grabando" no es `activo`.** Si la app se reinicia a mitad de clase, el daemon sigue
+  escribiendo y `activo` es null. `sigueGrabando()` decide por la frescura del wav y del
+  transcript (120 s), que además deja borrar o unir una sesión que murió sucia y quedó
+  en "grabando" para siempre.
+
+### La UI (`src/pages/ClaseEnVivo.jsx` + `src/pages/clase/`)
+
+`ClaseEnVivo.jsx` tiene el estado y las acciones; cada pieza visual vive en `clase/`, un
+componente por archivo, y `clase/formato.js` concentra lo que no es React (agrupar por
+día, sugerir uniones, buscar sin acentos). Para trabajarla en el navegador, `dev-mock.js`
+trae un `clase` falso con la clase cortada en tres partes que motivó la organización.
+
+- **La lista se organiza sola:** por día, con filtro por materia (tabs con subrayado) y
+  buscador cuando pasa de 6 grabaciones. Dos grabaciones del mismo día con menos de 45 min
+  de pausa y sin materias que se contradigan muestran "¿Es la misma clase? Unir".
+- **Todo overlay pasa por `clase/Dialogo.jsx`:** foco adentro al abrir, Tab atrapado, Esc
+  cierra, y el foco vuelve a quien lo abrió. Un `<div>` suelto con `onClick` en el fondo no
+  cumple con nada de eso.
+- **El profesor de CIA viene en `instructor`, no en `profesor`.** Leer solo `profesor`
+  dejaba vacío al profe en `claseActual()` y en el selector de materia.
+- **`divide-y` no sirve en este repo:** no hay color de borde por defecto en
+  `tailwind.config.js` y pinta un gris fijo que no sigue el tema. Los separadores van con
+  `border-t` + `borderColor: var(--border-subtle)`.
+
+### Al testear
+
+`npm run test:clase` corre **dentro de Electron** (`desktopCapturer`, `screen` y
+`app.getPath` no existen fuera). Dos trampas que ya mandaron a buscar el bug al lugar
+equivocado, las dos del banco de pruebas y no del código:
+
+- **`ffplay` spawneado se cierra a los ~1.2 s** sin importar qué se haga con su stdio. El
+  test extrae un wav con ffmpeg y lo reproduce con `SoundPlayer.PlaySync()`, que sí bloquea.
+- **El offset de extracción sale de la duración real del archivo**, medida con ffprobe.
+  Estaba fijo en 300 s contra una grabación de 136: ffmpeg escribía un wav de 78 bytes, no
+  sonaba nada, y la cobertura de audio fallaba por falta de audio que reproducir.
+
+La cobertura se mide contra el reloj de la grabación tomado **antes** de `detener()`:
+`meta.fin` se sella recién cuando termina de volcarse el último tramo, hasta 40 s después
+de que la captura paró.
 
 ---
 

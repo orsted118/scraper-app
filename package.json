@@ -38,6 +38,7 @@
     "test:drive:red": "electron scripts/test-drive-red.cjs",
     "drive:resolve": "electron scripts/resolve-drive-once.cjs",
     "test:mcp-drive": "node scripts/test-mcp-drive.cjs",
+    "test:clase": "electron scripts/test-clase.cjs",
     "test:mcp-entrega": "node scripts/test-mcp-entrega.cjs",
     "test:drive:llm": "node scripts/test-drive-llm.cjs"
   },
